@@ -211,7 +211,7 @@ function ReagentList() {
               )}
             </div>
           ) : (
-            <p style={{ color: '#999', textAlign: 'center', marginTop: '40px' }}>위에서 위치를 선택하세요</p>
+            <p style={{ color: '#999', textAlign: 'left', marginTop: '40px' }}>위에서 위치를 선택하세요</p>
           )}
         </div>
       )}
@@ -315,7 +315,7 @@ function ReagentList() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <button onClick={() => setEditValue(v => Math.max(0, Number(v === '' ? editingLot.sealed_count : v) - 1))}
                     style={{ width: '36px', height: '36px', borderRadius: '4px', border: '1px solid #cbd5e0', cursor: 'pointer', fontSize: '18px', background: 'white' }}>-</button>
-                  <span style={{ fontSize: '20px', fontWeight: 'bold', minWidth: '32px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '20px', fontWeight: 'bold', minWidth: '32px', textAlign: 'left' }}>
                     {editValue === '' ? editingLot.sealed_count : editValue}
                   </span>
                   <button onClick={() => setEditValue(v => Number(v === '' ? editingLot.sealed_count : v) + 1)}

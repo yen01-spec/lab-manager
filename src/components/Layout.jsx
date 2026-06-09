@@ -42,7 +42,7 @@ function Layout() {
         <div style={{
           width: '200px', background: '#f8f9fa', borderRight: '1px solid #e2e8f0',
           position: 'fixed', top: '48px', left: 0, height: 'calc(100vh - 48px)',
-          overflowY: 'auto', padding: '16px 0'
+          overflowY: 'auto', padding: '16px 0', textAlign: 'left' 
         }}>
           {[
             { to: '/', label: '🏠 홈' },
