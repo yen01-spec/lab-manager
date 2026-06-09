@@ -11,6 +11,9 @@ function ReagentList() {
   const [editValue, setEditValue] = useState('')
   const [editType, setEditType] = useState('')
   const [userName, setUserName] = useState('')
+  const [openRooms, setOpenRooms] = useState({})
+  const [search, setSearch] = useState('')
+  const [searchResults, setSearchResults] = useState([])
 
   useEffect(() => { fetchLocations() }, [])
 
@@ -24,7 +27,18 @@ function ReagentList() {
       .from('reagents')
       .select('*, reagent_lots(*)')
       .eq('location_id', locationId)
+      .order('name')
     if (data) setReagents(data)
+  }
+
+  async function handleSearch() {
+    if (!search.trim()) return
+    const { data } = await supabase
+      .from('reagents')
+      .select('*, reagent_lots(*), locations(*)')
+      .ilike('name', `%${search}%`)
+      .order('name')
+    if (data) setSearchResults(data)
   }
 
   async function openReagent(reagent) {
@@ -47,102 +61,160 @@ function ReagentList() {
       before_sealed: lot.sealed_count, after_sealed: field === 'sealed_count' ? value : lot.sealed_count,
       before_stock: lot.current_stock, after_stock: field === 'current_stock' ? value : lot.current_stock,
     })
-    // 팝업 내 lots 갱신
     setLots(prev => prev.map(l => l.id === lot.id ? { ...l, [field]: value } : l))
     setEditingLot(null)
   }
 
   const rooms = [...new Set(locations.map(l => l.room))]
 
+  const toggleRoom = (room) => {
+    setOpenRooms(prev => ({ ...prev, [room]: !prev[room] }))
+  }
+
+  const ReagentTable = ({ data }) => (
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr style={{ background: '#f7fafc' }}>
+          {['시약명', '회사', '용량', 'Lot', '미개봉(병)', '잔량(%)', '변경'].map(h => (
+            <th key={h} style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '2px solid #e2e8f0', fontSize: '13px', color: '#4a5568' }}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {data.map(r =>
+          (r.reagent_lots?.length ? r.reagent_lots : [{ id: null }]).map((lot, i) => {
+            const isLow = lot.sealed_count === 0 && lot.current_stock <= 20
+            return (
+              <tr key={lot.id || r.id} style={{ background: isLow ? '#fff5f5' : 'white' }}
+                onMouseEnter={e => e.currentTarget.style.background = isLow ? '#ffe4e4' : '#f7fafc'}
+                onMouseLeave={e => e.currentTarget.style.background = isLow ? '#fff5f5' : 'white'}>
+                {i === 0 && (
+                  <td rowSpan={r.reagent_lots?.length || 1}
+                    onClick={() => openReagent(r)}
+                    style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: 'bold', cursor: 'pointer', color: '#1e3a5f', fontSize: '14px' }}>
+                    {r.name}
+                    {isLow && <span style={{ color: '#e53e3e', fontSize: '11px', marginLeft: '6px' }}>⚠️부족</span>}
+                  </td>
+                )}
+                {i === 0 && (
+                  <td rowSpan={r.reagent_lots?.length || 1}
+                    style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', color: '#666', fontSize: '13px' }}>
+                    {r.company || '-'}
+                  </td>
+                )}
+                {i === 0 && (
+                  <td rowSpan={r.reagent_lots?.length || 1}
+                    style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', color: '#666', fontSize: '13px' }}>
+                    {r.volume}{r.unit}
+                  </td>
+                )}
+                <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px' }}>{lot.lot_no || '-'}</td>
+                <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px' }}>{lot.sealed_count ?? '-'}</td>
+                <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px' }}>{lot.current_stock ?? '-'}%</td>
+                <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0' }}>
+                  {lot.id && (
+                    <button onClick={() => { setEditingLot(lot); setEditValue(''); setEditType('') }}
+                      style={{ background: '#e2e8f0', border: 'none', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer', fontSize: '12px' }}>
+                      수정
+                    </button>
+                  )}
+                </td>
+              </tr>
+            )
+          })
+        )}
+      </tbody>
+    </table>
+  )
+
   return (
     <div>
       <h1 style={{ color: '#1e3a5f', marginBottom: '24px' }}>📋 시약 목록</h1>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: '24px' }}>
-        {/* 위치 목록 */}
-        <div>
-          {rooms.map(room => (
-            <div key={room} style={{ marginBottom: '12px' }}>
-              <div style={{ fontWeight: 'bold', color: '#4a5568', fontSize: '13px', marginBottom: '4px', padding: '0 8px' }}>{room}</div>
-              {locations.filter(l => l.room === room).map(loc => (
-                <div key={loc.id} onClick={() => { setSelectedLocation(loc); fetchReagentsByLocation(loc.id) }}
-                  style={{
-                    padding: '7px 12px', cursor: 'pointer', borderRadius: '4px', fontSize: '13px',
-                    background: selectedLocation?.id === loc.id ? '#1e3a5f' : 'transparent',
-                    color: selectedLocation?.id === loc.id ? 'white' : '#4a5568',
-                  }}>
-                  {loc.detail || loc.room}
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
+      {/* 검색 */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+        <input
+          value={search}
+          onChange={e => { setSearch(e.target.value); if (!e.target.value) setSearchResults([]) }}
+          onKeyDown={e => e.key === 'Enter' && handleSearch()}
+          placeholder="시약 이름 검색..."
+          style={{ flex: 1, padding: '10px 16px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '15px' }}
+        />
+        <button onClick={handleSearch} style={{
+          background: '#1e3a5f', color: 'white', border: 'none',
+          padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontSize: '15px'
+        }}>검색</button>
+      </div>
 
-        {/* 시약 리스트 */}
+      {/* 검색 결과 */}
+      {searchResults.length > 0 && (
+        <div style={{ marginBottom: '32px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h2 style={{ color: '#1e3a5f', margin: 0 }}>검색 결과 ({searchResults.length}개)</h2>
+            <button onClick={() => { setSearchResults([]); setSearch('') }}
+              style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '4px 12px', cursor: 'pointer', fontSize: '13px' }}>
+              닫기
+            </button>
+          </div>
+          <ReagentTable data={searchResults} />
+        </div>
+      )}
+
+      {/* 위치 accordion */}
+      {searchResults.length === 0 && (
         <div>
-          {selectedLocation ? (
-            reagents.length === 0 ? (
-              <p style={{ color: '#999' }}>이 위치에 시약이 없습니다.</p>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: '#f7fafc' }}>
-                    {['시약명', '회사', '용량', 'Lot', '미개봉(병)', '잔량(%)', '변경'].map(h => (
-                      <th key={h} style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '2px solid #e2e8f0', fontSize: '13px', color: '#4a5568' }}>{h}</th>
+          {/* 위치 선택 상단 accordion */}
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
+            {rooms.map(room => (
+              <div key={room} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', minWidth: '120px' }}>
+                <div onClick={() => toggleRoom(room)} style={{
+                  padding: '8px 16px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px',
+                  background: openRooms[room] ? '#1e3a5f' : '#f7fafc',
+                  color: openRooms[room] ? 'white' : '#2d3748',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px'
+                }}>
+                  <span>{room}</span>
+                  <span style={{ fontSize: '11px' }}>{openRooms[room] ? '▲' : '▼'}</span>
+                </div>
+                {openRooms[room] && (
+                  <div style={{ background: 'white' }}>
+                    {locations.filter(l => l.room === room).map(loc => (
+                      <div key={loc.id}
+                        onClick={() => { setSelectedLocation(loc); fetchReagentsByLocation(loc.id) }}
+                        style={{
+                          padding: '7px 16px', cursor: 'pointer', fontSize: '13px',
+                          borderTop: '1px solid #f0f0f0',
+                          background: selectedLocation?.id === loc.id ? '#ebf8ff' : 'white',
+                          color: selectedLocation?.id === loc.id ? '#1e3a5f' : '#4a5568',
+                          fontWeight: selectedLocation?.id === loc.id ? 'bold' : 'normal',
+                        }}>
+                        {loc.detail || loc.room}
+                      </div>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {reagents.map(r =>
-                    (r.reagent_lots?.length ? r.reagent_lots : [{ id: null }]).map((lot, i) => {
-                      const isLow = lot.sealed_count === 0 && lot.current_stock <= 20
-                      return (
-                        <tr key={lot.id || r.id} style={{ background: isLow ? '#fff5f5' : 'white' }}
-                          onMouseEnter={e => e.currentTarget.style.background = isLow ? '#ffe4e4' : '#f7fafc'}
-                          onMouseLeave={e => e.currentTarget.style.background = isLow ? '#fff5f5' : 'white'}>
-                          {i === 0 && (
-                            <td rowSpan={r.reagent_lots?.length || 1}
-                              onClick={() => openReagent(r)}
-                              style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: 'bold', cursor: 'pointer', color: '#1e3a5f', fontSize: '14px' }}>
-                              {r.name}
-                              {isLow && <span style={{ color: '#e53e3e', fontSize: '11px', marginLeft: '6px' }}>⚠️부족</span>}
-                            </td>
-                          )}
-                          {i === 0 && (
-                            <td rowSpan={r.reagent_lots?.length || 1}
-                              style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', color: '#666', fontSize: '13px' }}>
-                              {r.company || '-'}
-                            </td>
-                          )}
-                          {i === 0 && (
-                            <td rowSpan={r.reagent_lots?.length || 1}
-                              style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', color: '#666', fontSize: '13px' }}>
-                              {r.volume}{r.unit}
-                            </td>
-                          )}
-                          <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px' }}>{lot.lot_no || '-'}</td>
-                          <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px' }}>{lot.sealed_count ?? '-'}</td>
-                          <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px' }}>{lot.current_stock ?? '-'}%</td>
-                          <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0' }}>
-                            {lot.id && (
-                              <button onClick={() => { setEditingLot(lot); setEditValue(''); setEditType('') }}
-                                style={{ background: '#e2e8f0', border: 'none', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer', fontSize: '12px' }}>
-                                수정
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
-            )
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* 시약 리스트 */}
+          {selectedLocation ? (
+            <div>
+              <h3 style={{ color: '#1e3a5f', marginBottom: '12px' }}>
+                {selectedLocation.room}{selectedLocation.detail ? ' - ' + selectedLocation.detail : ''}
+                <span style={{ color: '#999', fontWeight: 'normal', fontSize: '14px', marginLeft: '8px' }}>({reagents.length}개)</span>
+              </h3>
+              {reagents.length === 0 ? (
+                <p style={{ color: '#999' }}>이 위치에 시약이 없습니다.</p>
+              ) : (
+                <ReagentTable data={reagents} />
+              )}
+            </div>
           ) : (
-            <p style={{ color: '#999', marginTop: '48px', textAlign: 'center' }}>왼쪽에서 위치를 선택하세요</p>
+            <p style={{ color: '#999', textAlign: 'center', marginTop: '40px' }}>위에서 위치를 선택하세요</p>
           )}
         </div>
-      </div>
+      )}
 
       {/* 시약 상세 팝업 */}
       {selectedReagent && (
@@ -167,8 +239,6 @@ function ReagentList() {
                 background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#999'
               }}>✕</button>
             </div>
-
-            {/* 2열 정보 표 */}
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
               <tbody>
                 {[
@@ -186,8 +256,6 @@ function ReagentList() {
                 ))}
               </tbody>
             </table>
-
-            {/* Lot 정보 */}
             <h3 style={{ color: '#1e3a5f', marginBottom: '12px' }}>재고 현황</h3>
             {lots.map(lot => (
               <div key={lot.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 16px', marginBottom: '8px' }}>
@@ -230,14 +298,14 @@ function ReagentList() {
               <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', color: '#666' }}>수정 항목</label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button onClick={() => setEditType('sealed')} style={{
-                  flex: 1, padding: '8px', borderRadius: '4px', cursor: 'pointer',
+                  flex: 1, padding: '8px', borderRadius: '4px', cursor: 'pointer', border: 'none',
                   background: editType === 'sealed' ? '#1e3a5f' : '#e2e8f0',
-                  color: editType === 'sealed' ? 'white' : '#4a5568', border: 'none'
+                  color: editType === 'sealed' ? 'white' : '#4a5568'
                 }}>미개봉 병 수</button>
                 <button onClick={() => setEditType('stock')} style={{
-                  flex: 1, padding: '8px', borderRadius: '4px', cursor: 'pointer',
+                  flex: 1, padding: '8px', borderRadius: '4px', cursor: 'pointer', border: 'none',
                   background: editType === 'stock' ? '#1e3a5f' : '#e2e8f0',
-                  color: editType === 'stock' ? 'white' : '#4a5568', border: 'none'
+                  color: editType === 'stock' ? 'white' : '#4a5568'
                 }}>잔량 (%)</button>
               </div>
             </div>
@@ -245,12 +313,12 @@ function ReagentList() {
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px', color: '#666' }}>미개봉 병 수</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <button onClick={() => setEditValue(v => Math.max(0, (Number(v) || editingLot.sealed_count) - 1))}
+                  <button onClick={() => setEditValue(v => Math.max(0, Number(v === '' ? editingLot.sealed_count : v) - 1))}
                     style={{ width: '36px', height: '36px', borderRadius: '4px', border: '1px solid #cbd5e0', cursor: 'pointer', fontSize: '18px', background: 'white' }}>-</button>
                   <span style={{ fontSize: '20px', fontWeight: 'bold', minWidth: '32px', textAlign: 'center' }}>
                     {editValue === '' ? editingLot.sealed_count : editValue}
                   </span>
-                  <button onClick={() => setEditValue(v => (Number(v === '' ? editingLot.sealed_count : v) + 1))}
+                  <button onClick={() => setEditValue(v => Number(v === '' ? editingLot.sealed_count : v) + 1)}
                     style={{ width: '36px', height: '36px', borderRadius: '4px', border: '1px solid #cbd5e0', cursor: 'pointer', fontSize: '18px', background: 'white' }}>+</button>
                 </div>
               </div>
@@ -273,8 +341,7 @@ function ReagentList() {
             )}
             <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
               <button onClick={() => setEditingLot(null)} style={{
-                flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0',
-                background: 'white', cursor: 'pointer'
+                flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', background: 'white', cursor: 'pointer'
               }}>취소</button>
               <button onClick={() => {
                 if (!editType) { alert('수정 항목을 선택하세요'); return }
