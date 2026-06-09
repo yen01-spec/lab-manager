@@ -142,10 +142,7 @@ function ReagentList() {
         </div>
 
         {/* 알파벳 인덱스 */}
-        <div style={{
-          position: 'sticky', top: '70px', alignSelf: 'flex-start',
-          display: 'flex', flexDirection: 'column', gap: '2px'
-        }}>
+        <AlphabetIndex availableLetters={availableLetters} onScroll={scrollToLetter} />
           {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => (
             <button key={letter} onClick={() => scrollToLetter(letter)}
               disabled={!availableLetters.has(letter)}
@@ -398,5 +395,47 @@ function ReagentList() {
     </div>
   )
 }
+function AlphabetIndex({ availableLetters, onScroll }) {
+  const [visible, setVisible] = useState(false)
+  const timerRef = useRef(null)
 
+  useEffect(() => {
+    const handleScroll = () => {
+      setVisible(true)
+      clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => setVisible(false), 1500)
+    }
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  return (
+    <div style={{
+      position: 'fixed', right: '12px', top: '50%', transform: 'translateY(-50%)',
+      display: 'flex', flexDirection: 'column', gap: '2px',
+      opacity: visible ? 0.85 : 0,
+      transition: 'opacity 0.3s ease',
+      zIndex: 50,
+      background: 'rgba(255,255,255,0.7)',
+      backdropFilter: 'blur(4px)',
+      borderRadius: '8px',
+      padding: '6px 4px',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+    }}>
+      {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => (
+        <button key={letter}
+          onClick={() => { onScroll(letter); setVisible(false) }}
+          disabled={!availableLetters.has(letter)}
+          style={{
+            width: '22px', height: '22px', borderRadius: '4px', border: 'none',
+            cursor: availableLetters.has(letter) ? 'pointer' : 'default',
+            background: availableLetters.has(letter) ? '#1e3a5f' : 'transparent',
+            color: availableLetters.has(letter) ? 'white' : '#ccc',
+            fontSize: '11px', fontWeight: 'bold', padding: 0
+          }}>{letter}</button>
+      ))}
+    </div>
+  )
+}
 export default ReagentList
+
