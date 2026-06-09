@@ -27,8 +27,7 @@ function ReagentList() {
       .from('reagents')
       .select('*, reagent_lots(*)')
       .eq('location_id', locationId)
-      .order('name')
-    if (data) setReagents(data)
+    if (data) setReagents(data.sort((a, b) => a.name.localeCompare(b.name)))
   }
 
   async function handleSearch() {
@@ -91,7 +90,7 @@ function ReagentList() {
                 {i === 0 && (
                   <td rowSpan={r.reagent_lots?.length || 1}
                     onClick={() => openReagent(r)}
-                    style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: 'bold', cursor: 'pointer', color: '#1e3a5f', fontSize: '14px' }}>
+                    style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: 'bold', cursor: 'pointer', color: '#1e3a5f', fontSize: '14px', textAlign: 'left' }}>
                     {r.name}
                     {isLow && <span style={{ color: '#e53e3e', fontSize: '11px', marginLeft: '6px' }}>⚠️부족</span>}
                   </td>
