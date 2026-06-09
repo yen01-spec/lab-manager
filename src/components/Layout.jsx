@@ -80,7 +80,7 @@ function Layout() {
                   color: isActive ? '#1e3a5f' : '#666',
                   textDecoration: 'none', fontSize: '13px',
                   fontWeight: isActive ? 'bold' : 'normal',
-                })}>📍 위치별 보기</NavLink>
+                })}>📍 실험실·시약장 위치</NavLink>
                 <NavLink to="/reagents/list" style={({ isActive }) => ({
                   display: 'block', padding: '8px 20px 8px 32px',
                   color: isActive ? '#1e3a5f' : '#666',
@@ -119,7 +119,6 @@ function Layout() {
           )}
         </div>
 
-        {/* 메인 컨텐츠 */}
         <main style={{ marginLeft: '200px', flex: 1, padding: '24px', background: '#f7fafc' }}>
           <Outlet context={{ isAdmin }} />
         </main>
