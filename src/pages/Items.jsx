@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
+import { C, PageBanner, Card, inputStyle, thStyle, tdStyle } from './design'
 
-function Items() {
+export default function Items() {
   const [locations, setLocations] = useState([])
   const [selectedLocation, setSelectedLocation] = useState(null)
   const [items, setItems] = useState([])
@@ -9,82 +10,120 @@ function Items() {
   useEffect(() => { fetchLocations() }, [])
 
   async function fetchLocations() {
-    const { data } = await supabase.from('locations').select('*').ilike('room', '%303%').order('room')
+    const { data } = await supabase.from('locations').select('*').order('room')
     if (data) setLocations(data)
   }
 
   async function fetchItemsByLocation(locationId) {
-    const { data } = await supabase
-      .from('items')
-      .select('*, item_lots(*)')
-      .eq('location_id', locationId)
+    const { data } = await supabase.from('items')
+      .select('*, item_lots(*)').eq('location_id', locationId)
     if (data) setItems(data)
   }
 
+  const rooms = [...new Set(locations.map(l => l.room))]
+
   return (
     <div>
-      <h1 style={{ color: '#1e3a5f', marginBottom: '24px' }}>?�� 물품 관�?/h1>
+      <PageBanner
+        title="물품 관리"
+        sub="Supplies Management"
+        breadcrumb={['홈', '물품 관리']}
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: '24px' }}>
-        {/* ?�치 목록 (303?�만) */}
-        <div>
-          <div style={{ fontWeight: 'bold', color: '#4a5568', fontSize: '13px', marginBottom: '8px', padding: '0 8px' }}>303??/div>
-          {locations.map(loc => (
-            <div key={loc.id} onClick={() => { setSelectedLocation(loc); fetchItemsByLocation(loc.id) }}
-              style={{
-                padding: '7px 12px', cursor: 'pointer', borderRadius: '4px', fontSize: '13px',
-                background: selectedLocation?.id === loc.id ? '#1e3a5f' : 'transparent',
-                color: selectedLocation?.id === loc.id ? 'white' : '#4a5568',
-              }}>
-              {loc.detail || loc.room}
+      <div style={{ padding: '28px 40px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: '20px' }}>
+          {/* 위치 패널 */}
+          <div style={{
+            background: C.white, border: `1px solid ${C.border}`,
+            borderRadius: '10px', overflow: 'hidden',
+            boxShadow: '0 1px 4px rgba(26,42,94,0.06)',
+            height: 'fit-content', position: 'sticky', top: '80px',
+          }}>
+            <div style={{ padding: '12px 16px', background: C.bg, borderBottom: `1px solid ${C.border}`,
+              fontSize: '11px', fontWeight: '700', color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              위치 선택
             </div>
-          ))}
-        </div>
+            {rooms.map(room => (
+              <div key={room}>
+                <div style={{ padding: '8px 16px', fontSize: '11px', fontWeight: '700',
+                  color: C.muted, background: C.bg, letterSpacing: '0.05em' }}>{room}</div>
+                {locations.filter(l => l.room === room).map(loc => (
+                  <div key={loc.id} onClick={() => { setSelectedLocation(loc); fetchItemsByLocation(loc.id) }}
+                    style={{
+                      padding: '9px 16px 9px 24px', cursor: 'pointer', fontSize: '13px',
+                      borderTop: `1px solid ${C.border}`,
+                      background: selectedLocation?.id === loc.id ? '#EEF2FB' : C.white,
+                      color: selectedLocation?.id === loc.id ? C.navy : C.text,
+                      fontWeight: selectedLocation?.id === loc.id ? '700' : '400',
+                      borderLeft: selectedLocation?.id === loc.id ? `3px solid ${C.gold}` : '3px solid transparent',
+                    }}>
+                    {loc.detail || loc.room}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
 
-        {/* 물품 리스??*/}
-        <div>
-          {selectedLocation ? (
-            items.length === 0 ? (
-              <p style={{ color: '#999' }}>???�치??물품???�습?�다.</p>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: '#f7fafc' }}>
-                    {['물품�?, '종류', '미개�?�?', '?�량(%)'].map(h => (
-                      <th key={h} style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '2px solid #e2e8f0', fontSize: '13px', color: '#4a5568' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map(item => {
-                    const lots = item.item_lots || []
-                    const isLow = lots.some(l => l.sealed_count === 0 && l.current_stock <= 20)
-                    return (
-                      <tr key={item.id} style={{ background: isLow ? '#fff5f5' : 'white' }}>
-                        <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: 'bold', fontSize: '14px' }}>
-                          {item.name}
-                          {isLow && <span style={{ color: '#e53e3e', fontSize: '11px', marginLeft: '6px' }}>?�️부�?/span>}
-                        </td>
-                        <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', color: '#666', fontSize: '13px' }}>{item.category || '-'}</td>
-                        <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px' }}>
-                          {lots.reduce((sum, l) => sum + l.sealed_count, 0)}
-                        </td>
-                        <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px' }}>
-                          {lots[0]?.current_stock ?? '-'}%
-                        </td>
+          {/* 물품 목록 */}
+          <div>
+            {selectedLocation ? (
+              <Card
+                title={`${selectedLocation.room}${selectedLocation.detail ? ' — ' + selectedLocation.detail : ''}`}
+                sub={`${items.length}개 물품`}
+                noPadding
+              >
+                {items.length === 0 ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: C.muted, fontSize: '13px' }}>
+                    이 위치에 물품이 없습니다.
+                  </div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        {['물품명', '종류', '미개봉 (개)', '잔량 (%)', '상태'].map(h => (
+                          <th key={h} style={thStyle}>{h}</th>
+                        ))}
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            )
-          ) : (
-            <p style={{ color: '#999', marginTop: '48px', textAlign: 'center' }}>?�쪽?�서 ?�치�??�택?�세??/p>
-          )}
+                    </thead>
+                    <tbody>
+                      {items.map(item => {
+                        const lots = item.item_lots || []
+                        const isLow = lots.some(l => l.sealed_count === 0 && l.current_stock <= 20)
+                        return (
+                          <tr key={item.id} style={{ background: isLow ? '#FFF8F8' : C.white, transition: 'background 0.1s' }}
+                            onMouseEnter={e => e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg}
+                            onMouseLeave={e => e.currentTarget.style.background = isLow ? '#FFF8F8' : C.white}>
+                            <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>
+                              {item.name}
+                              {isLow && <span style={{
+                                marginLeft: '8px', fontSize: '10px', background: '#FFEBEE',
+                                color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700',
+                              }}>부족</span>}
+                            </td>
+                            <td style={{ ...tdStyle, color: C.muted }}>{item.category || '-'}</td>
+                            <td style={tdStyle}>{lots.reduce((s, l) => s + l.sealed_count, 0)}</td>
+                            <td style={tdStyle}>{lots[0]?.current_stock ?? '-'}%</td>
+                            <td style={tdStyle}>
+                              {isLow
+                                ? <span style={{ color: C.danger, fontWeight: '700', fontSize: '12px' }}>⚠ 부족</span>
+                                : <span style={{ color: C.success, fontWeight: '600', fontSize: '12px' }}>✓ 정상</span>}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </Card>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '80px 0', color: C.muted }}>
+                <div style={{ fontSize: '32px', marginBottom: '12px' }}>📦</div>
+                <div style={{ fontSize: '14px' }}>왼쪽에서 위치를 선택하세요</div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
   )
 }
-
-export default Items
