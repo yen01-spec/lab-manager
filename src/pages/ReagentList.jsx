@@ -114,7 +114,8 @@ export default function ReagentList() {
               <>
                 <tr key={letter + '_header'} ref={el => alphabetRefs.current[letter] = el}>
                   <td colSpan={5} style={{
-                    padding: '8px 14px', background: `linear-gradient(90deg, ${C.navy}11, transparent)`,
+                    padding: '8px 14px',
+                    background: `linear-gradient(90deg, ${C.navy}11, transparent)`,
                     fontWeight: '800', fontSize: '13px', color: C.navy,
                     borderBottom: `1px solid ${C.border}`,
                     borderLeft: `3px solid ${C.gold}`,
@@ -126,7 +127,6 @@ export default function ReagentList() {
                   return (
                     <tr key={r.id} onClick={() => openReagent(r)} style={{
                       background: isLow ? '#FFF8F8' : C.white, cursor: 'pointer',
-                      transition: 'background 0.1s',
                     }}
                       onMouseEnter={e => e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg}
                       onMouseLeave={e => e.currentTarget.style.background = isLow ? '#FFF8F8' : C.white}
@@ -190,78 +190,72 @@ export default function ReagentList() {
                 padding: '4px 12px', cursor: 'pointer', fontSize: '12px', color: C.muted,
               }}>닫기</button>
             </div>
-            <Card noPadding>
-              <ReagentTable data={searchResults} />
-            </Card>
+            <Card noPadding><ReagentTable data={searchResults} /></Card>
           </div>
         )}
 
-        {/* 위치 + 목록 */}
+        {/* 위치 버튼 (상단) */}
         {searchResults.length === 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: '20px' }}>
-            {/* 위치 패널 */}
-            <div style={{
-              background: C.white, border: `1px solid ${C.border}`,
-              borderRadius: '10px', overflow: 'hidden',
-              boxShadow: '0 1px 4px rgba(26,42,94,0.06)',
-              height: 'fit-content', position: 'sticky', top: '80px',
-            }}>
-              <div style={{ padding: '12px 16px', background: C.bg, borderBottom: `1px solid ${C.border}`,
-                fontSize: '11px', fontWeight: '700', color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                위치 선택
-              </div>
+          <>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
               {rooms.map(room => (
-                <div key={room}>
+                <div key={room} style={{
+                  border: `1px solid ${C.border}`, borderRadius: '8px',
+                  overflow: 'hidden', minWidth: '120px',
+                  boxShadow: '0 1px 4px rgba(26,42,94,0.06)',
+                }}>
                   <div onClick={() => toggleRoom(room)} style={{
-                    padding: '10px 16px', cursor: 'pointer', fontSize: '13px',
-                    fontWeight: '700', color: C.navy,
-                    background: openRooms[room] ? '#EEF2FB' : 'transparent',
+                    padding: '9px 16px', cursor: 'pointer', fontWeight: '700', fontSize: '13px',
+                    background: openRooms[room] ? C.navy : C.white,
+                    color: openRooms[room] ? C.white : C.text,
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px',
                     borderLeft: openRooms[room] ? `3px solid ${C.gold}` : '3px solid transparent',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    transition: 'all 0.12s',
                   }}>
                     <span>{room}</span>
-                    <span style={{ color: C.muted, fontSize: '11px' }}>{openRooms[room] ? '▲' : '▼'}</span>
+                    <span style={{ fontSize: '11px', opacity: 0.7 }}>{openRooms[room] ? '▲' : '▼'}</span>
                   </div>
-                  {openRooms[room] && locations.filter(l => l.room === room).map(loc => (
-                    <div key={loc.id} onClick={() => { setSelectedLocation(loc); fetchReagentsByLocation(loc.id) }}
-                      style={{
-                        padding: '8px 16px 8px 24px', cursor: 'pointer', fontSize: '12px',
-                        borderTop: `1px solid ${C.border}`,
-                        background: selectedLocation?.id === loc.id ? '#EEF2FB' : C.bg,
-                        color: selectedLocation?.id === loc.id ? C.navy : C.muted,
-                        fontWeight: selectedLocation?.id === loc.id ? '700' : '400',
-                        borderLeft: selectedLocation?.id === loc.id ? `3px solid ${C.gold}` : '3px solid transparent',
-                      }}>
-                      {loc.detail || loc.room}
+                  {openRooms[room] && (
+                    <div style={{ background: C.white }}>
+                      {locations.filter(l => l.room === room).map(loc => (
+                        <div key={loc.id}
+                          onClick={() => { setSelectedLocation(loc); fetchReagentsByLocation(loc.id) }}
+                          style={{
+                            padding: '8px 16px 8px 20px', cursor: 'pointer', fontSize: '12px',
+                            borderTop: `1px solid ${C.border}`,
+                            background: selectedLocation?.id === loc.id ? '#EEF2FB' : C.bg,
+                            color: selectedLocation?.id === loc.id ? C.navy : C.muted,
+                            fontWeight: selectedLocation?.id === loc.id ? '700' : '400',
+                            borderLeft: selectedLocation?.id === loc.id ? `3px solid ${C.gold}` : '3px solid transparent',
+                          }}>
+                          {loc.detail || loc.room}
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               ))}
             </div>
 
-            {/* 시약 테이블 */}
-            <div>
-              {selectedLocation ? (
-                <Card
-                  title={`${selectedLocation.room}${selectedLocation.detail ? ' — ' + selectedLocation.detail : ''}`}
-                  sub={`${reagents.length}개 시약`}
-                  noPadding
-                >
-                  {reagents.length === 0
-                    ? <div style={{ padding: '32px', textAlign: 'center', color: C.muted, fontSize: '13px' }}>
-                        이 위치에 시약이 없습니다.
-                      </div>
-                    : <ReagentTable data={reagents} />}
-                </Card>
-              ) : (
-                <div style={{ textAlign: 'center', padding: '80px 0', color: C.muted }}>
-                  <div style={{ fontSize: '32px', marginBottom: '12px' }}>📍</div>
-                  <div style={{ fontSize: '14px' }}>왼쪽에서 위치를 선택하세요</div>
-                </div>
-              )}
-            </div>
-          </div>
+            {/* 시약 테이블 (하단) */}
+            {selectedLocation ? (
+              <Card
+                title={`${selectedLocation.room}${selectedLocation.detail ? ' — ' + selectedLocation.detail : ''}`}
+                sub={`${reagents.length}개 시약`}
+                noPadding
+              >
+                {reagents.length === 0
+                  ? <div style={{ padding: '32px', textAlign: 'center', color: C.muted, fontSize: '13px' }}>
+                      이 위치에 시약이 없습니다.
+                    </div>
+                  : <ReagentTable data={reagents} />}
+              </Card>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '60px 0', color: C.muted }}>
+                <div style={{ fontSize: '32px', marginBottom: '12px' }}>📍</div>
+                <div style={{ fontSize: '14px' }}>위에서 위치를 선택하세요</div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -346,17 +340,13 @@ export default function ReagentList() {
         <Modal onClose={() => setEditingLot(null)} small>
           <h3 style={{ marginTop: 0, color: C.navy, fontSize: '16px' }}>재고 수정</h3>
           <div style={{ marginBottom: '14px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontSize: '12px', color: C.muted, fontWeight: '700', textTransform: 'uppercase' }}>
-              이름 (필수)
-            </label>
+            <label style={{ display: 'block', marginBottom: '5px', fontSize: '12px', color: C.muted, fontWeight: '700', textTransform: 'uppercase' }}>이름 (필수)</label>
             <input value={userName} onChange={e => setUserName(e.target.value)}
               placeholder="본인 이름" style={{ width: '100%', padding: '9px 12px', borderRadius: '6px',
                 border: `1px solid ${C.border}`, boxSizing: 'border-box', fontSize: '14px' }} />
           </div>
           <div style={{ marginBottom: '14px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: C.muted, fontWeight: '700', textTransform: 'uppercase' }}>
-              수정 항목
-            </label>
+            <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: C.muted, fontWeight: '700', textTransform: 'uppercase' }}>수정 항목</label>
             <div style={{ display: 'flex', gap: '8px' }}>
               {[['sealed', '미개봉 병 수'], ['stock', '잔량 (%)']].map(([key, label]) => (
                 <button key={key} onClick={() => setEditType(key)} style={{
