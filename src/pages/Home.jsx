@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
-import { C, PageBanner, Card } from './design'
+import { C, PageBanner, Card } from '../design'
 
 const QUICK_LINKS = [
   { icon: '📍', label: '시약장 위치', sub: 'Storage Location', to: '/reagents/locations' },

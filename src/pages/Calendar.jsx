@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
-import { C, PageBanner } from './design'
+import { C, PageBanner } from '../design'
 
 const HOLIDAYS = [
   { date: '2025-03-01', name: '삼일절' },

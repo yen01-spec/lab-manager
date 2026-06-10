@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabase'
-import { C, PageBanner, Card, inputStyle, btnPrimary, thStyle, tdStyle } from './design'
+import { C, PageBanner, Card, inputStyle, btnPrimary, thStyle, tdStyle } from '../design'
 
 export default function ReagentList() {
   const [locations, setLocations] = useState([])

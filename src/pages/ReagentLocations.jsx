@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
-import { C, PageBanner, Card } from './design'
+import { C, PageBanner, Card } from '../design'
 
 export default function ReagentLocations() {
   const [locations, setLocations] = useState([])
