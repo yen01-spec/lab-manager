@@ -197,33 +197,37 @@ export default function ReagentList() {
         {/* 위치 버튼 (상단) */}
         {searchResults.length === 0 && (
           <>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
               {rooms.map(room => (
-                <div key={room} style={{
-                  border: `1px solid ${C.border}`, borderRadius: '8px',
-                  overflow: 'hidden', minWidth: '120px',
-                  boxShadow: '0 1px 4px rgba(26,42,94,0.06)',
-                }}>
+                <div key={room} style={{ position: 'relative' }}>
                   <div onClick={() => toggleRoom(room)} style={{
                     padding: '9px 16px', cursor: 'pointer', fontWeight: '700', fontSize: '13px',
                     background: openRooms[room] ? C.navy : C.white,
                     color: openRooms[room] ? C.white : C.text,
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px',
-                    borderLeft: openRooms[room] ? `3px solid ${C.gold}` : '3px solid transparent',
+                    border: `1px solid ${C.border}`, borderRadius: '8px',
+                    borderLeft: openRooms[room] ? `3px solid ${C.gold}` : `3px solid ${C.border}`,
+                    boxShadow: '0 1px 4px rgba(26,42,94,0.06)',
+                    minWidth: '120px', userSelect: 'none',
                   }}>
                     <span>{room}</span>
                     <span style={{ fontSize: '11px', opacity: 0.7 }}>{openRooms[room] ? '▲' : '▼'}</span>
                   </div>
                   {openRooms[room] && (
-                    <div style={{ background: C.white }}>
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, zIndex: 100,
+                      background: C.white, border: `1px solid ${C.border}`,
+                      borderRadius: '8px', marginTop: '4px', minWidth: '140px',
+                      boxShadow: '0 4px 16px rgba(26,42,94,0.12)', overflow: 'hidden',
+                    }}>
                       {locations.filter(l => l.room === room).map(loc => (
                         <div key={loc.id}
-                          onClick={() => { setSelectedLocation(loc); fetchReagentsByLocation(loc.id) }}
+                          onClick={() => { setSelectedLocation(loc); fetchReagentsByLocation(loc.id); setOpenRooms({}) }}
                           style={{
-                            padding: '8px 16px 8px 20px', cursor: 'pointer', fontSize: '12px',
-                            borderTop: `1px solid ${C.border}`,
-                            background: selectedLocation?.id === loc.id ? '#EEF2FB' : C.bg,
-                            color: selectedLocation?.id === loc.id ? C.navy : C.muted,
+                            padding: '9px 16px', cursor: 'pointer', fontSize: '13px',
+                            borderBottom: `1px solid ${C.border}`,
+                            background: selectedLocation?.id === loc.id ? '#EEF2FB' : C.white,
+                            color: selectedLocation?.id === loc.id ? C.navy : C.text,
                             fontWeight: selectedLocation?.id === loc.id ? '700' : '400',
                             borderLeft: selectedLocation?.id === loc.id ? `3px solid ${C.gold}` : '3px solid transparent',
                           }}>
