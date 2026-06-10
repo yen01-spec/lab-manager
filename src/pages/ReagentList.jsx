@@ -96,7 +96,7 @@ function ReagentList() {
   }
 
   async function updateStock(lot, field, value) {
-    if (!userName.trim()) { alert('이름을 입력해주세요'); return }
+    if (!userName.trim()) { alert('?�름???�력?�주?�요'); return }
     await supabase.from('reagent_lots').update({ [field]: value }).eq('id', lot.id)
     await supabase.from('stock_logs').insert({
       target_type: 'reagent', lot_id: lot.id, user_name: userName,
@@ -140,7 +140,7 @@ function ReagentList() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#f7fafc' }}>
-              {['시약명', '회사', '용량', 'Lot 수', '상태'].map(h => (
+              {['?�약�?, '?�사', '?�량', 'Lot ??, '?�태'].map(h => (
                 <th key={h} style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '2px solid #e2e8f0', fontSize: '13px', color: '#4a5568' }}>{h}</th>
               ))}
             </tr>
@@ -166,15 +166,15 @@ function ReagentList() {
                       onMouseLeave={e => e.currentTarget.style.background = isLow ? '#fff5f5' : 'white'}>
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: 'bold', color: '#1e3a5f', fontSize: '14px', textAlign: 'left' }}>
                         {r.name}
-                        {isLow && <span style={{ color: '#e53e3e', fontSize: '11px', marginLeft: '6px' }}>⚠️부족</span>}
+                        {isLow && <span style={{ color: '#e53e3e', fontSize: '11px', marginLeft: '6px' }}>?�️부�?/span>}
                       </td>
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', color: '#666', fontSize: '13px', textAlign: 'left' }}>{r.company || '-'}</td>
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', color: '#666', fontSize: '13px', textAlign: 'left' }}>{r.volume}{r.unit}</td>
-                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', textAlign: 'left' }}>{lotList.length}개</td>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', textAlign: 'left' }}>{lotList.length}�?/td>
                       <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', textAlign: 'left' }}>
                         {isLow
-                          ? <span style={{ color: '#e53e3e', fontWeight: 'bold' }}>⚠️ 부족</span>
-                          : <span style={{ color: '#48bb78' }}>✓ 정상</span>}
+                          ? <span style={{ color: '#e53e3e', fontWeight: 'bold' }}>?�️ 부�?/span>
+                          : <span style={{ color: '#48bb78' }}>???�상</span>}
                       </td>
                     </tr>
                   )
@@ -190,29 +190,29 @@ function ReagentList() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1 style={{ color: '#1e3a5f', margin: 0 }}>시약 목록</h1>
+        <h1 style={{ color: '#1e3a5f', margin: 0 }}>?�약 목록</h1>
         <div style={{ display: 'flex', gap: '6px' }}>
           <input
             value={search}
             onChange={e => { setSearch(e.target.value); if (!e.target.value) setSearchResults([]) }}
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            placeholder="시약 검색..."
+            placeholder="?�약 검??.."
             style={{ width: '180px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '13px' }}
           />
           <button onClick={handleSearch} style={{
             background: '#1e3a5f', color: 'white', border: 'none',
             padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px'
-          }}>검색</button>
+          }}>검??/button>
         </div>
       </div>
 
       {searchResults.length > 0 && (
         <div style={{ marginBottom: '32px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h2 style={{ color: '#1e3a5f', margin: 0 }}>검색 결과 ({searchResults.length}개)</h2>
+            <h2 style={{ color: '#1e3a5f', margin: 0 }}>검??결과 ({searchResults.length}�?</h2>
             <button onClick={() => { setSearchResults([]); setSearch('') }}
               style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '4px 12px', cursor: 'pointer', fontSize: '13px' }}>
-              닫기
+              ?�기
             </button>
           </div>
           <ReagentTable data={searchResults} />
@@ -231,7 +231,7 @@ function ReagentList() {
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px'
                 }}>
                   <span>{room}</span>
-                  <span style={{ fontSize: '11px' }}>{openRooms[room] ? '▲' : '▼'}</span>
+                  <span style={{ fontSize: '11px' }}>{openRooms[room] ? '?? : '??}</span>
                 </div>
                 {openRooms[room] && (
                   <div style={{ background: 'white' }}>
@@ -258,19 +258,19 @@ function ReagentList() {
             <div>
               <h3 style={{ color: '#1e3a5f', marginBottom: '12px' }}>
                 {selectedLocation.room}{selectedLocation.detail ? ' - ' + selectedLocation.detail : ''}
-                <span style={{ color: '#999', fontWeight: 'normal', fontSize: '14px', marginLeft: '8px' }}>({reagents.length}개)</span>
+                <span style={{ color: '#999', fontWeight: 'normal', fontSize: '14px', marginLeft: '8px' }}>({reagents.length}�?</span>
               </h3>
               {reagents.length === 0
-                ? <p style={{ color: '#999' }}>이 위치에 시약이 없습니다.</p>
+                ? <p style={{ color: '#999' }}>???�치???�약???�습?�다.</p>
                 : <ReagentTable data={reagents} />}
             </div>
           ) : (
-            <p style={{ color: '#999', marginTop: '40px' }}>위에서 위치를 선택하세요</p>
+            <p style={{ color: '#999', marginTop: '40px' }}>?�에???�치�??�택?�세??/p>
           )}
         </div>
       )}
 
-      {/* 시약 상세 팝업 */}
+      {/* ?�약 ?�세 ?�업 */}
       {selectedReagent && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -291,16 +291,16 @@ function ReagentList() {
               </div>
               <button onClick={() => setSelectedReagent(null)} style={{
                 background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#999'
-              }}>✕</button>
+              }}>??/button>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
               <tbody>
                 {[
                   ['CAS No.', selectedReagent.cas_no],
-                  ['회사', selectedReagent.company],
-                  ['유별/성질', selectedReagent.category],
-                  ['용량', selectedReagent.volume + ' ' + selectedReagent.unit],
-                  ['유해·위험성', selectedReagent.hazard],
+                  ['?�사', selectedReagent.company],
+                  ['?�별/?�질', selectedReagent.category],
+                  ['?�량', selectedReagent.volume + ' ' + selectedReagent.unit],
+                  ['?�해·?�험??, selectedReagent.hazard],
                   ['비고', selectedReagent.notes],
                 ].map(([label, value]) => (
                   <tr key={label}>
@@ -310,26 +310,26 @@ function ReagentList() {
                 ))}
               </tbody>
             </table>
-            <h3 style={{ color: '#1e3a5f', marginBottom: '12px' }}>재고 현황 (Lot별)</h3>
+            <h3 style={{ color: '#1e3a5f', marginBottom: '12px' }}>?�고 ?�황 (Lot�?</h3>
             {lots.map(lot => (
               <div key={lot.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 16px', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontSize: '13px', color: '#666', marginBottom: '4px' }}>
-                      Lot No. <strong>{lot.lot_no || '-'}</strong> | 유통기한: {lot.expiry_date || '-'}
+                      Lot No. <strong>{lot.lot_no || '-'}</strong> | ?�통기한: {lot.expiry_date || '-'}
                     </div>
                     <div style={{ display: 'flex', gap: '24px' }}>
-                      <span style={{ fontSize: '14px' }}>미개봉 <strong>{lot.sealed_count}병</strong></span>
-                      <span style={{ fontSize: '14px' }}>잔량 <strong>{lot.current_stock}%</strong></span>
+                      <span style={{ fontSize: '14px' }}>미개�?<strong>{lot.sealed_count}�?/strong></span>
+                      <span style={{ fontSize: '14px' }}>?�량 <strong>{lot.current_stock}%</strong></span>
                       {lot.sealed_count === 0 && lot.current_stock <= 20 && (
-                        <span style={{ color: '#e53e3e', fontWeight: 'bold', fontSize: '13px' }}>⚠️ 재고 부족</span>
+                        <span style={{ color: '#e53e3e', fontWeight: 'bold', fontSize: '13px' }}>?�️ ?�고 부�?/span>
                       )}
                     </div>
                   </div>
                   <button onClick={() => { setEditingLot(lot); setEditValue(''); setEditType('') }} style={{
                     background: '#e2e8f0', border: 'none', borderRadius: '4px',
                     padding: '6px 12px', cursor: 'pointer', fontSize: '12px'
-                  }}>수정</button>
+                  }}>?�정</button>
                 </div>
               </div>
             ))}
@@ -337,7 +337,7 @@ function ReagentList() {
         </div>
       )}
 
-      {/* 재고 수정 팝업 */}
+      {/* ?�고 ?�정 ?�업 */}
       {editingLot && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -348,31 +348,31 @@ function ReagentList() {
             background: 'white', borderRadius: '12px', padding: '32px',
             width: '360px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
           }}>
-            <h3 style={{ marginTop: 0, color: '#1e3a5f' }}>재고 수정</h3>
+            <h3 style={{ marginTop: 0, color: '#1e3a5f' }}>?�고 ?�정</h3>
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px', color: '#666' }}>이름 (필수)</label>
+              <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px', color: '#666' }}>?�름 (?�수)</label>
               <input value={userName} onChange={e => setUserName(e.target.value)}
-                placeholder="본인 이름"
+                placeholder="본인 ?�름"
                 style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e0', boxSizing: 'border-box' }} />
             </div>
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', color: '#666' }}>수정 항목</label>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', color: '#666' }}>?�정 ??��</label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button onClick={() => setEditType('sealed')} style={{
                   flex: 1, padding: '8px', borderRadius: '4px', cursor: 'pointer', border: 'none',
                   background: editType === 'sealed' ? '#1e3a5f' : '#e2e8f0',
                   color: editType === 'sealed' ? 'white' : '#4a5568'
-                }}>미개봉 병 수</button>
+                }}>미개�?�???/button>
                 <button onClick={() => setEditType('stock')} style={{
                   flex: 1, padding: '8px', borderRadius: '4px', cursor: 'pointer', border: 'none',
                   background: editType === 'stock' ? '#1e3a5f' : '#e2e8f0',
                   color: editType === 'stock' ? 'white' : '#4a5568'
-                }}>잔량 (%)</button>
+                }}>?�량 (%)</button>
               </div>
             </div>
             {editType === 'sealed' && (
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px', color: '#666' }}>미개봉 병 수</label>
+                <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px', color: '#666' }}>미개�?�???/label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <button onClick={() => setEditValue(v => Math.max(0, Number(v === '' ? editingLot.sealed_count : v) - 1))}
                     style={{ width: '36px', height: '36px', borderRadius: '4px', border: '1px solid #cbd5e0', cursor: 'pointer', fontSize: '18px', background: 'white' }}>-</button>
@@ -387,7 +387,7 @@ function ReagentList() {
             {editType === 'stock' && (
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px', color: '#666' }}>
-                  잔량: {editValue === '' ? editingLot.current_stock : editValue}%
+                  ?�량: {editValue === '' ? editingLot.current_stock : editValue}%
                 </label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => (
@@ -405,14 +405,14 @@ function ReagentList() {
                 flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', background: 'white', cursor: 'pointer'
               }}>취소</button>
               <button onClick={() => {
-                if (!editType) { alert('수정 항목을 선택하세요'); return }
+                if (!editType) { alert('?�정 ??��???�택?�세??); return }
                 const field = editType === 'sealed' ? 'sealed_count' : 'current_stock'
                 const value = editValue === '' ? editingLot[field] : Number(editValue)
                 updateStock(editingLot, field, value)
               }} style={{
                 flex: 1, padding: '10px', borderRadius: '6px', border: 'none',
                 background: '#1e3a5f', color: 'white', cursor: 'pointer', fontWeight: 'bold'
-              }}>저장</button>
+              }}>?�??/button>
             </div>
           </div>
         </div>

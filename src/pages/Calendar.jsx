@@ -1,24 +1,24 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
-import { C, PageBanner } from './design'
+import { C, PageBanner } from '../design'
 
 const HOLIDAYS = [
-  { date: '2025-03-01', name: '삼일절' },
-  { date: '2025-05-05', name: '어린이날' },
-  { date: '2025-06-06', name: '현충일' },
-  { date: '2025-08-15', name: '광복절' },
-  { date: '2025-10-03', name: '개천절' },
-  { date: '2025-10-09', name: '한글날' },
-  { date: '2026-01-01', name: '신정' },
-  { date: '2026-03-01', name: '삼일절' },
-  { date: '2026-05-05', name: '어린이날' },
+  { date: '2025-03-01', name: '?�일?? },
+  { date: '2025-05-05', name: '?�린?�날' },
+  { date: '2025-06-06', name: '?�충?? },
+  { date: '2025-08-15', name: '광복?? },
+  { date: '2025-10-03', name: '개천?? },
+  { date: '2025-10-09', name: '?��??? },
+  { date: '2026-01-01', name: '?�정' },
+  { date: '2026-03-01', name: '?�일?? },
+  { date: '2026-05-05', name: '?�린?�날' },
 ]
 
 const EVENT_TYPES = [
-  { value: 'academic', label: '학사일정', color: '#3B5BDB', bg: '#EDF2FF' },
-  { value: 'lab',      label: '연구실',   color: '#2F9E44', bg: '#EBFBEE' },
-  { value: 'etc',      label: '기타',     color: '#E8A020', bg: '#FFF9DB' },
+  { value: 'academic', label: '?�사?�정', color: '#3B5BDB', bg: '#EDF2FF' },
+  { value: 'lab',      label: '?�구??,   color: '#2F9E44', bg: '#EBFBEE' },
+  { value: 'etc',      label: '기�?',     color: '#E8A020', bg: '#FFF9DB' },
 ]
 
 export default function Calendar() {
@@ -42,7 +42,7 @@ export default function Calendar() {
   }
 
   async function addEvent() {
-    if (!newEvent.date || !newEvent.title.trim()) { alert('날짜와 제목을 입력하세요'); return }
+    if (!newEvent.date || !newEvent.title.trim()) { alert('?�짜?� ?�목???�력?�세??); return }
     await supabase.from('calendar_events').insert({ date: newEvent.date, title: newEvent.title, type: newEvent.type })
     setNewEvent({ date: '', title: '', type: 'academic' })
     setShowForm(false)
@@ -51,7 +51,7 @@ export default function Calendar() {
 
   async function deleteEvent(id, e) {
     e.stopPropagation()
-    if (!window.confirm('삭제하시겠습니까?')) return
+    if (!window.confirm('??��?�시겠습?�까?')) return
     await supabase.from('calendar_events').delete().eq('id', id)
     fetchEvents()
   }
@@ -74,40 +74,40 @@ export default function Calendar() {
 
   const typeInfo = (type) =>
     type === 'holiday'
-      ? { color: '#C62828', bg: '#FFEBEE', label: '공휴일' }
+      ? { color: '#C62828', bg: '#FFEBEE', label: '공휴?? }
       : EVENT_TYPES.find(t => t.value === type) || { color: C.muted, bg: C.bg, label: type }
 
   return (
     <div>
-      <PageBanner title="달력" sub="Calendar" breadcrumb={['홈', '달력']} />
+      <PageBanner title="?�력" sub="Calendar" breadcrumb={['??, '?�력']} />
 
       <div style={{ padding: '28px 40px' }}>
-        {/* 헤더 컨트롤 */}
+        {/* ?�더 컨트�?*/}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button onClick={prevMonth} style={{
               background: C.white, border: `1px solid ${C.border}`,
               borderRadius: '6px', width: '32px', height: '32px', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px',
-            }}>◀</button>
+            }}>?�</button>
             <span style={{ fontSize: '20px', fontWeight: '800', color: C.navy, minWidth: '120px', textAlign: 'center' }}>
-              {year}년 {month + 1}월
+              {year}??{month + 1}??
             </span>
             <button onClick={nextMonth} style={{
               background: C.white, border: `1px solid ${C.border}`,
               borderRadius: '6px', width: '32px', height: '32px', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px',
-            }}>▶</button>
+            }}>??/button>
             <button onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()) }} style={{
               background: C.bg, border: `1px solid ${C.border}`, borderRadius: '6px',
               padding: '5px 12px', cursor: 'pointer', fontSize: '12px', color: C.muted,
-            }}>오늘</button>
+            }}>?�늘</button>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {/* 범례 */}
+            {/* 범�? */}
             <div style={{ display: 'flex', gap: '10px' }}>
-              {[{ color: '#C62828', label: '공휴일' }, ...EVENT_TYPES].map(t => (
+              {[{ color: '#C62828', label: '공휴?? }, ...EVENT_TYPES].map(t => (
                 <div key={t.label} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: t.color }} />
                   <span style={{ fontSize: '11px', color: C.muted }}>{t.label}</span>
@@ -119,23 +119,23 @@ export default function Calendar() {
                 background: C.navy, color: C.white, border: 'none',
                 padding: '8px 16px', borderRadius: '6px', cursor: 'pointer',
                 fontSize: '13px', fontWeight: '600',
-              }}>+ 일정 추가</button>
+              }}>+ ?�정 추�?</button>
             )}
           </div>
         </div>
 
-        {/* 캘린더 */}
+        {/* 캘린??*/}
         <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden',
           boxShadow: '0 1px 4px rgba(26,42,94,0.06)' }}>
-          {/* 요일 헤더 */}
+          {/* ?�일 ?�더 */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', background: C.navy }}>
-            {['일', '월', '화', '수', '목', '금', '토'].map((d, i) => (
+            {['??, '??, '??, '??, '�?, '�?, '??].map((d, i) => (
               <div key={d} style={{ padding: '12px', textAlign: 'center', fontWeight: '700', fontSize: '13px',
                 color: i === 0 ? '#FF8A80' : i === 6 ? '#82B1FF' : 'rgba(255,255,255,0.9)' }}>{d}</div>
             ))}
           </div>
 
-          {/* 날짜 셀 */}
+          {/* ?�짜 ?� */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
             {cells.map((day, i) => {
               const isToday = day === today.getDate() && month === today.getMonth() && year === today.getFullYear()
@@ -173,7 +173,7 @@ export default function Calendar() {
                         )
                       })}
                       {entries.length > 2 && (
-                        <div style={{ fontSize: '10px', color: C.muted }}>+{entries.length - 2}개</div>
+                        <div style={{ fontSize: '10px', color: C.muted }}>+{entries.length - 2}�?/div>
                       )}
                     </>
                   )}
@@ -183,7 +183,7 @@ export default function Calendar() {
           </div>
         </div>
 
-        {/* 선택된 날 상세 */}
+        {/* ?�택?????�세 */}
         {selectedDay && (
           <div style={{
             marginTop: '16px', background: C.white, border: `1px solid ${C.border}`,
@@ -191,18 +191,18 @@ export default function Calendar() {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <div style={{ fontWeight: '800', fontSize: '15px', color: C.navy }}>
-                {month + 1}월 {selectedDay}일 일정
+                {month + 1}??{selectedDay}???�정
               </div>
               {isAdmin && (
                 <button onClick={() => { setNewEvent({ ...newEvent, date: dateStr(selectedDay) }); setShowForm(true) }}
                   style={{ background: C.navy, color: C.white, border: 'none', padding: '5px 14px',
                     borderRadius: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
-                  + 추가
+                  + 추�?
                 </button>
               )}
             </div>
             {getEntries(selectedDay).length === 0
-              ? <p style={{ color: C.muted, margin: 0, fontSize: '13px' }}>일정이 없습니다.</p>
+              ? <p style={{ color: C.muted, margin: 0, fontSize: '13px' }}>?�정???�습?�다.</p>
               : getEntries(selectedDay).map(ev => {
                 const ti = typeInfo(ev.type)
                 return (
@@ -221,7 +221,7 @@ export default function Calendar() {
                       <button onClick={(e) => deleteEvent(ev.id, e)} style={{
                         background: 'none', border: 'none', color: C.muted,
                         cursor: 'pointer', fontSize: '14px', padding: '0 4px',
-                      }}>✕</button>
+                      }}>??/button>
                     )}
                   </div>
                 )
@@ -230,7 +230,7 @@ export default function Calendar() {
         )}
       </div>
 
-      {/* 일정 추가 모달 */}
+      {/* ?�정 추�? 모달 */}
       {showForm && isAdmin && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -241,9 +241,9 @@ export default function Calendar() {
             background: C.white, borderRadius: '14px', padding: '28px', width: '360px',
             boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
           }}>
-            <h3 style={{ marginTop: 0, color: C.navy, fontSize: '16px', fontWeight: '800' }}>일정 추가</h3>
+            <h3 style={{ marginTop: 0, color: C.navy, fontSize: '16px', fontWeight: '800' }}>?�정 추�?</h3>
             {[
-              { label: '날짜 *', el: <input type="date" value={newEvent.date}
+              { label: '?�짜 *', el: <input type="date" value={newEvent.date}
                   onChange={e => setNewEvent({ ...newEvent, date: e.target.value })}
                   style={{ width: '100%', padding: '9px 12px', borderRadius: '6px',
                     border: `1px solid ${C.border}`, boxSizing: 'border-box', fontSize: '14px' }} /> },
@@ -253,9 +253,9 @@ export default function Calendar() {
                     border: `1px solid ${C.border}`, fontSize: '14px' }}>
                   {EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select> },
-              { label: '일정 이름 *', el: <input value={newEvent.title}
+              { label: '?�정 ?�름 *', el: <input value={newEvent.title}
                   onChange={e => setNewEvent({ ...newEvent, title: e.target.value })}
-                  placeholder="예: 중간고사, 실험 마감"
+                  placeholder="?? 중간고사, ?�험 마감"
                   style={{ width: '100%', padding: '9px 12px', borderRadius: '6px',
                     border: `1px solid ${C.border}`, boxSizing: 'border-box', fontSize: '14px' }} /> },
             ].map(({ label, el }) => (
@@ -273,7 +273,7 @@ export default function Calendar() {
               <button onClick={addEvent} style={{
                 flex: 1, padding: '10px', borderRadius: '6px', border: 'none',
                 background: C.navy, color: C.white, cursor: 'pointer', fontWeight: '700', fontSize: '13px',
-              }}>추가</button>
+              }}>추�?</button>
             </div>
           </div>
         </div>

@@ -38,14 +38,14 @@ function Reagents() {
 
   return (
     <div>
-      <h1 style={{ color: '#1e3a5f', marginBottom: '24px' }}>시약 관리</h1>
+      <h1 style={{ color: '#1e3a5f', marginBottom: '24px' }}>?�약 관�?/h1>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '32px' }}>
         <input
           value={search}
           onChange={e => { setSearch(e.target.value); setSearchResults([]) }}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
-          placeholder="시약 이름 검색..."
+          placeholder="?�약 ?�름 검??.."
           style={{
             flex: 1, padding: '10px 16px', borderRadius: '6px',
             border: '1px solid #cbd5e0', fontSize: '16px'
@@ -54,12 +54,12 @@ function Reagents() {
         <button onClick={handleSearch} style={{
           background: '#1e3a5f', color: 'white', border: 'none',
           padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontSize: '16px'
-        }}>검색</button>
+        }}>검??/button>
       </div>
 
       {searchResults.length > 0 && (
         <div style={{ marginBottom: '32px' }}>
-          <h2 style={{ color: '#1e3a5f' }}>검색 결과 ({searchResults.length}개)</h2>
+          <h2 style={{ color: '#1e3a5f' }}>검??결과 ({searchResults.length}�?</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
             {searchResults.map(r => (
               <ReagentCard key={r.id} reagent={r} onClick={() => navigate('/reagents/' + r.id)} />
@@ -71,7 +71,7 @@ function Reagents() {
       {searchResults.length === 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: '24px' }}>
           <div>
-            <h2 style={{ color: '#1e3a5f', marginBottom: '12px' }}>위치</h2>
+            <h2 style={{ color: '#1e3a5f', marginBottom: '12px' }}>?�치</h2>
             {rooms.map(room => (
               <div key={room} style={{ marginBottom: '8px' }}>
                 <div style={{ fontWeight: 'bold', color: '#4a5568', marginBottom: '4px' }}>{room}</div>
@@ -100,7 +100,7 @@ function Reagents() {
                   {selectedLocation.room}{selectedLocation.detail ? ' - ' + selectedLocation.detail : ''}
                 </h2>
                 {reagents.length === 0 ? (
-                  <p style={{ color: '#999' }}>이 위치에 시약이 없습니다.</p>
+                  <p style={{ color: '#999' }}>???�치???�약???�습?�다.</p>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
                     {reagents.map(r => (
@@ -111,7 +111,7 @@ function Reagents() {
               </div>
             ) : (
               <p style={{ color: '#999', marginTop: '48px', textAlign: 'center' }}>
-                왼쪽에서 위치를 선택하세요
+                ?�쪽?�서 ?�치�??�택?�세??
               </p>
             )}
           </div>
@@ -137,8 +137,8 @@ function ReagentCard({ reagent, onClick }) {
         {reagent.company} | {reagent.volume}{reagent.unit}
       </div>
       <div style={{ fontSize: '13px' }}>
-        미개봉 <strong>{totalSealed}병</strong>
-        {isLow && <span style={{ color: '#e53e3e', marginLeft: '8px' }}>재고 부족</span>}
+        미개�?<strong>{totalSealed}�?/strong>
+        {isLow && <span style={{ color: '#e53e3e', marginLeft: '8px' }}>?�고 부�?/span>}
       </div>
     </div>
   )

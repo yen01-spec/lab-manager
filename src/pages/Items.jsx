@@ -23,12 +23,12 @@ function Items() {
 
   return (
     <div>
-      <h1 style={{ color: '#1e3a5f', marginBottom: '24px' }}>🔬 물품 관리</h1>
+      <h1 style={{ color: '#1e3a5f', marginBottom: '24px' }}>?�� 물품 관�?/h1>
 
       <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: '24px' }}>
-        {/* 위치 목록 (303호만) */}
+        {/* ?�치 목록 (303?�만) */}
         <div>
-          <div style={{ fontWeight: 'bold', color: '#4a5568', fontSize: '13px', marginBottom: '8px', padding: '0 8px' }}>303호</div>
+          <div style={{ fontWeight: 'bold', color: '#4a5568', fontSize: '13px', marginBottom: '8px', padding: '0 8px' }}>303??/div>
           {locations.map(loc => (
             <div key={loc.id} onClick={() => { setSelectedLocation(loc); fetchItemsByLocation(loc.id) }}
               style={{
@@ -41,16 +41,16 @@ function Items() {
           ))}
         </div>
 
-        {/* 물품 리스트 */}
+        {/* 물품 리스??*/}
         <div>
           {selectedLocation ? (
             items.length === 0 ? (
-              <p style={{ color: '#999' }}>이 위치에 물품이 없습니다.</p>
+              <p style={{ color: '#999' }}>???�치??물품???�습?�다.</p>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f7fafc' }}>
-                    {['물품명', '종류', '미개봉(개)', '잔량(%)'].map(h => (
+                    {['물품�?, '종류', '미개�?�?', '?�량(%)'].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '2px solid #e2e8f0', fontSize: '13px', color: '#4a5568' }}>{h}</th>
                     ))}
                   </tr>
@@ -63,7 +63,7 @@ function Items() {
                       <tr key={item.id} style={{ background: isLow ? '#fff5f5' : 'white' }}>
                         <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: 'bold', fontSize: '14px' }}>
                           {item.name}
-                          {isLow && <span style={{ color: '#e53e3e', fontSize: '11px', marginLeft: '6px' }}>⚠️부족</span>}
+                          {isLow && <span style={{ color: '#e53e3e', fontSize: '11px', marginLeft: '6px' }}>?�️부�?/span>}
                         </td>
                         <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', color: '#666', fontSize: '13px' }}>{item.category || '-'}</td>
                         <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px' }}>
@@ -79,7 +79,7 @@ function Items() {
               </table>
             )
           ) : (
-            <p style={{ color: '#999', marginTop: '48px', textAlign: 'center' }}>왼쪽에서 위치를 선택하세요</p>
+            <p style={{ color: '#999', marginTop: '48px', textAlign: 'center' }}>?�쪽?�서 ?�치�??�택?�세??/p>
           )}
         </div>
       </div>
