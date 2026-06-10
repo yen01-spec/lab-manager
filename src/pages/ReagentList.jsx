@@ -122,7 +122,11 @@ function ReagentList() {
 
   const scrollToLetter = (letter) => {
     const el = alphabetRefs.current[letter]
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (el) {
+      const offset = 80
+      const top = el.getBoundingClientRect().top + window.scrollY - offset
+      window.scrollTo({ top, behavior: 'smooth' })
+    }
   }
 
   const ReagentTable = ({ data }) => {
