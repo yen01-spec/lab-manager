@@ -56,12 +56,7 @@ export default function ReagentList() {
   }
 
   const rooms = [...new Set(locations.map(l => l.room))]
-  const toggleRoom = (room) => setOpenRooms(prev => {
-  const isOpen = prev[room]
-  const allClosed = {}
-  Object.keys(prev).forEach(k => allClosed[k] = false)
-  return isOpen ? allClosed : { ...allClosed, [room]: true }
-})
+  const toggleRoom = (room) => setOpenRooms(prev => prev[room] ? {} : { [room]: true })
 
   const getGroupedReagents = (data) => {
     const groups = {}
