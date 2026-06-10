@@ -197,7 +197,7 @@ export default function ReagentList() {
         {/* 위치 버튼 (상단) */}
         {searchResults.length === 0 && (
           <>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px', alignItems: 'flex-start' }}>
               {rooms.map(room => (
                 <div key={room} style={{
                   border: `1px solid ${C.border}`, borderRadius: '8px',
