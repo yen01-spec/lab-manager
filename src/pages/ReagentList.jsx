@@ -1,6 +1,49 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabase'
 
+function AlphabetIndex({ availableLetters, onScroll }) {
+  const [visible, setVisible] = useState(false)
+  const timerRef = useRef(null)
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setVisible(true)
+      clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => setVisible(false), 1500)
+    }
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  return (
+    <div style={{
+      position: 'fixed', right: '12px', top: '50%', transform: 'translateY(-50%)',
+      display: 'flex', flexDirection: 'column', gap: '2px',
+      opacity: visible ? 0.85 : 0,
+      transition: 'opacity 0.3s ease',
+      zIndex: 50,
+      background: 'rgba(255,255,255,0.7)',
+      backdropFilter: 'blur(4px)',
+      borderRadius: '8px',
+      padding: '6px 4px',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+    }}>
+      {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => (
+        <button key={letter}
+          onClick={() => { onScroll(letter); setVisible(false) }}
+          disabled={!availableLetters.has(letter)}
+          style={{
+            width: '22px', height: '22px', borderRadius: '4px', border: 'none',
+            cursor: availableLetters.has(letter) ? 'pointer' : 'default',
+            background: availableLetters.has(letter) ? '#1e3a5f' : 'transparent',
+            color: availableLetters.has(letter) ? 'white' : '#ccc',
+            fontSize: '11px', fontWeight: 'bold', padding: 0
+          }}>{letter}</button>
+      ))}
+    </div>
+  )
+}
+
 function ReagentList() {
   const [locations, setLocations] = useState([])
   const [selectedLocation, setSelectedLocation] = useState(null)
@@ -67,7 +110,6 @@ function ReagentList() {
   const rooms = [...new Set(locations.map(l => l.room))]
   const toggleRoom = (room) => setOpenRooms(prev => ({ ...prev, [room]: !prev[room] }))
 
-  // 알파벳 그룹핑
   const getGroupedReagents = (data) => {
     const groups = {}
     data.forEach(r => {
@@ -89,72 +131,54 @@ function ReagentList() {
     const availableLetters = new Set(letters)
 
     return (
-      <div style={{ display: 'flex', gap: '16px' }}>
-        {/* 테이블 */}
-        <div style={{ flex: 1 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: '#f7fafc' }}>
-                {['시약명', '회사', '용량', 'Lot 수', '상태'].map(h => (
-                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '2px solid #e2e8f0', fontSize: '13px', color: '#4a5568' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {letters.map(letter => (
-                <>
-                  <tr key={letter} ref={el => alphabetRefs.current[letter] = el}>
-                    <td colSpan={5} style={{
-                      padding: '8px 12px', background: '#edf2f7',
-                      fontWeight: 'bold', fontSize: '13px', color: '#4a5568',
-                      borderBottom: '1px solid #e2e8f0'
-                    }}>{letter}</td>
-                  </tr>
-                  {groups[letter].map(r => {
-                    const lots = r.reagent_lots || []
-                    const isLow = lots.some(l => l.sealed_count === 0 && l.current_stock <= 20)
-                    const totalLots = lots.length
-                    return (
-                      <tr key={r.id}
-                        onClick={() => openReagent(r)}
-                        style={{ background: isLow ? '#fff5f5' : 'white', cursor: 'pointer' }}
-                        onMouseEnter={e => e.currentTarget.style.background = isLow ? '#ffe4e4' : '#f7fafc'}
-                        onMouseLeave={e => e.currentTarget.style.background = isLow ? '#fff5f5' : 'white'}>
-                        <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: 'bold', color: '#1e3a5f', fontSize: '14px', textAlign: 'left' }}>
-                          {r.name}
-                          {isLow && <span style={{ color: '#e53e3e', fontSize: '11px', marginLeft: '6px' }}>⚠️부족</span>}
-                        </td>
-                        <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', color: '#666', fontSize: '13px', textAlign: 'left' }}>{r.company || '-'}</td>
-                        <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', color: '#666', fontSize: '13px', textAlign: 'left' }}>{r.volume}{r.unit}</td>
-                        <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', textAlign: 'left' }}>{totalLots}개</td>
-                        <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', textAlign: 'left' }}>
-                          {isLow
-                            ? <span style={{ color: '#e53e3e', fontWeight: 'bold' }}>⚠️ 부족</span>
-                            : <span style={{ color: '#48bb78' }}>✓ 정상</span>}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* 알파벳 인덱스 */}
+      <div>
         <AlphabetIndex availableLetters={availableLetters} onScroll={scrollToLetter} />
-          {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => (
-            <button key={letter} onClick={() => scrollToLetter(letter)}
-              disabled={!availableLetters.has(letter)}
-              style={{
-                width: '24px', height: '24px', borderRadius: '4px', border: 'none',
-                cursor: availableLetters.has(letter) ? 'pointer' : 'default',
-                background: availableLetters.has(letter) ? '#1e3a5f' : 'transparent',
-                color: availableLetters.has(letter) ? 'white' : '#ccc',
-                fontSize: '11px', fontWeight: 'bold', padding: 0
-              }}>{letter}</button>
-          ))}
-        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#f7fafc' }}>
+              {['시약명', '회사', '용량', 'Lot 수', '상태'].map(h => (
+                <th key={h} style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '2px solid #e2e8f0', fontSize: '13px', color: '#4a5568' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {letters.map(letter => (
+              <>
+                <tr key={letter} ref={el => alphabetRefs.current[letter] = el}>
+                  <td colSpan={5} style={{
+                    padding: '8px 12px', background: '#edf2f7',
+                    fontWeight: 'bold', fontSize: '13px', color: '#4a5568',
+                    borderBottom: '1px solid #e2e8f0'
+                  }}>{letter}</td>
+                </tr>
+                {groups[letter].map(r => {
+                  const lotList = r.reagent_lots || []
+                  const isLow = lotList.some(l => l.sealed_count === 0 && l.current_stock <= 20)
+                  return (
+                    <tr key={r.id}
+                      onClick={() => openReagent(r)}
+                      style={{ background: isLow ? '#fff5f5' : 'white', cursor: 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background = isLow ? '#ffe4e4' : '#f7fafc'}
+                      onMouseLeave={e => e.currentTarget.style.background = isLow ? '#fff5f5' : 'white'}>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: 'bold', color: '#1e3a5f', fontSize: '14px', textAlign: 'left' }}>
+                        {r.name}
+                        {isLow && <span style={{ color: '#e53e3e', fontSize: '11px', marginLeft: '6px' }}>⚠️부족</span>}
+                      </td>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', color: '#666', fontSize: '13px', textAlign: 'left' }}>{r.company || '-'}</td>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', color: '#666', fontSize: '13px', textAlign: 'left' }}>{r.volume}{r.unit}</td>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', textAlign: 'left' }}>{lotList.length}개</td>
+                      <td style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', textAlign: 'left' }}>
+                        {isLow
+                          ? <span style={{ color: '#e53e3e', fontWeight: 'bold' }}>⚠️ 부족</span>
+                          : <span style={{ color: '#48bb78' }}>✓ 정상</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </>
+            ))}
+          </tbody>
+        </table>
       </div>
     )
   }
@@ -193,7 +217,6 @@ function ReagentList() {
 
       {searchResults.length === 0 && (
         <div>
-          {/* 위치 accordion */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
             {rooms.map(room => (
               <div key={room} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', minWidth: '120px' }}>
@@ -266,7 +289,6 @@ function ReagentList() {
                 background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#999'
               }}>✕</button>
             </div>
-
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
               <tbody>
                 {[
@@ -284,7 +306,6 @@ function ReagentList() {
                 ))}
               </tbody>
             </table>
-
             <h3 style={{ color: '#1e3a5f', marginBottom: '12px' }}>재고 현황 (Lot별)</h3>
             {lots.map(lot => (
               <div key={lot.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 16px', marginBottom: '8px' }}>
@@ -395,47 +416,5 @@ function ReagentList() {
     </div>
   )
 }
-function AlphabetIndex({ availableLetters, onScroll }) {
-  const [visible, setVisible] = useState(false)
-  const timerRef = useRef(null)
 
-  useEffect(() => {
-    const handleScroll = () => {
-      setVisible(true)
-      clearTimeout(timerRef.current)
-      timerRef.current = setTimeout(() => setVisible(false), 1500)
-    }
-    window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
-
-  return (
-    <div style={{
-      position: 'fixed', right: '12px', top: '50%', transform: 'translateY(-50%)',
-      display: 'flex', flexDirection: 'column', gap: '2px',
-      opacity: visible ? 0.85 : 0,
-      transition: 'opacity 0.3s ease',
-      zIndex: 50,
-      background: 'rgba(255,255,255,0.7)',
-      backdropFilter: 'blur(4px)',
-      borderRadius: '8px',
-      padding: '6px 4px',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-    }}>
-      {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => (
-        <button key={letter}
-          onClick={() => { onScroll(letter); setVisible(false) }}
-          disabled={!availableLetters.has(letter)}
-          style={{
-            width: '22px', height: '22px', borderRadius: '4px', border: 'none',
-            cursor: availableLetters.has(letter) ? 'pointer' : 'default',
-            background: availableLetters.has(letter) ? '#1e3a5f' : 'transparent',
-            color: availableLetters.has(letter) ? 'white' : '#ccc',
-            fontSize: '11px', fontWeight: 'bold', padding: 0
-          }}>{letter}</button>
-      ))}
-    </div>
-  )
-}
 export default ReagentList
-
