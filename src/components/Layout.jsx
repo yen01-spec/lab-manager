@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { to: '/items',             label: '물품 관리',  sub: 'Supplies',         icon: '📦' },
   { to: '/requests',          label: '구매 요청',  sub: 'Purchase Request', icon: '🛒' },
   { to: '/calendar',          label: '달력',       sub: 'Calendar',         icon: '📅' },
+  { to: '/inventory',         label: '재고 실사',  sub: 'Inventory Count',  icon: '📊' },
 ]
 
 export default function Layout() {
