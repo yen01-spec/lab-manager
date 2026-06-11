@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, btnPrimary, thStyle, tdStyle } from '../design'
+import { exportReagents } from '../exportUtils'
 
 // ── GHS 위험성 이모지 매핑 ──────────────────────────────
 const GHS_MAP = [
@@ -325,14 +326,26 @@ export default function ReagentList() {
       <PageBanner title="시약 목록" sub="Reagent List" breadcrumb={['홈', '시약 관리', '시약 목록']} />
 
       <div style={{ padding: '28px 40px' }}>
-        {/* 검색 */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', maxWidth: '480px' }}>
-          <input value={search}
-            onChange={e => { setSearch(e.target.value); if (!e.target.value) setSearchResults([]) }}
-            onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            placeholder="시약 이름으로 검색..."
-            style={{ ...inputStyle, flex: 1 }} />
-          <button onClick={handleSearch} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>검색</button>
+        {/* 검색 + 내보내기 */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', maxWidth: '480px', flex: 1 }}>
+            <input value={search}
+              onChange={e => { setSearch(e.target.value); if (!e.target.value) setSearchResults([]) }}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="시약 이름으로 검색..."
+              style={{ ...inputStyle, flex: 1 }} />
+            <button onClick={handleSearch} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>검색</button>
+          </div>
+          {isAdmin && reagents.length > 0 && (
+            <button onClick={() => exportReagents(reagents)} style={{
+              background: '#1D6F42', color: 'white', border: 'none',
+              padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
+              fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px',
+              flexShrink: 0,
+            }}>
+              📥 엑셀 다운로드
+            </button>
+          )}
         </div>
 
         {/* 검색 결과 */}

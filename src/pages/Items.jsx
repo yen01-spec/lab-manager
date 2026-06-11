@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, thStyle, tdStyle } from '../design'
+import { exportItems } from '../exportUtils'
 
 export default function Items() {
+  const { isAdmin } = useOutletContext?.() || {}
   const [locations, setLocations] = useState([])
   const [selectedLocation, setSelectedLocation] = useState(null)
   const [items, setItems] = useState([])
@@ -70,6 +73,13 @@ export default function Items() {
               <Card
                 title={`${selectedLocation.room}${selectedLocation.detail ? ' — ' + selectedLocation.detail : ''}`}
                 sub={`${items.length}개 물품`}
+                extra={isAdmin && items.length > 0 && (
+                  <button onClick={() => exportItems(items)} style={{
+                    background: '#1D6F42', color: 'white', border: 'none',
+                    padding: '6px 14px', borderRadius: '6px', cursor: 'pointer',
+                    fontSize: '12px', fontWeight: '600',
+                  }}>📥 엑셀</button>
+                )}
                 noPadding
               >
                 {items.length === 0 ? (

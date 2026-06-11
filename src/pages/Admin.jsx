@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, StatusBadge, inputStyle, labelStyle, btnPrimary, btnGhost, thStyle, tdStyle } from '../design'
+import { exportPurchaseRequests } from '../exportUtils'
 
 const TABS = [
   { key: 'reagent',  label: '시약 추가',       icon: '🧪', sub: 'Add Reagent' },
@@ -385,7 +386,14 @@ function PurchaseTab({ onCountChange }) {
   ]
 
   return (
-    <Card title="🛒 구매 요청 관리" sub="Purchase Management">
+    <Card title="🛒 구매 요청 관리" sub="Purchase Management"
+      extra={requests.length > 0 && (
+        <button onClick={() => exportPurchaseRequests(filtered)} style={{
+          background: '#1D6F42', color: 'white', border: 'none',
+          padding: '6px 14px', borderRadius: '6px', cursor: 'pointer',
+          fontSize: '12px', fontWeight: '600',
+        }}>📥 엑셀</button>
+      )}>
       <div style={{ display: 'flex', gap: '6px', marginBottom: '20px', flexWrap: 'wrap' }}>
         {filterTabs.map(f => (
           <button key={f.key} onClick={() => setFilter(f.key)} style={{
