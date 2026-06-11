@@ -264,7 +264,11 @@ export default function Requests() {
                         {req.status === 'rejected' && req.reject_note
                           ? <span style={{ color: C.danger }}>반려 사유: {req.reject_note}</span>
                           : req.status === 'ordered' && req.ordered_at
-                          ? `발주일: ${new Date(req.ordered_at).toLocaleDateString()}`
+                          ? <span>
+                              발주일: {new Date(req.ordered_at).toLocaleDateString()}
+                              {req.tracking_number && <span> · 운송장: <strong>{req.tracking_number}</strong></span>}
+                              {req.estimated_arrival && <span> · 예상도착: <strong>{req.estimated_arrival}</strong></span>}
+                            </span>
                           : req.status === 'delivered' && req.delivered_at
                           ? `배송완료: ${new Date(req.delivered_at).toLocaleDateString()}`
                           : '-'}

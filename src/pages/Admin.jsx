@@ -335,6 +335,7 @@ function PurchaseTab({ onCountChange }) {
   const [filter, setFilter] = useState('all')
   const [rejectNote, setRejectNote] = useState({})
   const [expandedId, setExpandedId] = useState(null)
+  const [trackingInputs, setTrackingInputs] = useState({})
 
   useEffect(() => { fetchRequests() }, [])
 
@@ -345,13 +346,32 @@ function PurchaseTab({ onCountChange }) {
   }
 
   async function updateStatus(id, status, note) {
+    const tracking = trackingInputs[id] || {}
     await supabase.from('purchase_requests').update({
       status,
       ...(note ? { reject_note: note } : {}),
-      ...(status === 'ordered'   ? { ordered_at:   new Date().toISOString() } : {}),
+      ...(status === 'ordered' ? {
+        ordered_at: new Date().toISOString(),
+        tracking_number: tracking.tracking_number || null,
+        estimated_arrival: tracking.estimated_arrival || null,
+      } : {}),
       ...(status === 'delivered' ? { delivered_at: new Date().toISOString() } : {}),
     }).eq('id', id)
     fetchRequests()
+  }
+
+  async function saveTracking(id) {
+    const tracking = trackingInputs[id] || {}
+    await supabase.from('purchase_requests').update({
+      tracking_number: tracking.tracking_number || null,
+      estimated_arrival: tracking.estimated_arrival || null,
+    }).eq('id', id)
+    alert('저장되었습니다!')
+    fetchRequests()
+  }
+
+  function setTracking(id, field, value) {
+    setTrackingInputs(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }))
   }
 
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter)
@@ -401,6 +421,8 @@ function PurchaseTab({ onCountChange }) {
                     ['요청 사유', req.reason || '-'],
                     req.reject_note && ['반려 사유', req.reject_note],
                     req.ordered_at && ['발주일', new Date(req.ordered_at).toLocaleDateString()],
+                    req.tracking_number && ['운송장 번호', req.tracking_number],
+                    req.estimated_arrival && ['예상 도착일', req.estimated_arrival],
                     req.delivered_at && ['배송완료일', new Date(req.delivered_at).toLocaleDateString()],
                   ].filter(Boolean).map(([label, value]) => (
                     <div key={label}>
@@ -409,6 +431,43 @@ function PurchaseTab({ onCountChange }) {
                     </div>
                   ))}
                 </div>
+
+                {/* 배송 정보 입력 (승인됨 or 발주완료 상태) */}
+                {(req.status === 'approved' || req.status === 'ordered') && (
+                  <div style={{
+                    background: C.white, border: `1px solid ${C.border}`,
+                    borderRadius: '8px', padding: '12px 14px', marginBottom: '12px',
+                  }}>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: C.muted,
+                      letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '10px' }}>
+                      배송 정보 입력
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', color: C.muted, marginBottom: '4px' }}>운송장 번호</label>
+                        <input
+                          placeholder={req.tracking_number || '예: 1234567890'}
+                          value={trackingInputs[req.id]?.tracking_number ?? req.tracking_number ?? ''}
+                          onChange={e => setTracking(req.id, 'tracking_number', e.target.value)}
+                          style={{ ...inputStyle, fontSize: '13px' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', color: C.muted, marginBottom: '4px' }}>예상 도착일</label>
+                        <input type="date"
+                          value={trackingInputs[req.id]?.estimated_arrival ?? req.estimated_arrival ?? ''}
+                          onChange={e => setTracking(req.id, 'estimated_arrival', e.target.value)}
+                          style={{ ...inputStyle, fontSize: '13px' }}
+                        />
+                      </div>
+                    </div>
+                    <button onClick={() => saveTracking(req.id)} style={{
+                      marginTop: '8px', background: C.bg, border: `1px solid ${C.border}`,
+                      borderRadius: '6px', padding: '5px 14px', cursor: 'pointer', fontSize: '12px', color: C.text,
+                    }}>저장</button>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                   {req.status === 'pending' && (<>
                     <button onClick={() => updateStatus(req.id, 'approved')}
