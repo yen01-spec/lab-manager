@@ -1,21 +1,44 @@
 import { useEffect, useState, useRef } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, btnPrimary, thStyle, tdStyle } from '../design'
 
+// ── GHS 위험성 이모지 매핑 ──────────────────────────────
+const GHS_MAP = [
+  { keywords: ['인화', '발화', '가연', 'flammable', 'flame'],        emoji: '🔥', label: '인화성' },
+  { keywords: ['독성', '독극', 'toxic', 'poison', '독'],              emoji: '💀', label: '독성' },
+  { keywords: ['부식', '산', '염기', 'corrosive', 'acid', 'base'],    emoji: '🧪', label: '부식성' },
+  { keywords: ['폭발', 'explosi', '폭'],                              emoji: '💥', label: '폭발성' },
+  { keywords: ['산화', 'oxidiz', 'oxidis'],                           emoji: '🔶', label: '산화성' },
+  { keywords: ['가스', '고압', 'gas', 'pressure'],                    emoji: '🫧', label: '고압가스' },
+  { keywords: ['자극', '경고', 'irritant', 'warning', '유해'],        emoji: '⚠️', label: '유해성' },
+  { keywords: ['환경', '수생', 'environment', 'aquatic'],             emoji: '🌊', label: '환경유해' },
+  { keywords: ['발암', '생식', '변이', 'carcinogen', 'mutagen'],      emoji: '☣️', label: '발암성' },
+]
+
+function getGhsEmojis(hazard) {
+  if (!hazard) return []
+  const lower = hazard.toLowerCase()
+  return GHS_MAP.filter(g => g.keywords.some(k => lower.includes(k)))
+}
+
 export default function ReagentList() {
+  const { isAdmin } = useOutletContext?.() || {}
   const [locations, setLocations] = useState([])
   const [selectedLocation, setSelectedLocation] = useState(null)
   const [reagents, setReagents] = useState([])
   const [selectedReagent, setSelectedReagent] = useState(null)
   const [lots, setLots] = useState([])
-  const [editingLot, setEditingLot] = useState(null)
-  const [editValue, setEditValue] = useState('')
-  const [editType, setEditType] = useState('')
-  const [userName, setUserName] = useState('')
   const [openRooms, setOpenRooms] = useState({})
   const [search, setSearch] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const alphabetRefs = useRef({})
+
+  // 인라인 편집 상태
+  const [inlineEdit, setInlineEdit] = useState(null) // { lotId, reagentId, field, value }
+  const [userName, setUserName] = useState(() => localStorage.getItem('stock_user_name') || '')
+  const [showNameModal, setShowNameModal] = useState(false)
+  const [pendingEdit, setPendingEdit] = useState(null)
 
   useEffect(() => { fetchLocations() }, [])
 
@@ -26,8 +49,13 @@ export default function ReagentList() {
 
   async function fetchReagentsByLocation(locationId) {
     const { data } = await supabase.from('reagents')
-      .select('*, reagent_lots(*)').eq('location_id', locationId)
+      .select('*, reagent_lots(*), locations(*)')
+      .eq('location_id', locationId)
     if (data) setReagents(data.sort((a, b) => a.name.localeCompare(b.name)))
+  }
+
+  async function refetchReagents() {
+    if (selectedLocation) await fetchReagentsByLocation(selectedLocation.id)
   }
 
   async function handleSearch() {
@@ -43,16 +71,41 @@ export default function ReagentList() {
     if (data) { setSelectedReagent(data); setLots(data.reagent_lots || []) }
   }
 
-  async function updateStock(lot, field, value) {
-    if (!userName.trim()) { alert('이름을 입력해주세요'); return }
-    await supabase.from('reagent_lots').update({ [field]: value }).eq('id', lot.id)
+  // 인라인 편집 시작
+  function startInlineEdit(lotId, reagentId, field, currentValue, e) {
+    e.stopPropagation()
+    if (!isAdmin) return
+    if (!userName.trim()) {
+      setPendingEdit({ lotId, reagentId, field, currentValue })
+      setShowNameModal(true)
+      return
+    }
+    setInlineEdit({ lotId, reagentId, field, value: currentValue })
+  }
+
+  // 인라인 편집 저장
+  async function saveInlineEdit(lot) {
+    if (!inlineEdit) return
+    const { lotId, field, value } = inlineEdit
+    const numVal = Number(value)
+    if (isNaN(numVal)) { alert('숫자를 입력해주세요'); return }
+
+    await supabase.from('reagent_lots').update({ [field]: numVal }).eq('id', lotId)
     await supabase.from('stock_logs').insert({
-      target_type: 'reagent', lot_id: lot.id, user_name: userName,
-      before_sealed: lot.sealed_count, after_sealed: field === 'sealed_count' ? value : lot.sealed_count,
-      before_stock: lot.current_stock, after_stock: field === 'current_stock' ? value : lot.current_stock,
+      target_type: 'reagent', lot_id: lotId, user_name: userName,
+      before_sealed: lot.sealed_count,
+      after_sealed: field === 'sealed_count' ? numVal : lot.sealed_count,
+      before_stock: lot.current_stock,
+      after_stock: field === 'current_stock' ? numVal : lot.current_stock,
     })
-    setLots(prev => prev.map(l => l.id === lot.id ? { ...l, [field]: value } : l))
-    setEditingLot(null)
+    setInlineEdit(null)
+    refetchReagents()
+    // 상세 모달도 열려있으면 갱신
+    if (selectedReagent) {
+      const { data } = await supabase.from('reagents')
+        .select('*, locations(*), reagent_lots(*)').eq('id', selectedReagent.id).single()
+      if (data) { setSelectedReagent(data); setLots(data.reagent_lots || []) }
+    }
   }
 
   const rooms = [...new Set(locations.map(l => l.room))]
@@ -73,6 +126,7 @@ export default function ReagentList() {
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' })
   }
 
+  const COLS = 9
   const ReagentTable = ({ data }) => {
     const groups = getGroupedReagents(data)
     const letters = Object.keys(groups).sort()
@@ -101,69 +155,174 @@ export default function ReagentList() {
           ))}
         </div>
 
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              {['시약명', '회사', '용량', 'Lot 수', '상태'].map(h => (
-                <th key={h} style={thStyle}>{h}</th>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+            <thead>
+              <tr>
+                {['시약명', 'CAS No.', '회사', '용량', '성상', '위치', 'GHS', '재고', '상태'].map(h => (
+                  <th key={h} style={thStyle}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {letters.map(letter => (
+                <>
+                  <tr key={letter + '_header'} ref={el => alphabetRefs.current[letter] = el}>
+                    <td colSpan={COLS} style={{
+                      padding: '8px 14px',
+                      background: `linear-gradient(90deg, ${C.navy}11, transparent)`,
+                      fontWeight: '800', fontSize: '13px', color: C.navy,
+                      borderBottom: `1px solid ${C.border}`,
+                      borderLeft: `3px solid ${C.gold}`,
+                    }}>{letter}</td>
+                  </tr>
+                  {groups[letter].map(r => {
+                    const lotList = r.reagent_lots || []
+                    const totalSealed = lotList.reduce((s, l) => s + l.sealed_count, 0)
+                    const avgStock = lotList.length > 0
+                      ? Math.round(lotList.reduce((s, l) => s + l.current_stock, 0) / lotList.length)
+                      : 0
+                    const isLow = lotList.some(l => l.sealed_count === 0 && l.current_stock <= 20)
+                    const ghsList = getGhsEmojis(r.hazard)
+                    const loc = r.locations
+
+                    // 인라인 편집 중인 lot
+                    const editingThisSealed = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'sealed_count'
+                    const editingThisStock = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'current_stock'
+                    const firstLot = lotList[0]
+
+                    return (
+                      <tr key={r.id}
+                        onClick={() => openReagent(r)}
+                        style={{ background: isLow ? '#FFF8F8' : C.white, cursor: 'pointer' }}
+                        onMouseEnter={e => e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg}
+                        onMouseLeave={e => e.currentTarget.style.background = isLow ? '#FFF8F8' : C.white}
+                      >
+                        {/* 시약명 */}
+                        <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px' }}>
+                          {r.name}
+                          {isLow && <span style={{
+                            marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
+                            color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700',
+                          }}>부족</span>}
+                        </td>
+                        {/* CAS No. */}
+                        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>
+                          {r.cas_no || '-'}
+                        </td>
+                        {/* 회사 */}
+                        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>{r.company || '-'}</td>
+                        {/* 용량 */}
+                        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>
+                          {r.volume ? `${r.volume}${r.unit}` : '-'}
+                        </td>
+                        {/* 성상 (category) */}
+                        <td style={{ ...tdStyle, fontSize: '12px' }}>
+                          {r.category
+                            ? <span style={{
+                                background: '#EEF2FB', color: C.navy,
+                                padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600',
+                              }}>{r.category}</span>
+                            : <span style={{ color: C.muted }}>-</span>}
+                        </td>
+                        {/* 위치 */}
+                        <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>
+                          {loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
+                        </td>
+                        {/* GHS */}
+                        <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                          {ghsList.length > 0
+                            ? <span title={ghsList.map(g => g.label).join(', ')}>{ghsList.map(g => g.emoji).join('')}</span>
+                            : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
+                        </td>
+                        {/* 재고 (인라인 편집) */}
+                        <td style={{ ...tdStyle, whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                          {firstLot ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {/* 미개봉 */}
+                              {editingThisSealed ? (
+                                <input
+                                  autoFocus
+                                  type="number" min="0"
+                                  value={inlineEdit.value}
+                                  onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') saveInlineEdit(firstLot)
+                                    if (e.key === 'Escape') setInlineEdit(null)
+                                  }}
+                                  onBlur={() => saveInlineEdit(firstLot)}
+                                  style={{ width: '52px', padding: '3px 6px', borderRadius: '4px',
+                                    border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }}
+                                />
+                              ) : (
+                                <span
+                                  onClick={e => firstLot && startInlineEdit(firstLot.id, r.id, 'sealed_count', totalSealed, e)}
+                                  title={isAdmin ? '클릭하여 수정' : ''}
+                                  style={{
+                                    cursor: isAdmin ? 'text' : 'default',
+                                    padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
+                                    border: isAdmin ? `1px dashed ${C.border}` : 'none',
+                                    minWidth: '32px', display: 'inline-block', textAlign: 'center',
+                                  }}>{totalSealed}병</span>
+                              )}
+                              <span style={{ color: C.muted, fontSize: '11px' }}>/</span>
+                              {/* 잔량 */}
+                              {editingThisStock ? (
+                                <input
+                                  autoFocus
+                                  type="number" min="0" max="100"
+                                  value={inlineEdit.value}
+                                  onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') saveInlineEdit(firstLot)
+                                    if (e.key === 'Escape') setInlineEdit(null)
+                                  }}
+                                  onBlur={() => saveInlineEdit(firstLot)}
+                                  style={{ width: '52px', padding: '3px 6px', borderRadius: '4px',
+                                    border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }}
+                                />
+                              ) : (
+                                <span
+                                  onClick={e => firstLot && startInlineEdit(firstLot.id, r.id, 'current_stock', avgStock, e)}
+                                  title={isAdmin ? '클릭하여 수정' : ''}
+                                  style={{
+                                    cursor: isAdmin ? 'text' : 'default',
+                                    padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
+                                    border: isAdmin ? `1px dashed ${C.border}` : 'none',
+                                    minWidth: '32px', display: 'inline-block', textAlign: 'center',
+                                  }}>{avgStock}%</span>
+                              )}
+                            </div>
+                          ) : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
+                        </td>
+                        {/* 상태 */}
+                        <td style={tdStyle}>
+                          {isLow
+                            ? <span style={{ color: C.danger, fontWeight: '700', fontSize: '12px' }}>⚠ 부족</span>
+                            : <span style={{ color: '#00875A', fontWeight: '600', fontSize: '12px' }}>✓ 정상</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {letters.map(letter => (
-              <>
-                <tr key={letter + '_header'} ref={el => alphabetRefs.current[letter] = el}>
-                  <td colSpan={5} style={{
-                    padding: '8px 14px',
-                    background: `linear-gradient(90deg, ${C.navy}11, transparent)`,
-                    fontWeight: '800', fontSize: '13px', color: C.navy,
-                    borderBottom: `1px solid ${C.border}`,
-                    borderLeft: `3px solid ${C.gold}`,
-                  }}>{letter}</td>
-                </tr>
-                {groups[letter].map(r => {
-                  const lotList = r.reagent_lots || []
-                  const isLow = lotList.some(l => l.sealed_count === 0 && l.current_stock <= 20)
-                  return (
-                    <tr key={r.id} onClick={() => openReagent(r)} style={{
-                      background: isLow ? '#FFF8F8' : C.white, cursor: 'pointer',
-                    }}
-                      onMouseEnter={e => e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg}
-                      onMouseLeave={e => e.currentTarget.style.background = isLow ? '#FFF8F8' : C.white}
-                    >
-                      <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>
-                        {r.name}
-                        {isLow && <span style={{
-                          marginLeft: '8px', fontSize: '10px', background: '#FFEBEE',
-                          color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700',
-                        }}>부족</span>}
-                      </td>
-                      <td style={{ ...tdStyle, color: C.muted }}>{r.company || '-'}</td>
-                      <td style={{ ...tdStyle, color: C.muted }}>{r.volume}{r.unit}</td>
-                      <td style={tdStyle}>{lotList.length}개</td>
-                      <td style={tdStyle}>
-                        {isLow
-                          ? <span style={{ color: C.danger, fontWeight: '700', fontSize: '12px' }}>⚠ 부족</span>
-                          : <span style={{ color: C.success, fontWeight: '600', fontSize: '12px' }}>✓ 정상</span>}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </>
-            ))}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
+
+        {/* 관리자 인라인 편집 안내 */}
+        {isAdmin && (
+          <div style={{ padding: '8px 14px', fontSize: '11px', color: C.muted, borderTop: `1px solid ${C.border}` }}>
+            💡 재고 숫자를 클릭하면 바로 수정할 수 있어요. (엔터로 저장, ESC로 취소)
+          </div>
+        )}
       </div>
     )
   }
 
   return (
     <div>
-      <PageBanner
-        title="시약 목록"
-        sub="Reagent List"
-        breadcrumb={['홈', '시약 관리', '시약 목록']}
-      />
+      <PageBanner title="시약 목록" sub="Reagent List" breadcrumb={['홈', '시약 관리', '시약 목록']} />
 
       <div style={{ padding: '28px 40px' }}>
         {/* 검색 */}
@@ -173,9 +332,7 @@ export default function ReagentList() {
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
             placeholder="시약 이름으로 검색..."
             style={{ ...inputStyle, flex: 1 }} />
-          <button onClick={handleSearch} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>
-            검색
-          </button>
+          <button onClick={handleSearch} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>검색</button>
         </div>
 
         {/* 검색 결과 */}
@@ -194,7 +351,7 @@ export default function ReagentList() {
           </div>
         )}
 
-        {/* 위치 버튼 (상단) */}
+        {/* 위치 버튼 + 시약 테이블 */}
         {searchResults.length === 0 && (
           <>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
@@ -240,7 +397,6 @@ export default function ReagentList() {
               ))}
             </div>
 
-            {/* 시약 테이블 (하단) */}
             {selectedLocation ? (
               <Card
                 title={`${selectedLocation.room}${selectedLocation.detail ? ' — ' + selectedLocation.detail : ''}`}
@@ -281,13 +437,25 @@ export default function ReagentList() {
             }}>✕</button>
           </div>
 
+          {/* GHS 표시 */}
+          {selectedReagent.hazard && getGhsEmojis(selectedReagent.hazard).length > 0 && (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+              {getGhsEmojis(selectedReagent.hazard).map(g => (
+                <span key={g.label} style={{
+                  background: '#FFF8E7', border: '1px solid #F6C343',
+                  borderRadius: '6px', padding: '4px 10px', fontSize: '13px',
+                }}>{g.emoji} {g.label}</span>
+              ))}
+            </div>
+          )}
+
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
             <tbody>
               {[
                 ['CAS No.', selectedReagent.cas_no],
                 ['회사', selectedReagent.company],
                 ['유별/성질', selectedReagent.category],
-                ['용량', `${selectedReagent.volume} ${selectedReagent.unit}`],
+                ['용량', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`],
                 ['유해·위험성', selectedReagent.hazard],
                 ['비고', selectedReagent.notes],
               ].map(([label, value]) => (
@@ -309,29 +477,60 @@ export default function ReagentList() {
           </div>
           {lots.map(lot => {
             const isLow = lot.sealed_count === 0 && lot.current_stock <= 20
+            const editingSealed = inlineEdit?.lotId === lot.id && inlineEdit?.field === 'sealed_count'
+            const editingStock = inlineEdit?.lotId === lot.id && inlineEdit?.field === 'current_stock'
             return (
               <div key={lot.id} style={{
                 border: `1px solid ${isLow ? '#FFCDD2' : C.border}`,
                 borderRadius: '8px', padding: '14px 16px', marginBottom: '8px',
                 background: isLow ? '#FFF8F8' : C.white,
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '12px', color: C.muted, marginBottom: '8px' }}>
+                  Lot <strong style={{ color: C.text }}>{lot.lot_no || '-'}</strong>
+                  &nbsp;·&nbsp; 유통기한 {lot.expiry_date || '-'}
+                </div>
+                <div style={{ display: 'flex', gap: '20px', fontSize: '13px', alignItems: 'center' }}>
                   <div>
-                    <div style={{ fontSize: '12px', color: C.muted, marginBottom: '6px' }}>
-                      Lot <strong style={{ color: C.text }}>{lot.lot_no || '-'}</strong>
-                      &nbsp;·&nbsp; 유통기한 {lot.expiry_date || '-'}
-                    </div>
-                    <div style={{ display: 'flex', gap: '20px', fontSize: '13px' }}>
-                      <span>미개봉 <strong>{lot.sealed_count}병</strong></span>
-                      <span>잔량 <strong>{lot.current_stock}%</strong></span>
-                      {isLow && <span style={{ color: C.danger, fontWeight: '700' }}>⚠ 재고 부족</span>}
-                    </div>
+                    <span style={{ color: C.muted, fontSize: '11px', marginRight: '4px' }}>미개봉</span>
+                    {editingSealed ? (
+                      <input autoFocus type="number" min="0"
+                        value={inlineEdit.value}
+                        onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                        onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(lot); if (e.key === 'Escape') setInlineEdit(null) }}
+                        onBlur={() => saveInlineEdit(lot)}
+                        style={{ width: '60px', padding: '3px 6px', borderRadius: '4px',
+                          border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
+                    ) : (
+                      <strong
+                        onClick={e => isAdmin && startInlineEdit(lot.id, selectedReagent.id, 'sealed_count', lot.sealed_count, e)}
+                        style={{ cursor: isAdmin ? 'text' : 'default',
+                          padding: '1px 6px', borderRadius: '4px',
+                          border: isAdmin ? `1px dashed ${C.border}` : 'none' }}>
+                        {lot.sealed_count}병
+                      </strong>
+                    )}
                   </div>
-                  <button onClick={() => { setEditingLot(lot); setEditValue(''); setEditType('') }}
-                    style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '6px',
-                      padding: '6px 14px', cursor: 'pointer', fontSize: '12px', color: C.text }}>
-                    수정
-                  </button>
+                  <div>
+                    <span style={{ color: C.muted, fontSize: '11px', marginRight: '4px' }}>잔량</span>
+                    {editingStock ? (
+                      <input autoFocus type="number" min="0" max="100"
+                        value={inlineEdit.value}
+                        onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                        onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(lot); if (e.key === 'Escape') setInlineEdit(null) }}
+                        onBlur={() => saveInlineEdit(lot)}
+                        style={{ width: '60px', padding: '3px 6px', borderRadius: '4px',
+                          border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
+                    ) : (
+                      <strong
+                        onClick={e => isAdmin && startInlineEdit(lot.id, selectedReagent.id, 'current_stock', lot.current_stock, e)}
+                        style={{ cursor: isAdmin ? 'text' : 'default',
+                          padding: '1px 6px', borderRadius: '4px',
+                          border: isAdmin ? `1px dashed ${C.border}` : 'none' }}>
+                        {lot.current_stock}%
+                      </strong>
+                    )}
+                  </div>
+                  {isLow && <span style={{ color: C.danger, fontWeight: '700' }}>⚠ 재고 부족</span>}
                 </div>
               </div>
             )
@@ -339,79 +538,53 @@ export default function ReagentList() {
         </Modal>
       )}
 
-      {/* 재고 수정 모달 */}
-      {editingLot && (
-        <Modal onClose={() => setEditingLot(null)} small>
-          <h3 style={{ marginTop: 0, color: C.navy, fontSize: '16px' }}>재고 수정</h3>
-          <div style={{ marginBottom: '14px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontSize: '12px', color: C.muted, fontWeight: '700', textTransform: 'uppercase' }}>이름 (필수)</label>
+      {/* 이름 입력 모달 (인라인 편집 전) */}
+      {showNameModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(26,42,94,0.45)', zIndex: 400,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: C.white, borderRadius: '12px', padding: '24px',
+            width: '320px', boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
+          }}>
+            <h3 style={{ marginTop: 0, color: C.navy, fontSize: '15px' }}>이름 입력</h3>
+            <p style={{ color: C.muted, fontSize: '13px', marginBottom: '12px' }}>
+              수정 이력에 기록될 이름을 입력해주세요.
+            </p>
             <input value={userName} onChange={e => setUserName(e.target.value)}
-              placeholder="본인 이름" style={{ width: '100%', padding: '9px 12px', borderRadius: '6px',
-                border: `1px solid ${C.border}`, boxSizing: 'border-box', fontSize: '14px' }} />
-          </div>
-          <div style={{ marginBottom: '14px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: C.muted, fontWeight: '700', textTransform: 'uppercase' }}>수정 항목</label>
+              placeholder="본인 이름" autoFocus
+              onKeyDown={e => {
+                if (e.key === 'Enter' && userName.trim()) {
+                  localStorage.setItem('stock_user_name', userName)
+                  setShowNameModal(false)
+                  if (pendingEdit) {
+                    setInlineEdit({ ...pendingEdit, value: pendingEdit.currentValue })
+                    setPendingEdit(null)
+                  }
+                }
+              }}
+              style={{ ...inputStyle, marginBottom: '14px' }} />
             <div style={{ display: 'flex', gap: '8px' }}>
-              {[['sealed', '미개봉 병 수'], ['stock', '잔량 (%)']].map(([key, label]) => (
-                <button key={key} onClick={() => setEditType(key)} style={{
-                  flex: 1, padding: '8px', borderRadius: '6px', cursor: 'pointer', border: 'none',
-                  background: editType === key ? C.navy : C.bg,
-                  color: editType === key ? C.white : C.text,
-                  fontWeight: editType === key ? '700' : '400', fontSize: '13px',
-                }}>{label}</button>
-              ))}
+              <button onClick={() => { setShowNameModal(false); setPendingEdit(null) }}
+                style={{ flex: 1, padding: '9px', borderRadius: '6px', border: `1px solid ${C.border}`,
+                  background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
+              <button onClick={() => {
+                if (!userName.trim()) return
+                localStorage.setItem('stock_user_name', userName)
+                setShowNameModal(false)
+                if (pendingEdit) {
+                  setInlineEdit({ ...pendingEdit, value: pendingEdit.currentValue })
+                  setPendingEdit(null)
+                }
+              }} style={{ flex: 1, padding: '9px', borderRadius: '6px', border: 'none',
+                background: C.navy, color: C.white, cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>
+                확인
+              </button>
             </div>
           </div>
-
-          {editType === 'sealed' && (
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: C.muted, fontWeight: '700', textTransform: 'uppercase' }}>미개봉 병 수</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'center' }}>
-                <button onClick={() => setEditValue(v => Math.max(0, Number(v === '' ? editingLot.sealed_count : v) - 1))}
-                  style={{ width: '36px', height: '36px', borderRadius: '6px', border: `1px solid ${C.border}`, cursor: 'pointer', fontSize: '18px', background: C.white }}>−</button>
-                <span style={{ fontSize: '24px', fontWeight: '800', color: C.navy, minWidth: '40px', textAlign: 'center' }}>
-                  {editValue === '' ? editingLot.sealed_count : editValue}
-                </span>
-                <button onClick={() => setEditValue(v => Number(v === '' ? editingLot.sealed_count : v) + 1)}
-                  style={{ width: '36px', height: '36px', borderRadius: '6px', border: `1px solid ${C.border}`, cursor: 'pointer', fontSize: '18px', background: C.white }}>+</button>
-              </div>
-            </div>
-          )}
-
-          {editType === 'stock' && (
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', color: C.muted, fontWeight: '700', textTransform: 'uppercase' }}>
-                잔량: {editValue === '' ? editingLot.current_stock : editValue}%
-              </label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => (
-                  <button key={v} onClick={() => setEditValue(v)} style={{
-                    padding: '6px 10px', borderRadius: '5px', border: 'none', cursor: 'pointer', fontSize: '12px',
-                    background: (editValue === '' ? editingLot.current_stock : editValue) === v ? C.navy : C.bg,
-                    color: (editValue === '' ? editingLot.current_stock : editValue) === v ? C.white : C.text,
-                    fontWeight: '600',
-                  }}>{v}%</button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
-            <button onClick={() => setEditingLot(null)} style={{
-              flex: 1, padding: '10px', borderRadius: '6px',
-              border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px',
-            }}>취소</button>
-            <button onClick={() => {
-              if (!editType) { alert('수정 항목을 선택하세요'); return }
-              const field = editType === 'sealed' ? 'sealed_count' : 'current_stock'
-              const value = editValue === '' ? editingLot[field] : Number(editValue)
-              updateStock(editingLot, field, value)
-            }} style={{
-              flex: 1, padding: '10px', borderRadius: '6px', border: 'none',
-              background: C.navy, color: C.white, cursor: 'pointer', fontWeight: '700', fontSize: '13px',
-            }}>저장</button>
-          </div>
-        </Modal>
+        </div>
       )}
     </div>
   )
