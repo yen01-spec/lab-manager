@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, StatusBadge, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
@@ -14,6 +14,12 @@ export default function Requests() {
   const [myRequests, setMyRequests] = useState([])
   const [myRequestsLoaded, setMyRequestsLoaded] = useState(false)
 
+  // 중복 감지 관련
+  const [duplicates, setDuplicates] = useState([])
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false)
+  const [pendingSubmit, setPendingSubmit] = useState(null)
+  const debounceRef = useRef(null)
+
   useEffect(() => {
     fetchReagents(); fetchItems()
     if (form.user_name) fetchMyRequests(form.user_name)
@@ -22,6 +28,36 @@ export default function Requests() {
   useEffect(() => {
     if (form.user_name) localStorage.setItem('req_user_name', form.user_name)
   }, [form.user_name])
+
+  // 시약/물품 선택 or 신규 이름 입력 시 중복 감지
+  useEffect(() => {
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      checkDuplicate()
+    }, 400)
+  }, [form.target_id, form.target_name, form.target_type])
+
+  async function checkDuplicate() {
+    // 진행 중 상태만 체크 (완료/반려 제외)
+    const activeStatuses = ['pending', 'approved', 'ordered', 'delivered']
+
+    let query = supabase.from('purchase_requests').select('*')
+      .in('status', activeStatuses)
+
+    if (form.target_type === 'reagent' && form.target_id) {
+      query = query.eq('target_id', form.target_id).eq('target_type', 'reagent')
+    } else if (form.target_type === 'item' && form.target_id) {
+      query = query.eq('target_id', form.target_id).eq('target_type', 'item')
+    } else if (form.target_type === 'new' && form.target_name.trim()) {
+      query = query.ilike('target_name', `%${form.target_name.trim()}%`)
+    } else {
+      setDuplicates([])
+      return
+    }
+
+    const { data } = await query.order('created_at', { ascending: false })
+    setDuplicates(data || [])
+  }
 
   async function fetchReagents() {
     const { data } = await supabase.from('reagents').select('id, name')
@@ -38,7 +74,7 @@ export default function Requests() {
     if (data) { setMyRequests(data); setMyRequestsLoaded(true) }
   }
 
-  async function handleSubmit() {
+  async function submitRequest(extraQuantity = null) {
     if (!form.user_name.trim()) { alert('이름을 입력해주세요'); return }
     if (form.target_type !== 'new' && !form.target_id) { alert('항목을 선택해주세요'); return }
     if (form.target_type === 'new' && !form.target_name.trim()) { alert('새 항목 이름을 입력해주세요'); return }
@@ -48,19 +84,56 @@ export default function Requests() {
     if (form.target_type === 'reagent') targetName = reagents.find(r => String(r.id) === String(form.target_id))?.name || ''
     else if (form.target_type === 'item') targetName = items.find(i => String(i.id) === String(form.target_id))?.name || ''
 
-    await supabase.from('purchase_requests').insert({
-      user_name: form.user_name, target_type: form.target_type,
-      target_id: form.target_type !== 'new' ? form.target_id : null,
-      target_name: targetName, quantity: form.quantity, reason: form.reason,
-    })
-    alert('구매 요청이 접수되었습니다!')
+    if (extraQuantity) {
+      // 기존 요청에 수량 추가 (메모 형태로 reason에 덧붙임)
+      const target = duplicates[0]
+      const addNote = `\n[추가 요청 by ${form.user_name}] 수량: ${form.quantity}`
+      await supabase.from('purchase_requests')
+        .update({ reason: (target.reason || '') + addNote })
+        .eq('id', target.id)
+      alert('기존 요청에 수량이 추가되었습니다!')
+    } else {
+      await supabase.from('purchase_requests').insert({
+        user_name: form.user_name, target_type: form.target_type,
+        target_id: form.target_type !== 'new' ? form.target_id : null,
+        target_name: targetName, quantity: form.quantity, reason: form.reason,
+      })
+      alert('구매 요청이 접수되었습니다!')
+    }
+
     const name = form.user_name
     setForm({ user_name: name, target_type: 'reagent', target_id: '', target_name: '', quantity: '', reason: '' })
+    setDuplicates([])
+    setShowDuplicateModal(false)
+    setPendingSubmit(null)
     fetchMyRequests(name)
   }
 
+  function handleSubmit() {
+    if (!form.user_name.trim()) { alert('이름을 입력해주세요'); return }
+    if (form.target_type !== 'new' && !form.target_id) { alert('항목을 선택해주세요'); return }
+    if (form.target_type === 'new' && !form.target_name.trim()) { alert('새 항목 이름을 입력해주세요'); return }
+    if (!form.quantity.trim()) { alert('수량을 입력해주세요'); return }
+
+    // 중복 있으면 모달 표시
+    if (duplicates.length > 0) {
+      setShowDuplicateModal(true)
+      return
+    }
+    submitRequest()
+  }
+
+  const statusKo = { pending: '대기중', approved: '승인됨', ordered: '발주완료', delivered: '배송완료' }
+
   const iStyle = { ...inputStyle }
   const lStyle = { ...labelStyle }
+
+  // 선택된 시약/물품 이름
+  const selectedName = form.target_type === 'reagent'
+    ? reagents.find(r => String(r.id) === String(form.target_id))?.name
+    : form.target_type === 'item'
+    ? items.find(i => String(i.id) === String(form.target_id))?.name
+    : form.target_name
 
   return (
     <div>
@@ -86,6 +159,7 @@ export default function Requests() {
                 <option value="new">신규 항목</option>
               </select>
             </div>
+
             {form.target_type === 'reagent' && (
               <div>
                 <label style={lStyle}>시약 선택 *</label>
@@ -111,6 +185,7 @@ export default function Requests() {
                   placeholder="새로 구매할 시약/물품 이름" style={iStyle} />
               </div>
             )}
+
             <div>
               <label style={lStyle}>수량 *</label>
               <input value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })}
@@ -123,6 +198,31 @@ export default function Requests() {
                 style={{ ...iStyle, resize: 'vertical' }} />
             </div>
           </div>
+
+          {/* 중복 감지 알림 배너 */}
+          {duplicates.length > 0 && (form.target_id || form.target_name) && (
+            <div style={{
+              marginTop: '16px', padding: '12px 16px',
+              background: '#FFF8E7', border: '1px solid #F6C343',
+              borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px',
+            }}>
+              <span style={{ fontSize: '18px' }}>⚠️</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400E', marginBottom: '2px' }}>
+                  진행 중인 요청이 있습니다
+                </div>
+                {duplicates.slice(0, 2).map(d => (
+                  <div key={d.id} style={{ fontSize: '12px', color: '#B45309' }}>
+                    {d.target_name} — 요청자: {d.user_name}, 수량: {d.quantity}, 상태: {statusKo[d.status]}
+                  </div>
+                ))}
+                {duplicates.length > 2 && (
+                  <div style={{ fontSize: '12px', color: '#B45309' }}>외 {duplicates.length - 2}건</div>
+                )}
+              </div>
+            </div>
+          )}
+
           <button onClick={handleSubmit} style={{ ...btnPrimary, marginTop: '16px' }}>요청 제출</button>
         </Card>
 
@@ -177,6 +277,88 @@ export default function Requests() {
           </Card>
         )}
       </div>
+
+      {/* 중복 감지 모달 */}
+      {showDuplicateModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(26,42,94,0.45)', zIndex: 300,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: C.white, borderRadius: '14px', padding: '28px',
+            width: '480px', maxWidth: '92vw',
+            boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
+          }}>
+            {/* 헤더 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+              <span style={{ fontSize: '24px' }}>⚠️</span>
+              <div>
+                <div style={{ fontSize: '16px', fontWeight: '800', color: C.navy }}>중복 요청 감지</div>
+                <div style={{ fontSize: '13px', color: C.muted }}>이미 진행 중인 요청이 있습니다</div>
+              </div>
+            </div>
+
+            {/* 진행 중 요청 목록 */}
+            <div style={{
+              background: C.bg, borderRadius: '8px', padding: '12px 16px',
+              marginBottom: '20px', border: `1px solid ${C.border}`,
+            }}>
+              {duplicates.map(d => (
+                <div key={d.id} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '6px 0', borderBottom: `1px solid ${C.border}`,
+                  fontSize: '13px',
+                }}>
+                  <div>
+                    <span style={{ fontWeight: '600', color: C.navy }}>{d.target_name}</span>
+                    <span style={{ color: C.muted, marginLeft: '8px' }}>수량: {d.quantity}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ color: C.muted, fontSize: '12px' }}>{d.user_name}</span>
+                    <StatusBadge status={d.status} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 선택지 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button onClick={() => submitRequest(true)} style={{
+                padding: '12px', borderRadius: '8px', border: 'none',
+                background: C.navy, color: C.white, cursor: 'pointer',
+                fontSize: '14px', fontWeight: '700', textAlign: 'left',
+              }}>
+                📎 기존 요청에 수량 추가
+                <div style={{ fontSize: '11px', fontWeight: '400', opacity: 0.8, marginTop: '2px' }}>
+                  기존 요청에 내 수량({form.quantity})을 추가합니다
+                </div>
+              </button>
+
+              <button onClick={() => submitRequest()} style={{
+                padding: '12px', borderRadius: '8px',
+                border: `1px solid ${C.border}`,
+                background: C.white, color: C.text, cursor: 'pointer',
+                fontSize: '14px', fontWeight: '700', textAlign: 'left',
+              }}>
+                📋 별도 요청으로 진행
+                <div style={{ fontSize: '11px', fontWeight: '400', color: C.muted, marginTop: '2px' }}>
+                  기존 요청과 별개로 새 요청을 제출합니다
+                </div>
+              </button>
+
+              <button onClick={() => setShowDuplicateModal(false)} style={{
+                padding: '10px', borderRadius: '8px',
+                border: `1px solid ${C.border}`,
+                background: C.white, color: C.muted, cursor: 'pointer',
+                fontSize: '13px',
+              }}>
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
