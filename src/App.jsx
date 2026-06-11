@@ -7,6 +7,7 @@ import Items from './pages/Items'
 import Requests from './pages/Requests'
 import Admin from './pages/Admin'
 import Calendar from './pages/Calendar'
+import Inventory from './pages/Inventory'
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
         <Route path="items" element={<Items />} />
         <Route path="requests" element={<Requests />} />
         <Route path="admin" element={<Admin />} />
+        <Route path="inventory" element={<Inventory />} />
       </Route>
     </Routes>
   )
