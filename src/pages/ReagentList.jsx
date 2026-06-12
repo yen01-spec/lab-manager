@@ -1,10 +1,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
-import { C, PageBanner, Card, inputStyle, btnPrimary, thStyle, tdStyle } from '../design'
+import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
 import { exportReagents } from '../exportUtils'
 
-// ── GHS 위험성 이모지 매핑 ──────────────────────────────
 const GHS_MAP = [
   { keywords: ['인화', '발화', '가연', 'flammable', 'flame'],        emoji: '🔥', label: '인화성' },
   { keywords: ['독성', '독극', 'toxic', 'poison', '독'],              emoji: '💀', label: '독성' },
@@ -35,8 +34,10 @@ export default function ReagentList() {
   const [searchResults, setSearchResults] = useState([])
   const alphabetRefs = useRef({})
 
-  // 인라인 편집 상태
-  const [inlineEdit, setInlineEdit] = useState(null) // { lotId, reagentId, field, value }
+  const [showDisposalModal, setShowDisposalModal] = useState(false)
+  const [disposalForm, setDisposalForm] = useState({ quantity: '1', reason: '', requested_by: '' })
+
+  const [inlineEdit, setInlineEdit] = useState(null)
   const [userName, setUserName] = useState(() => localStorage.getItem('stock_user_name') || '')
   const [showNameModal, setShowNameModal] = useState(false)
   const [pendingEdit, setPendingEdit] = useState(null)
@@ -72,7 +73,25 @@ export default function ReagentList() {
     if (data) { setSelectedReagent(data); setLots(data.reagent_lots || []) }
   }
 
-  // 인라인 편집 시작
+  async function submitDisposal() {
+    if (!disposalForm.requested_by.trim()) { alert('신청자 이름을 입력해주세요'); return }
+    if (!disposalForm.reason.trim()) { alert('폐기 사유를 입력해주세요'); return }
+    const firstLot = lots[0]
+    await supabase.from('disposal_requests').insert({
+      reagent_id: selectedReagent.id,
+      lot_id: firstLot?.id || null,
+      reagent_name: selectedReagent.name,
+      lot_no: firstLot?.lot_no || null,
+      quantity: disposalForm.quantity,
+      reason: disposalForm.reason,
+      requested_by: disposalForm.requested_by,
+      status: 'pending',
+    })
+    alert('폐기 신청이 완료됐어요! 관리자 승인 후 처리됩니다.')
+    setShowDisposalModal(false)
+    setDisposalForm({ quantity: '1', reason: '', requested_by: '' })
+  }
+
   function startInlineEdit(lotId, reagentId, field, currentValue, e) {
     e.stopPropagation()
     if (!isAdmin) return
@@ -84,13 +103,11 @@ export default function ReagentList() {
     setInlineEdit({ lotId, reagentId, field, value: currentValue })
   }
 
-  // 인라인 편집 저장
   async function saveInlineEdit(lot) {
     if (!inlineEdit) return
     const { lotId, field, value } = inlineEdit
     const numVal = Number(value)
     if (isNaN(numVal)) { alert('숫자를 입력해주세요'); return }
-
     await supabase.from('reagent_lots').update({ [field]: numVal }).eq('id', lotId)
     await supabase.from('stock_logs').insert({
       target_type: 'reagent', lot_id: lotId, user_name: userName,
@@ -101,7 +118,6 @@ export default function ReagentList() {
     })
     setInlineEdit(null)
     refetchReagents()
-    // 상세 모달도 열려있으면 갱신
     if (selectedReagent) {
       const { data } = await supabase.from('reagents')
         .select('*, locations(*), reagent_lots(*)').eq('id', selectedReagent.id).single()
@@ -135,7 +151,6 @@ export default function ReagentList() {
 
     return (
       <div style={{ position: 'relative' }}>
-        {/* 알파벳 인덱스 */}
         <div style={{
           position: 'fixed', right: '16px', top: '50%', transform: 'translateY(-50%)',
           display: 'flex', flexDirection: 'column', gap: '2px', zIndex: 50,
@@ -186,8 +201,6 @@ export default function ReagentList() {
                     const isLow = lotList.some(l => l.sealed_count === 0 && l.current_stock <= 20)
                     const ghsList = getGhsEmojis(r.hazard)
                     const loc = r.locations
-
-                    // 인라인 편집 중인 lot
                     const editingThisSealed = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'sealed_count'
                     const editingThisStock = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'current_stock'
                     const firstLot = lotList[0]
@@ -199,7 +212,6 @@ export default function ReagentList() {
                         onMouseEnter={e => e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg}
                         onMouseLeave={e => e.currentTarget.style.background = isLow ? '#FFF8F8' : C.white}
                       >
-                        {/* 시약명 */}
                         <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px' }}>
                           {r.name}
                           {isLow && <span style={{
@@ -207,96 +219,63 @@ export default function ReagentList() {
                             color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700',
                           }}>부족</span>}
                         </td>
-                        {/* CAS No. */}
                         <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>
                           {r.cas_no || '-'}
                         </td>
-                        {/* 회사 */}
                         <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>{r.company || '-'}</td>
-                        {/* 용량 */}
                         <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>
                           {r.volume ? `${r.volume}${r.unit}` : '-'}
                         </td>
-                        {/* 성상 (category) */}
                         <td style={{ ...tdStyle, fontSize: '12px' }}>
                           {r.category
-                            ? <span style={{
-                                background: '#EEF2FB', color: C.navy,
+                            ? <span style={{ background: '#EEF2FB', color: C.navy,
                                 padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600',
                               }}>{r.category}</span>
                             : <span style={{ color: C.muted }}>-</span>}
                         </td>
-                        {/* 위치 */}
                         <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>
                           {loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
                         </td>
-                        {/* GHS */}
                         <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
                           {ghsList.length > 0
                             ? <span title={ghsList.map(g => g.label).join(', ')}>{ghsList.map(g => g.emoji).join('')}</span>
                             : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
                         </td>
-                        {/* 재고 (인라인 편집) */}
                         <td style={{ ...tdStyle, whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
                           {firstLot ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              {/* 미개봉 */}
                               {editingThisSealed ? (
-                                <input
-                                  autoFocus
-                                  type="number" min="0"
-                                  value={inlineEdit.value}
+                                <input autoFocus type="number" min="0" value={inlineEdit.value}
                                   onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter') saveInlineEdit(firstLot)
-                                    if (e.key === 'Escape') setInlineEdit(null)
-                                  }}
+                                  onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(firstLot); if (e.key === 'Escape') setInlineEdit(null) }}
                                   onBlur={() => saveInlineEdit(firstLot)}
-                                  style={{ width: '52px', padding: '3px 6px', borderRadius: '4px',
-                                    border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }}
-                                />
+                                  style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
                               ) : (
-                                <span
-                                  onClick={e => firstLot && startInlineEdit(firstLot.id, r.id, 'sealed_count', totalSealed, e)}
+                                <span onClick={e => firstLot && startInlineEdit(firstLot.id, r.id, 'sealed_count', totalSealed, e)}
                                   title={isAdmin ? '클릭하여 수정' : ''}
-                                  style={{
-                                    cursor: isAdmin ? 'text' : 'default',
-                                    padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
-                                    border: isAdmin ? `1px dashed ${C.border}` : 'none',
-                                    minWidth: '32px', display: 'inline-block', textAlign: 'center',
-                                  }}>{totalSealed}병</span>
+                                  style={{ cursor: isAdmin ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
+                                    border: isAdmin ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
+                                  {totalSealed}병
+                                </span>
                               )}
                               <span style={{ color: C.muted, fontSize: '11px' }}>/</span>
-                              {/* 잔량 */}
                               {editingThisStock ? (
-                                <input
-                                  autoFocus
-                                  type="number" min="0" max="100"
-                                  value={inlineEdit.value}
+                                <input autoFocus type="number" min="0" max="100" value={inlineEdit.value}
                                   onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter') saveInlineEdit(firstLot)
-                                    if (e.key === 'Escape') setInlineEdit(null)
-                                  }}
+                                  onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(firstLot); if (e.key === 'Escape') setInlineEdit(null) }}
                                   onBlur={() => saveInlineEdit(firstLot)}
-                                  style={{ width: '52px', padding: '3px 6px', borderRadius: '4px',
-                                    border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }}
-                                />
+                                  style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
                               ) : (
-                                <span
-                                  onClick={e => firstLot && startInlineEdit(firstLot.id, r.id, 'current_stock', avgStock, e)}
+                                <span onClick={e => firstLot && startInlineEdit(firstLot.id, r.id, 'current_stock', avgStock, e)}
                                   title={isAdmin ? '클릭하여 수정' : ''}
-                                  style={{
-                                    cursor: isAdmin ? 'text' : 'default',
-                                    padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
-                                    border: isAdmin ? `1px dashed ${C.border}` : 'none',
-                                    minWidth: '32px', display: 'inline-block', textAlign: 'center',
-                                  }}>{avgStock}%</span>
+                                  style={{ cursor: isAdmin ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
+                                    border: isAdmin ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
+                                  {avgStock}%
+                                </span>
                               )}
                             </div>
                           ) : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
                         </td>
-                        {/* 상태 */}
                         <td style={tdStyle}>
                           {isLow
                             ? <span style={{ color: C.danger, fontWeight: '700', fontSize: '12px' }}>⚠ 부족</span>
@@ -310,8 +289,6 @@ export default function ReagentList() {
             </tbody>
           </table>
         </div>
-
-        {/* 관리자 인라인 편집 안내 */}
         {isAdmin && (
           <div style={{ padding: '8px 14px', fontSize: '11px', color: C.muted, borderTop: `1px solid ${C.border}` }}>
             💡 재고 숫자를 클릭하면 바로 수정할 수 있어요. (엔터로 저장, ESC로 취소)
@@ -324,9 +301,7 @@ export default function ReagentList() {
   return (
     <div>
       <PageBanner title="시약 목록" sub="Reagent List" breadcrumb={['홈', '시약 관리', '시약 목록']} />
-
       <div style={{ padding: '28px 40px' }}>
-        {/* 검색 + 내보내기 */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: '8px', maxWidth: '480px', flex: 1 }}>
             <input value={search}
@@ -340,15 +315,11 @@ export default function ReagentList() {
             <button onClick={() => exportReagents(reagents)} style={{
               background: '#1D6F42', color: 'white', border: 'none',
               padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
-              fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px',
-              flexShrink: 0,
-            }}>
-              📥 엑셀 다운로드
-            </button>
+              fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0,
+            }}>📥 엑셀 다운로드</button>
           )}
         </div>
 
-        {/* 검색 결과 */}
         {searchResults.length > 0 && (
           <div style={{ marginBottom: '32px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -364,7 +335,6 @@ export default function ReagentList() {
           </div>
         )}
 
-        {/* 위치 버튼 + 시약 테이블 */}
         {searchResults.length === 0 && (
           <>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
@@ -417,9 +387,7 @@ export default function ReagentList() {
                 noPadding
               >
                 {reagents.length === 0
-                  ? <div style={{ padding: '32px', textAlign: 'center', color: C.muted, fontSize: '13px' }}>
-                      이 위치에 시약이 없습니다.
-                    </div>
+                  ? <div style={{ padding: '32px', textAlign: 'center', color: C.muted, fontSize: '13px' }}>이 위치에 시약이 없습니다.</div>
                   : <ReagentTable data={reagents} />}
               </Card>
             ) : (
@@ -432,9 +400,58 @@ export default function ReagentList() {
         )}
       </div>
 
+      {/* 폐기 신청 모달 */}
+      {showDisposalModal && selectedReagent && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(26,42,94,0.55)', zIndex: 400,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setShowDisposalModal(false)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: C.white, borderRadius: '14px', padding: '28px',
+            width: '420px', maxWidth: '92vw',
+            boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
+          }}>
+            <h3 style={{ margin: '0 0 4px', color: C.navy }}>🗑️ 폐기 신청</h3>
+            <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{selectedReagent.name}</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>신청자 이름 *</label>
+                <input value={disposalForm.requested_by}
+                  onChange={e => setDisposalForm({ ...disposalForm, requested_by: e.target.value })}
+                  placeholder="본인 이름" style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>수량</label>
+                <input value={disposalForm.quantity}
+                  onChange={e => setDisposalForm({ ...disposalForm, quantity: e.target.value })}
+                  placeholder="예: 1병" style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>폐기 사유 *</label>
+                <textarea value={disposalForm.reason} rows={3}
+                  onChange={e => setDisposalForm({ ...disposalForm, reason: e.target.value })}
+                  placeholder="예: 유효기간 만료, 오염 등"
+                  style={{ ...inputStyle, resize: 'vertical' }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+              <button onClick={() => setShowDisposalModal(false)} style={{
+                flex: 1, padding: '10px', borderRadius: '6px',
+                border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px',
+              }}>취소</button>
+              <button onClick={submitDisposal} style={{
+                flex: 1, padding: '10px', borderRadius: '6px', border: 'none',
+                background: C.danger, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px',
+              }}>신청하기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 시약 상세 모달 */}
       {selectedReagent && (
-        <Modal onClose={() => setSelectedReagent(null)}>
+        <Modal onClose={() => { setSelectedReagent(null); setShowDisposalModal(false) }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
             <div>
               <div style={{ fontSize: '10px', color: C.gold, fontWeight: '700',
@@ -444,20 +461,23 @@ export default function ReagentList() {
                 {selectedReagent.locations?.room}{selectedReagent.locations?.detail && ' — ' + selectedReagent.locations.detail}
               </p>
             </div>
-            <button onClick={() => setSelectedReagent(null)} style={{
-              background: C.bg, border: 'none', borderRadius: '6px',
-              width: '32px', height: '32px', cursor: 'pointer', fontSize: '16px', color: C.muted,
-            }}>✕</button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button onClick={() => setShowDisposalModal(true)} style={{
+                background: '#FFF5F5', color: C.danger, border: `1px solid #FC8181`,
+                padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+              }}>🗑️ 폐기 신청</button>
+              <button onClick={() => setSelectedReagent(null)} style={{
+                background: C.bg, border: 'none', borderRadius: '6px',
+                width: '32px', height: '32px', cursor: 'pointer', fontSize: '16px', color: C.muted,
+              }}>✕</button>
+            </div>
           </div>
 
-          {/* GHS 표시 */}
           {selectedReagent.hazard && getGhsEmojis(selectedReagent.hazard).length > 0 && (
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
               {getGhsEmojis(selectedReagent.hazard).map(g => (
-                <span key={g.label} style={{
-                  background: '#FFF8E7', border: '1px solid #F6C343',
-                  borderRadius: '6px', padding: '4px 10px', fontSize: '13px',
-                }}>{g.emoji} {g.label}</span>
+                <span key={g.label} style={{ background: '#FFF8E7', border: '1px solid #F6C343',
+                  borderRadius: '6px', padding: '4px 10px', fontSize: '13px' }}>{g.emoji} {g.label}</span>
               ))}
             </div>
           )}
@@ -506,19 +526,14 @@ export default function ReagentList() {
                   <div>
                     <span style={{ color: C.muted, fontSize: '11px', marginRight: '4px' }}>미개봉</span>
                     {editingSealed ? (
-                      <input autoFocus type="number" min="0"
-                        value={inlineEdit.value}
+                      <input autoFocus type="number" min="0" value={inlineEdit.value}
                         onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
                         onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(lot); if (e.key === 'Escape') setInlineEdit(null) }}
                         onBlur={() => saveInlineEdit(lot)}
-                        style={{ width: '60px', padding: '3px 6px', borderRadius: '4px',
-                          border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
+                        style={{ width: '60px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
                     ) : (
-                      <strong
-                        onClick={e => isAdmin && startInlineEdit(lot.id, selectedReagent.id, 'sealed_count', lot.sealed_count, e)}
-                        style={{ cursor: isAdmin ? 'text' : 'default',
-                          padding: '1px 6px', borderRadius: '4px',
-                          border: isAdmin ? `1px dashed ${C.border}` : 'none' }}>
+                      <strong onClick={e => isAdmin && startInlineEdit(lot.id, selectedReagent.id, 'sealed_count', lot.sealed_count, e)}
+                        style={{ cursor: isAdmin ? 'text' : 'default', padding: '1px 6px', borderRadius: '4px', border: isAdmin ? `1px dashed ${C.border}` : 'none' }}>
                         {lot.sealed_count}병
                       </strong>
                     )}
@@ -526,19 +541,14 @@ export default function ReagentList() {
                   <div>
                     <span style={{ color: C.muted, fontSize: '11px', marginRight: '4px' }}>잔량</span>
                     {editingStock ? (
-                      <input autoFocus type="number" min="0" max="100"
-                        value={inlineEdit.value}
+                      <input autoFocus type="number" min="0" max="100" value={inlineEdit.value}
                         onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
                         onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(lot); if (e.key === 'Escape') setInlineEdit(null) }}
                         onBlur={() => saveInlineEdit(lot)}
-                        style={{ width: '60px', padding: '3px 6px', borderRadius: '4px',
-                          border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
+                        style={{ width: '60px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
                     ) : (
-                      <strong
-                        onClick={e => isAdmin && startInlineEdit(lot.id, selectedReagent.id, 'current_stock', lot.current_stock, e)}
-                        style={{ cursor: isAdmin ? 'text' : 'default',
-                          padding: '1px 6px', borderRadius: '4px',
-                          border: isAdmin ? `1px dashed ${C.border}` : 'none' }}>
+                      <strong onClick={e => isAdmin && startInlineEdit(lot.id, selectedReagent.id, 'current_stock', lot.current_stock, e)}
+                        style={{ cursor: isAdmin ? 'text' : 'default', padding: '1px 6px', borderRadius: '4px', border: isAdmin ? `1px dashed ${C.border}` : 'none' }}>
                         {lot.current_stock}%
                       </strong>
                     )}
@@ -551,50 +561,35 @@ export default function ReagentList() {
         </Modal>
       )}
 
-      {/* 이름 입력 모달 (인라인 편집 전) */}
+      {/* 이름 입력 모달 */}
       {showNameModal && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(26,42,94,0.45)', zIndex: 400,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <div style={{
-            background: C.white, borderRadius: '12px', padding: '24px',
-            width: '320px', boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
-          }}>
+          <div style={{ background: C.white, borderRadius: '12px', padding: '24px', width: '320px', boxShadow: '0 24px 64px rgba(26,42,94,0.25)' }}>
             <h3 style={{ marginTop: 0, color: C.navy, fontSize: '15px' }}>이름 입력</h3>
-            <p style={{ color: C.muted, fontSize: '13px', marginBottom: '12px' }}>
-              수정 이력에 기록될 이름을 입력해주세요.
-            </p>
+            <p style={{ color: C.muted, fontSize: '13px', marginBottom: '12px' }}>수정 이력에 기록될 이름을 입력해주세요.</p>
             <input value={userName} onChange={e => setUserName(e.target.value)}
               placeholder="본인 이름" autoFocus
               onKeyDown={e => {
                 if (e.key === 'Enter' && userName.trim()) {
                   localStorage.setItem('stock_user_name', userName)
                   setShowNameModal(false)
-                  if (pendingEdit) {
-                    setInlineEdit({ ...pendingEdit, value: pendingEdit.currentValue })
-                    setPendingEdit(null)
-                  }
+                  if (pendingEdit) { setInlineEdit({ ...pendingEdit, value: pendingEdit.currentValue }); setPendingEdit(null) }
                 }
               }}
               style={{ ...inputStyle, marginBottom: '14px' }} />
             <div style={{ display: 'flex', gap: '8px' }}>
               <button onClick={() => { setShowNameModal(false); setPendingEdit(null) }}
-                style={{ flex: 1, padding: '9px', borderRadius: '6px', border: `1px solid ${C.border}`,
-                  background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
+                style={{ flex: 1, padding: '9px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
               <button onClick={() => {
                 if (!userName.trim()) return
                 localStorage.setItem('stock_user_name', userName)
                 setShowNameModal(false)
-                if (pendingEdit) {
-                  setInlineEdit({ ...pendingEdit, value: pendingEdit.currentValue })
-                  setPendingEdit(null)
-                }
-              }} style={{ flex: 1, padding: '9px', borderRadius: '6px', border: 'none',
-                background: C.navy, color: C.white, cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>
-                확인
-              </button>
+                if (pendingEdit) { setInlineEdit({ ...pendingEdit, value: pendingEdit.currentValue }); setPendingEdit(null) }
+              }} style={{ flex: 1, padding: '9px', borderRadius: '6px', border: 'none', background: C.navy, color: C.white, cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>확인</button>
             </div>
           </div>
         </div>
@@ -603,7 +598,7 @@ export default function ReagentList() {
   )
 }
 
-function Modal({ children, onClose, small }) {
+function Modal({ children, onClose }) {
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -611,9 +606,8 @@ function Modal({ children, onClose, small }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
-        background: C.white, borderRadius: '14px',
-        padding: '28px', width: small ? '380px' : '640px',
-        maxWidth: '92vw', maxHeight: '82vh', overflowY: 'auto',
+        background: C.white, borderRadius: '14px', padding: '28px',
+        width: '640px', maxWidth: '92vw', maxHeight: '82vh', overflowY: 'auto',
         boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
       }}>
         {children}
