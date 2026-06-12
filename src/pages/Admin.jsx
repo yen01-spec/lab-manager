@@ -5,13 +5,14 @@ import { C, PageBanner, Card, StatusBadge, inputStyle, labelStyle, btnPrimary, b
 import { exportPurchaseRequests } from '../exportUtils'
 
 const TABS = [
-  { key: 'reagent',  label: '시약 추가',       icon: '🧪', sub: 'Add Reagent' },
-  { key: 'item',     label: '물품 추가',        icon: '📦', sub: 'Add Item' },
-  { key: 'notice',   label: '공지 / 안전정보',  icon: '📢', sub: 'Notice' },
-  { key: 'purchase', label: '구매 관리',        icon: '🛒', sub: 'Purchase' },
-  { key: 'receipt',  label: '영수증 관리',      icon: '🧾', sub: 'Receipt' },
-  { key: 'manage',   label: '관리',             icon: '⚠️', sub: 'Manage' },
-  { key: 'log',      label: '변경 로그',        icon: '📋', sub: 'Logs' },
+  { key: 'reagent',  label: '시약 추가',      icon: '🧪', sub: 'Add Reagent' },
+  { key: 'item',     label: '물품 추가',       icon: '📦', sub: 'Add Item' },
+  { key: 'disposal', label: '폐기 관리',       icon: '🗑️', sub: 'Disposal' },
+  { key: 'notice',   label: '공지 / 안전정보', icon: '📢', sub: 'Notice' },
+  { key: 'purchase', label: '구매 관리',       icon: '🛒', sub: 'Purchase' },
+  { key: 'receipt',  label: '영수증 관리',     icon: '🧾', sub: 'Receipt' },
+  { key: 'manage',   label: '관리',            icon: '⚠️', sub: 'Manage' },
+  { key: 'log',      label: '변경 로그',       icon: '📋', sub: 'Logs' },
 ]
 
 export default function Admin() {
@@ -20,11 +21,13 @@ export default function Admin() {
   const [tab, setTab] = useState('reagent')
   const [locations, setLocations] = useState([])
   const [pendingCount, setPendingCount] = useState(0)
+  const [disposalCount, setDisposalCount] = useState(0)
 
   useEffect(() => {
     if (!isAdmin) { alert('관리자만 접근 가능합니다'); navigate('/'); return }
     fetchLocations()
     fetchPendingCount()
+    fetchDisposalCount()
   }, [isAdmin])
 
   async function fetchLocations() {
@@ -37,6 +40,13 @@ export default function Admin() {
       .from('purchase_requests').select('*', { count: 'exact', head: true })
       .eq('status', 'pending')
     setPendingCount(count || 0)
+  }
+
+  async function fetchDisposalCount() {
+    const { count } = await supabase
+      .from('disposal_requests').select('*', { count: 'exact', head: true })
+      .eq('status', 'pending')
+    setDisposalCount(count || 0)
   }
 
   return (
@@ -66,19 +76,22 @@ export default function Admin() {
                 <div style={{ fontSize: '10px', color: C.muted }}>{t.sub}</div>
               </div>
               {t.key === 'purchase' && pendingCount > 0 && (
-                <span style={{
-                  marginLeft: 'auto', background: C.danger, color: '#fff',
-                  fontSize: '10px', fontWeight: '700', borderRadius: '10px', padding: '1px 6px',
-                }}>{pendingCount}</span>
+                <span style={{ marginLeft: 'auto', background: C.danger, color: '#fff',
+                  fontSize: '10px', fontWeight: '700', borderRadius: '10px', padding: '1px 6px' }}>{pendingCount}</span>
+              )}
+              {t.key === 'disposal' && disposalCount > 0 && (
+                <span style={{ marginLeft: 'auto', background: C.danger, color: '#fff',
+                  fontSize: '10px', fontWeight: '700', borderRadius: '10px', padding: '1px 6px' }}>{disposalCount}</span>
               )}
             </button>
           ))}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {tab === 'reagent'  && <ReagentAddTab  locations={locations} />}
-          {tab === 'item'     && <ItemAddTab     locations={locations} />}
+          {tab === 'reagent'  && <ReagentAddTab locations={locations} />}
+          {tab === 'item'     && <ItemAddTab locations={locations} />}
+          {tab === 'disposal' && <DisposalTab onCountChange={fetchDisposalCount} />}
           {tab === 'notice'   && <NoticeTab />}
-          {tab === 'purchase' && <PurchaseTab    onCountChange={fetchPendingCount} />}
+          {tab === 'purchase' && <PurchaseTab onCountChange={fetchPendingCount} />}
           {tab === 'receipt'  && <ReceiptTab />}
           {tab === 'manage'   && <ManageTab />}
           {tab === 'log'      && <LogTab />}
@@ -114,13 +127,11 @@ function ReagentAddTab({ locations }) {
       if (!cidRes.ok) throw new Error('CAS 번호를 찾을 수 없어요')
       const cidData = await cidRes.json()
       const cid = cidData.IdentifierList.CID[0]
-
       const propRes = await fetch(
         `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/property/IUPACName,MolecularFormula/JSON`
       )
       const propData = await propRes.json()
       const prop = propData.PropertyTable.Properties[0]
-
       const ghsRes = await fetch(
         `https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/${cid}/JSON?heading=GHS+Classification`
       )
@@ -135,13 +146,10 @@ function ReagentAddTab({ locations }) {
           const hazardStatements = ghsClass?.Information?.find(i => i.Name === 'GHS Hazard Statements')
           if (hazardStatements?.Value?.StringWithMarkup) {
             hazardText = hazardStatements.Value.StringWithMarkup
-              .slice(0, 3)
-              .map(s => s.String.split('(')[0].trim())
-              .join(', ')
+              .slice(0, 3).map(s => s.String.split('(')[0].trim()).join(', ')
           }
         } catch {}
       }
-
       const result = { iupacName: prop.IUPACName || '', formula: prop.MolecularFormula || '', hazard: hazardText, cid }
       setCasResult(result)
       setForm(prev => ({
@@ -192,27 +200,20 @@ function ReagentAddTab({ locations }) {
         <input value={adminName} onChange={e => setAdminName(e.target.value)}
           placeholder="본인 이름" style={{ ...inputStyle, maxWidth: '240px' }} />
       </div>
-
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-        {/* CAS 자동조회 */}
         <div style={{ gridColumn: '1 / -1' }}>
           <label style={labelStyle}>CAS No.</label>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-            <input
-              value={form.cas_no}
+            <input value={form.cas_no}
               onChange={e => { setForm({ ...form, cas_no: e.target.value }); setCasResult(null) }}
               onKeyDown={e => e.key === 'Enter' && lookupCAS()}
               placeholder="예: 64-17-5"
-              style={{ ...inputStyle, maxWidth: '240px' }}
-            />
+              style={{ ...inputStyle, maxWidth: '240px' }} />
             <button onClick={lookupCAS} disabled={casLoading} style={{
               ...btnPrimary, background: '#6C63FF',
               opacity: casLoading ? 0.7 : 1, whiteSpace: 'nowrap', padding: '9px 18px',
-            }}>
-              {casLoading ? '조회 중...' : '🔍 자동완성'}
-            </button>
+            }}>{casLoading ? '조회 중...' : '🔍 자동완성'}</button>
           </div>
-
           {casResult && !casResult.error && (
             <div style={{ marginTop: '10px', padding: '12px 16px',
               background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', fontSize: '13px' }}>
@@ -222,9 +223,7 @@ function ReagentAddTab({ locations }) {
                 {casResult.formula && <span><strong>분자식:</strong> {casResult.formula}</span>}
                 {casResult.hazard && <span><strong>GHS:</strong> {casResult.hazard}</span>}
               </div>
-              <div style={{ marginTop: '6px', fontSize: '11px', color: '#52B788' }}>
-                빈 칸에 자동 입력됐어요. 직접 수정도 가능해요.
-              </div>
+              <div style={{ marginTop: '6px', fontSize: '11px', color: '#52B788' }}>빈 칸에 자동 입력됐어요. 직접 수정도 가능해요.</div>
             </div>
           )}
           {casResult?.error && (
@@ -235,67 +234,42 @@ function ReagentAddTab({ locations }) {
             </div>
           )}
         </div>
-
-        <div>
-          <label style={labelStyle}>시약명 *</label>
+        <div><label style={labelStyle}>시약명 *</label>
           <input value={form.name} placeholder="예: Ethanol"
-            onChange={e => setForm({ ...form, name: e.target.value })} style={inputStyle} />
-        </div>
-        <div>
-          <label style={labelStyle}>회사명</label>
+            onChange={e => setForm({ ...form, name: e.target.value })} style={inputStyle} /></div>
+        <div><label style={labelStyle}>회사명</label>
           <input value={form.company} placeholder="예: Sigma-Aldrich"
-            onChange={e => setForm({ ...form, company: e.target.value })} style={inputStyle} />
-        </div>
-        <div>
-          <label style={labelStyle}>유해·위험성</label>
+            onChange={e => setForm({ ...form, company: e.target.value })} style={inputStyle} /></div>
+        <div><label style={labelStyle}>유해·위험성</label>
           <input value={form.hazard} placeholder="예: 인화성 액체"
-            onChange={e => setForm({ ...form, hazard: e.target.value })} style={inputStyle} />
-        </div>
-        <div>
-          <label style={labelStyle}>유별/성질</label>
+            onChange={e => setForm({ ...form, hazard: e.target.value })} style={inputStyle} /></div>
+        <div><label style={labelStyle}>유별/성질</label>
           <input value={form.category} placeholder="예: 액체"
-            onChange={e => setForm({ ...form, category: e.target.value })} style={inputStyle} />
-        </div>
-        <div>
-          <label style={labelStyle}>용량</label>
+            onChange={e => setForm({ ...form, category: e.target.value })} style={inputStyle} /></div>
+        <div><label style={labelStyle}>용량</label>
           <input value={form.volume} placeholder="예: 500"
-            onChange={e => setForm({ ...form, volume: e.target.value })} style={inputStyle} />
-        </div>
-        <div>
-          <label style={labelStyle}>단위</label>
+            onChange={e => setForm({ ...form, volume: e.target.value })} style={inputStyle} /></div>
+        <div><label style={labelStyle}>단위</label>
           <input value={form.unit} placeholder="예: mL"
-            onChange={e => setForm({ ...form, unit: e.target.value })} style={inputStyle} />
-        </div>
-        <div>
-          <label style={labelStyle}>Lot No.</label>
+            onChange={e => setForm({ ...form, unit: e.target.value })} style={inputStyle} /></div>
+        <div><label style={labelStyle}>Lot No.</label>
           <input value={form.lot_no}
-            onChange={e => setForm({ ...form, lot_no: e.target.value })} style={inputStyle} />
-        </div>
-        <div>
-          <label style={labelStyle}>유통기한</label>
+            onChange={e => setForm({ ...form, lot_no: e.target.value })} style={inputStyle} /></div>
+        <div><label style={labelStyle}>유통기한</label>
           <input type="date" value={form.expiry_date}
-            onChange={e => setForm({ ...form, expiry_date: e.target.value })} style={inputStyle} />
-        </div>
-        <div>
-          <label style={labelStyle}>입고일</label>
+            onChange={e => setForm({ ...form, expiry_date: e.target.value })} style={inputStyle} /></div>
+        <div><label style={labelStyle}>입고일</label>
           <input type="date" value={form.received_date}
-            onChange={e => setForm({ ...form, received_date: e.target.value })} style={inputStyle} />
-        </div>
-        <div>
-          <label style={labelStyle}>위치</label>
+            onChange={e => setForm({ ...form, received_date: e.target.value })} style={inputStyle} /></div>
+        <div><label style={labelStyle}>위치</label>
           <select value={form.location_id}
             onChange={e => setForm({ ...form, location_id: e.target.value })} style={inputStyle}>
             <option value="">선택하세요</option>
-            {locations.map(l => (
-              <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label style={labelStyle}>비고</label>
+            {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+          </select></div>
+        <div><label style={labelStyle}>비고</label>
           <input value={form.notes}
-            onChange={e => setForm({ ...form, notes: e.target.value })} style={inputStyle} />
-        </div>
+            onChange={e => setForm({ ...form, notes: e.target.value })} style={inputStyle} /></div>
       </div>
       <button onClick={addReagent} style={{ ...btnPrimary, marginTop: '20px' }}>시약 추가</button>
     </Card>
@@ -344,15 +318,148 @@ function ItemAddTab({ locations }) {
             <input value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} style={inputStyle} />
           </div>
         ))}
-        <div>
-          <label style={labelStyle}>위치</label>
+        <div><label style={labelStyle}>위치</label>
           <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })} style={inputStyle}>
             <option value="">선택하세요</option>
             {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
-          </select>
-        </div>
+          </select></div>
       </div>
       <button onClick={addItem} style={{ ...btnPrimary, marginTop: '20px' }}>물품 추가</button>
+    </Card>
+  )
+}
+
+// ══════════════════════════════════════════════
+//  폐기 관리
+// ══════════════════════════════════════════════
+function DisposalTab({ onCountChange }) {
+  const [requests, setRequests] = useState([])
+  const [filter, setFilter] = useState('pending')
+  const [adminName, setAdminName] = useState('')
+
+  useEffect(() => { fetchRequests() }, [])
+
+  async function fetchRequests() {
+    const { data } = await supabase
+      .from('disposal_requests')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (data) setRequests(data)
+    onCountChange && onCountChange()
+  }
+
+  async function approve(req) {
+    if (!adminName.trim()) { alert('승인자 이름을 입력해주세요'); return }
+    if (!window.confirm(`"${req.reagent_name}" 폐기를 승인하시겠습니까?`)) return
+    await supabase.from('disposal_requests').update({
+      status: 'approved',
+      approved_by: adminName,
+      approved_at: new Date().toISOString(),
+    }).eq('id', req.id)
+    await supabase.from('admin_logs').insert({
+      admin_name: adminName, action: '폐기 승인',
+      target_type: 'disposal', target_id: req.id,
+      description: `폐기 승인: ${req.reagent_name}`,
+    })
+    fetchRequests()
+  }
+
+  async function complete(req) {
+    if (!adminName.trim()) { alert('처리자 이름을 입력해주세요'); return }
+    if (!window.confirm(`"${req.reagent_name}" 폐기를 완료 처리하시겠습니까?\n⚠️ 재고에서 차감됩니다.`)) return
+    if (req.lot_id) {
+      const { data: lot } = await supabase.from('reagent_lots').select('*').eq('id', req.lot_id).single()
+      if (lot) {
+        await supabase.from('reagent_lots').update({
+          sealed_count: Math.max(0, lot.sealed_count - 1),
+        }).eq('id', req.lot_id)
+      }
+    }
+    await supabase.from('disposal_requests').update({
+      status: 'disposed',
+      disposed_at: new Date().toISOString(),
+    }).eq('id', req.id)
+    await supabase.from('admin_logs').insert({
+      admin_name: adminName, action: '폐기 완료',
+      target_type: 'disposal', target_id: req.id,
+      description: `폐기 완료: ${req.reagent_name}`,
+    })
+    fetchRequests()
+  }
+
+  async function reject(req) {
+    if (!adminName.trim()) { alert('처리자 이름을 입력해주세요'); return }
+    if (!window.confirm(`"${req.reagent_name}" 폐기 신청을 반려하시겠습니까?`)) return
+    await supabase.from('disposal_requests').update({ status: 'rejected' }).eq('id', req.id)
+    fetchRequests()
+  }
+
+  const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter)
+  const counts = { all: requests.length, pending: 0, approved: 0, disposed: 0, rejected: 0 }
+  requests.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++ })
+  const statusLabel = { pending: '대기중', approved: '승인됨', disposed: '폐기완료', rejected: '반려' }
+  const statusColor = { pending: '#E8A020', approved: '#667EEA', disposed: '#A0AEC0', rejected: C.danger }
+
+  return (
+    <Card title="🗑️ 폐기 관리" sub="Disposal Management">
+      <div style={{ marginBottom: '20px', padding: '12px 16px',
+        background: '#F0F4FF', borderRadius: '8px', border: '1px solid #C3D0F5' }}>
+        <label style={labelStyle}>처리자 이름 * <span style={{ color: C.muted, fontWeight: '400', textTransform: 'none' }}>(승인/반려 시 기록됩니다)</span></label>
+        <input value={adminName} onChange={e => setAdminName(e.target.value)}
+          placeholder="본인 이름" style={{ ...inputStyle, maxWidth: '240px' }} />
+      </div>
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        {[['all','전체'],['pending','대기중'],['approved','승인됨'],['disposed','폐기완료'],['rejected','반려']].map(([key, label]) => (
+          <button key={key} onClick={() => setFilter(key)} style={{
+            padding: '5px 14px', borderRadius: '16px', border: 'none', cursor: 'pointer',
+            background: filter === key ? C.navy : C.bg,
+            color: filter === key ? '#fff' : C.text,
+            fontSize: '12px', fontWeight: filter === key ? '700' : '400',
+          }}>{label} <span style={{ opacity: 0.7 }}>({counts[key] ?? 0})</span></button>
+        ))}
+      </div>
+      {filtered.length === 0
+        ? <div style={{ textAlign: 'center', padding: '40px', color: C.muted }}>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>🗑️</div>
+            <div>폐기 신청이 없습니다</div>
+          </div>
+        : filtered.map(req => (
+          <div key={req.id} style={{ border: `1px solid ${C.border}`, borderRadius: '10px', marginBottom: '10px', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 16px', background: C.white }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                <span style={{ background: statusColor[req.status] + '22', color: statusColor[req.status],
+                  fontSize: '11px', fontWeight: '700', padding: '2px 10px', borderRadius: '10px' }}>
+                  {statusLabel[req.status]}
+                </span>
+                <span style={{ fontWeight: '700', fontSize: '15px', color: C.navy }}>{req.reagent_name}</span>
+                <span style={{ color: C.muted, fontSize: '12px', marginLeft: 'auto' }}>
+                  {new Date(req.created_at).toLocaleDateString()}
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', fontSize: '12px', color: C.muted, marginBottom: '10px' }}>
+                <div><span style={{ fontWeight: '600' }}>신청자:</span> {req.requested_by}</div>
+                <div><span style={{ fontWeight: '600' }}>수량:</span> {req.quantity}</div>
+                <div><span style={{ fontWeight: '600' }}>Lot:</span> {req.lot_no || '-'}</div>
+                <div><span style={{ fontWeight: '600' }}>사유:</span> {req.reason || '-'}</div>
+                {req.approved_by && <div><span style={{ fontWeight: '600' }}>승인자:</span> {req.approved_by}</div>}
+                {req.approved_at && <div><span style={{ fontWeight: '600' }}>승인일:</span> {new Date(req.approved_at).toLocaleDateString()}</div>}
+                {req.disposed_at && <div><span style={{ fontWeight: '600' }}>폐기일:</span> {new Date(req.disposed_at).toLocaleDateString()}</div>}
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {req.status === 'pending' && (<>
+                  <button onClick={() => approve(req)}
+                    style={{ ...btnPrimary, background: '#38A169', padding: '6px 14px', fontSize: '12px' }}>✓ 승인</button>
+                  <button onClick={() => reject(req)}
+                    style={{ ...btnPrimary, background: C.danger, padding: '6px 14px', fontSize: '12px' }}>✗ 반려</button>
+                </>)}
+                {req.status === 'approved' && (
+                  <button onClick={() => complete(req)}
+                    style={{ ...btnPrimary, background: '#A0AEC0', padding: '6px 14px', fontSize: '12px' }}>🗑️ 폐기 완료</button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
     </Card>
   )
 }
@@ -394,17 +501,13 @@ function NoticeTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <Card title={editTarget ? '✏️ 수정 중' : '📢 새 글 작성'}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: '16px', marginBottom: '12px' }}>
-          <div>
-            <label style={labelStyle}>제목 *</label>
-            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>분류</label>
+          <div><label style={labelStyle}>제목 *</label>
+            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} style={inputStyle} /></div>
+          <div><label style={labelStyle}>분류</label>
             <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} style={inputStyle}>
               <option value="notice">공지사항</option>
               <option value="safety">안전관리</option>
-            </select>
-          </div>
+            </select></div>
         </div>
         <div style={{ marginBottom: '16px' }}>
           <label style={labelStyle}>내용</label>
@@ -418,8 +521,7 @@ function NoticeTab() {
         </div>
       </Card>
       <Card title="📋 등록된 글 목록">
-        {notices.length === 0
-          ? <p style={{ color: C.muted }}>등록된 글이 없습니다.</p>
+        {notices.length === 0 ? <p style={{ color: C.muted }}>등록된 글이 없습니다.</p>
           : notices.map(n => (
             <div key={n.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
               padding: '12px 0', borderBottom: `1px solid ${C.border}` }}>
@@ -439,9 +541,8 @@ function NoticeTab() {
               <div style={{ display: 'flex', gap: '6px', marginLeft: '12px' }}>
                 <button onClick={() => { setEditTarget(n.id); setForm({ title: n.title, content: n.content || '', type: n.type || 'notice' }) }}
                   style={{ ...btnGhost, padding: '4px 10px', fontSize: '12px' }}>수정</button>
-                <button onClick={() => del(n.id)} style={{
-                  background: '#FFF5F5', color: C.danger, border: `1px solid #FC8181`,
-                  padding: '4px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>삭제</button>
+                <button onClick={() => del(n.id)} style={{ background: '#FFF5F5', color: C.danger,
+                  border: `1px solid #FC8181`, padding: '4px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>삭제</button>
               </div>
             </div>
           ))}
@@ -500,7 +601,6 @@ function PurchaseTab({ onCountChange }) {
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter)
   const counts = { all: requests.length, pending: 0, approved: 0, ordered: 0, delivered: 0, rejected: 0, done: 0 }
   requests.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++ })
-
   const filterTabs = [
     { key: 'all', label: '전체' }, { key: 'pending', label: '대기중' },
     { key: 'approved', label: '승인됨' }, { key: 'ordered', label: '발주완료' },
@@ -522,9 +622,7 @@ function PurchaseTab({ onCountChange }) {
             background: filter === f.key ? C.navy : C.bg,
             color: filter === f.key ? '#fff' : C.text,
             fontSize: '12px', fontWeight: filter === f.key ? '700' : '400',
-          }}>
-            {f.label} <span style={{ opacity: 0.7 }}>({counts[f.key] ?? 0})</span>
-          </button>
+          }}>{f.label} <span style={{ opacity: 0.7 }}>({counts[f.key] ?? 0})</span></button>
         ))}
       </div>
       {filtered.length === 0
@@ -532,8 +630,7 @@ function PurchaseTab({ onCountChange }) {
         : filtered.map(req => (
           <div key={req.id} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', marginBottom: '10px', overflow: 'hidden' }}>
             <div onClick={() => setExpandedId(expandedId === req.id ? null : req.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px',
-                padding: '12px 16px', cursor: 'pointer', background: '#fff' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', cursor: 'pointer', background: '#fff' }}>
               <StatusBadge status={req.status} />
               <span style={{ fontWeight: '600', flex: 1 }}>{req.target_name || `(ID: ${req.target_id})`}</span>
               <span style={{ color: C.muted, fontSize: '13px' }}>{req.user_name}</span>
@@ -703,8 +800,7 @@ function ReceiptTab() {
         {receipts.length === 0
           ? <p style={{ padding: '20px', color: C.muted }}>등록된 서류가 없습니다.</p>
           : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>{['날짜', '종류', '제목', '비고', '파일', '삭제'].map(h =>
-                <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+              <thead><tr>{['날짜','종류','제목','비고','파일','삭제'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
               <tbody>
                 {receipts.map(r => (
                   <tr key={r.id}>
@@ -763,7 +859,7 @@ function ManageTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <Card title={`⏰ 유통기한 임박 (${days}일 이내)`}
         extra={<div style={{ display: 'flex', gap: '6px' }}>
-          {[14, 30, 60, 90].map(d => (
+          {[14,30,60,90].map(d => (
             <button key={d} onClick={() => setDays(d)} style={{
               padding: '3px 10px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontSize: '12px',
               background: days === d ? C.navy : C.bg, color: days === d ? '#fff' : C.text,
@@ -772,7 +868,7 @@ function ManageTab() {
         </div>}>
         {expiring.length === 0 ? <p style={{ color: C.muted }}>해당 없음</p>
           : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>{['시약명', '위치', 'Lot No.', '유통기한', 'D-day'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+              <thead><tr>{['시약명','위치','Lot No.','유통기한','D-day'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
               <tbody>{expiring.map(lot => {
                 const dday = Math.ceil((new Date(lot.expiry_date) - new Date()) / 86400000)
                 return <tr key={lot.id}>
@@ -788,7 +884,7 @@ function ManageTab() {
       <Card title="⚠️ 재고 부족 시약">
         {lowReagents.length === 0 ? <p style={{ color: C.muted }}>재고 부족 시약 없음</p>
           : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>{['시약명', 'Lot No.', '미개봉', '잔량'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+              <thead><tr>{['시약명','Lot No.','미개봉','잔량'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
               <tbody>{lowReagents.map(lot => (
                 <tr key={lot.id} style={{ background: '#FFF8F8' }}>
                   <td style={{ ...tdStyle, fontWeight: '600' }}>{lot.reagents?.name}</td>
@@ -802,7 +898,7 @@ function ManageTab() {
       <Card title="⚠️ 재고 부족 물품">
         {lowItems.length === 0 ? <p style={{ color: C.muted }}>재고 부족 물품 없음</p>
           : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>{['물품명', '미개봉', '잔량'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+              <thead><tr>{['물품명','미개봉','잔량'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
               <tbody>{lowItems.map(lot => (
                 <tr key={lot.id} style={{ background: '#FFF8F8' }}>
                   <td style={{ ...tdStyle, fontWeight: '600' }}>{lot.items?.name}</td>
@@ -840,7 +936,7 @@ function LogTab() {
   return (
     <Card title="📋 변경 로그" sub="Change Logs">
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-        {[['admin', '관리자 작업 로그'], ['stock', '재고 수정 로그']].map(([key, label]) => (
+        {[['admin','관리자 작업 로그'],['stock','재고 수정 로그']].map(([key, label]) => (
           <button key={key} onClick={() => setLogTab(key)} style={{
             ...btnGhost,
             background: logTab === key ? C.navy : '#fff',
@@ -851,7 +947,7 @@ function LogTab() {
       </div>
       {logTab === 'admin' && (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>{['일시', '작업자', '작업', '대상', '내용'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+          <thead><tr>{['일시','작업자','작업','대상','내용'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
           <tbody>
             {logs.length === 0
               ? <tr><td colSpan={5} style={{ padding: '20px', color: C.muted, textAlign: 'center' }}>로그가 없습니다</td></tr>
@@ -869,7 +965,7 @@ function LogTab() {
       )}
       {logTab === 'stock' && (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>{['일시', '작업자', '시약', 'Lot', '미개봉 변경', '잔량 변경'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+          <thead><tr>{['일시','작업자','시약','Lot','미개봉 변경','잔량 변경'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
           <tbody>
             {stockLogs.length === 0
               ? <tr><td colSpan={6} style={{ padding: '20px', color: C.muted, textAlign: 'center' }}>로그가 없습니다</td></tr>
