@@ -8,6 +8,7 @@ const TABS = [
   { key: 'reagent',  label: '시약 추가',      icon: '🧪', sub: 'Add Reagent' },
   { key: 'item',     label: '물품 추가',       icon: '📦', sub: 'Add Item' },
   { key: 'disposal', label: '폐기 관리',       icon: '🗑️', sub: 'Disposal' },
+  { key: 'move',     label: '위치 이동',       icon: '📍', sub: 'Move' },
   { key: 'notice',   label: '공지 / 안전정보', icon: '📢', sub: 'Notice' },
   { key: 'purchase', label: '구매 관리',       icon: '🛒', sub: 'Purchase' },
   { key: 'receipt',  label: '영수증 관리',     icon: '🧾', sub: 'Receipt' },
@@ -90,6 +91,7 @@ export default function Admin() {
           {tab === 'reagent'  && <ReagentAddTab locations={locations} />}
           {tab === 'item'     && <ItemAddTab locations={locations} />}
           {tab === 'disposal' && <DisposalTab onCountChange={fetchDisposalCount} />}
+          {tab === 'move'     && <MoveTab locations={locations} />}
           {tab === 'notice'   && <NoticeTab />}
           {tab === 'purchase' && <PurchaseTab onCountChange={fetchPendingCount} />}
           {tab === 'receipt'  && <ReceiptTab />}
@@ -340,10 +342,7 @@ function DisposalTab({ onCountChange }) {
   useEffect(() => { fetchRequests() }, [])
 
   async function fetchRequests() {
-    const { data } = await supabase
-      .from('disposal_requests')
-      .select('*')
-      .order('created_at', { ascending: false })
+    const { data } = await supabase.from('disposal_requests').select('*').order('created_at', { ascending: false })
     if (data) setRequests(data)
     onCountChange && onCountChange()
   }
@@ -352,9 +351,7 @@ function DisposalTab({ onCountChange }) {
     if (!adminName.trim()) { alert('승인자 이름을 입력해주세요'); return }
     if (!window.confirm(`"${req.reagent_name}" 폐기를 승인하시겠습니까?`)) return
     await supabase.from('disposal_requests').update({
-      status: 'approved',
-      approved_by: adminName,
-      approved_at: new Date().toISOString(),
+      status: 'approved', approved_by: adminName, approved_at: new Date().toISOString(),
     }).eq('id', req.id)
     await supabase.from('admin_logs').insert({
       admin_name: adminName, action: '폐기 승인',
@@ -369,16 +366,9 @@ function DisposalTab({ onCountChange }) {
     if (!window.confirm(`"${req.reagent_name}" 폐기를 완료 처리하시겠습니까?\n⚠️ 재고에서 차감됩니다.`)) return
     if (req.lot_id) {
       const { data: lot } = await supabase.from('reagent_lots').select('*').eq('id', req.lot_id).single()
-      if (lot) {
-        await supabase.from('reagent_lots').update({
-          sealed_count: Math.max(0, lot.sealed_count - 1),
-        }).eq('id', req.lot_id)
-      }
+      if (lot) await supabase.from('reagent_lots').update({ sealed_count: Math.max(0, lot.sealed_count - 1) }).eq('id', req.lot_id)
     }
-    await supabase.from('disposal_requests').update({
-      status: 'disposed',
-      disposed_at: new Date().toISOString(),
-    }).eq('id', req.id)
+    await supabase.from('disposal_requests').update({ status: 'disposed', disposed_at: new Date().toISOString() }).eq('id', req.id)
     await supabase.from('admin_logs').insert({
       admin_name: adminName, action: '폐기 완료',
       target_type: 'disposal', target_id: req.id,
@@ -404,7 +394,7 @@ function DisposalTab({ onCountChange }) {
     <Card title="🗑️ 폐기 관리" sub="Disposal Management">
       <div style={{ marginBottom: '20px', padding: '12px 16px',
         background: '#F0F4FF', borderRadius: '8px', border: '1px solid #C3D0F5' }}>
-        <label style={labelStyle}>처리자 이름 * <span style={{ color: C.muted, fontWeight: '400', textTransform: 'none' }}>(승인/반려 시 기록됩니다)</span></label>
+        <label style={labelStyle}>처리자 이름 *</label>
         <input value={adminName} onChange={e => setAdminName(e.target.value)}
           placeholder="본인 이름" style={{ ...inputStyle, maxWidth: '240px' }} />
       </div>
@@ -412,8 +402,7 @@ function DisposalTab({ onCountChange }) {
         {[['all','전체'],['pending','대기중'],['approved','승인됨'],['disposed','폐기완료'],['rejected','반려']].map(([key, label]) => (
           <button key={key} onClick={() => setFilter(key)} style={{
             padding: '5px 14px', borderRadius: '16px', border: 'none', cursor: 'pointer',
-            background: filter === key ? C.navy : C.bg,
-            color: filter === key ? '#fff' : C.text,
+            background: filter === key ? C.navy : C.bg, color: filter === key ? '#fff' : C.text,
             fontSize: '12px', fontWeight: filter === key ? '700' : '400',
           }}>{label} <span style={{ opacity: 0.7 }}>({counts[key] ?? 0})</span></button>
         ))}
@@ -424,17 +413,15 @@ function DisposalTab({ onCountChange }) {
             <div>폐기 신청이 없습니다</div>
           </div>
         : filtered.map(req => (
-          <div key={req.id} style={{ border: `1px solid ${C.border}`, borderRadius: '10px', marginBottom: '10px', overflow: 'hidden' }}>
-            <div style={{ padding: '14px 16px', background: C.white }}>
+          <div key={req.id} style={{ border: `1px solid ${C.border}`, borderRadius: '10px', marginBottom: '10px' }}>
+            <div style={{ padding: '14px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
                 <span style={{ background: statusColor[req.status] + '22', color: statusColor[req.status],
                   fontSize: '11px', fontWeight: '700', padding: '2px 10px', borderRadius: '10px' }}>
                   {statusLabel[req.status]}
                 </span>
                 <span style={{ fontWeight: '700', fontSize: '15px', color: C.navy }}>{req.reagent_name}</span>
-                <span style={{ color: C.muted, fontSize: '12px', marginLeft: 'auto' }}>
-                  {new Date(req.created_at).toLocaleDateString()}
-                </span>
+                <span style={{ color: C.muted, fontSize: '12px', marginLeft: 'auto' }}>{new Date(req.created_at).toLocaleDateString()}</span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', fontSize: '12px', color: C.muted, marginBottom: '10px' }}>
                 <div><span style={{ fontWeight: '600' }}>신청자:</span> {req.requested_by}</div>
@@ -442,25 +429,209 @@ function DisposalTab({ onCountChange }) {
                 <div><span style={{ fontWeight: '600' }}>Lot:</span> {req.lot_no || '-'}</div>
                 <div><span style={{ fontWeight: '600' }}>사유:</span> {req.reason || '-'}</div>
                 {req.approved_by && <div><span style={{ fontWeight: '600' }}>승인자:</span> {req.approved_by}</div>}
-                {req.approved_at && <div><span style={{ fontWeight: '600' }}>승인일:</span> {new Date(req.approved_at).toLocaleDateString()}</div>}
                 {req.disposed_at && <div><span style={{ fontWeight: '600' }}>폐기일:</span> {new Date(req.disposed_at).toLocaleDateString()}</div>}
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 {req.status === 'pending' && (<>
-                  <button onClick={() => approve(req)}
-                    style={{ ...btnPrimary, background: '#38A169', padding: '6px 14px', fontSize: '12px' }}>✓ 승인</button>
-                  <button onClick={() => reject(req)}
-                    style={{ ...btnPrimary, background: C.danger, padding: '6px 14px', fontSize: '12px' }}>✗ 반려</button>
+                  <button onClick={() => approve(req)} style={{ ...btnPrimary, background: '#38A169', padding: '6px 14px', fontSize: '12px' }}>✓ 승인</button>
+                  <button onClick={() => reject(req)} style={{ ...btnPrimary, background: C.danger, padding: '6px 14px', fontSize: '12px' }}>✗ 반려</button>
                 </>)}
                 {req.status === 'approved' && (
-                  <button onClick={() => complete(req)}
-                    style={{ ...btnPrimary, background: '#A0AEC0', padding: '6px 14px', fontSize: '12px' }}>🗑️ 폐기 완료</button>
+                  <button onClick={() => complete(req)} style={{ ...btnPrimary, background: '#A0AEC0', padding: '6px 14px', fontSize: '12px' }}>🗑️ 폐기 완료</button>
                 )}
               </div>
             </div>
           </div>
         ))}
     </Card>
+  )
+}
+
+// ══════════════════════════════════════════════
+//  위치 이동
+// ══════════════════════════════════════════════
+function MoveTab({ locations }) {
+  const [search, setSearch] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [selectedReagent, setSelectedReagent] = useState(null)
+  const [toLocationId, setToLocationId] = useState('')
+  const [movedBy, setMovedBy] = useState('')
+  const [notes, setNotes] = useState('')
+  const [history, setHistory] = useState([])
+
+  useEffect(() => { fetchHistory() }, [])
+
+  async function fetchHistory() {
+    const { data } = await supabase.from('location_history')
+      .select('*').order('created_at', { ascending: false }).limit(30)
+    if (data) setHistory(data)
+  }
+
+  async function handleSearch() {
+    if (!search.trim()) return
+    const { data } = await supabase.from('reagents')
+      .select('*, locations(*)').ilike('name', `%${search}%`)
+    if (data) setSearchResults(data)
+  }
+
+  async function moveReagent() {
+    if (!selectedReagent) { alert('시약을 선택해주세요'); return }
+    if (!toLocationId) { alert('이동할 위치를 선택해주세요'); return }
+    if (!movedBy.trim()) { alert('이동자 이름을 입력해주세요'); return }
+    if (selectedReagent.location_id === toLocationId) { alert('현재 위치와 같습니다'); return }
+
+    const toLoc = locations.find(l => l.id === toLocationId)
+    const fromLocName = selectedReagent.locations
+      ? `${selectedReagent.locations.room}${selectedReagent.locations.detail ? ' - ' + selectedReagent.locations.detail : ''}`
+      : '미지정'
+    const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
+
+    await supabase.from('reagents').update({ location_id: toLocationId }).eq('id', selectedReagent.id)
+
+    await supabase.from('location_history').insert({
+      reagent_id: selectedReagent.id,
+      reagent_name: selectedReagent.name,
+      from_location_id: selectedReagent.location_id,
+      from_location_name: fromLocName,
+      to_location_id: toLocationId,
+      to_location_name: toLocName,
+      moved_by: movedBy,
+      notes,
+    })
+
+    await supabase.from('admin_logs').insert({
+      admin_name: movedBy, action: '위치 이동',
+      target_type: 'reagent', target_id: selectedReagent.id,
+      description: `${selectedReagent.name}: ${fromLocName} → ${toLocName}`,
+    })
+
+    alert(`✅ ${selectedReagent.name} 이동 완료!\n${fromLocName} → ${toLocName}`)
+    setSelectedReagent(null)
+    setToLocationId('')
+    setNotes('')
+    setSearch('')
+    setSearchResults([])
+    fetchHistory()
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <Card title="📍 시약 위치 이동" sub="Move Reagent">
+        {/* 이동자 이름 */}
+        <div style={{ marginBottom: '20px', padding: '12px 16px',
+          background: '#F0F4FF', borderRadius: '8px', border: '1px solid #C3D0F5' }}>
+          <label style={labelStyle}>이동자 이름 *</label>
+          <input value={movedBy} onChange={e => setMovedBy(e.target.value)}
+            placeholder="본인 이름" style={{ ...inputStyle, maxWidth: '240px' }} />
+        </div>
+
+        {/* 시약 검색 */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={labelStyle}>시약 검색 *</label>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input value={search}
+              onChange={e => { setSearch(e.target.value); setSelectedReagent(null) }}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="시약 이름으로 검색..."
+              style={{ ...inputStyle, flex: 1 }} />
+            <button onClick={handleSearch} style={{ ...btnPrimary, padding: '9px 18px', flexShrink: 0 }}>검색</button>
+          </div>
+        </div>
+
+        {/* 검색 결과 */}
+        {searchResults.length > 0 && !selectedReagent && (
+          <div style={{ marginBottom: '16px', border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
+            {searchResults.map(r => (
+              <div key={r.id} onClick={() => { setSelectedReagent(r); setSearchResults([]) }}
+                style={{ padding: '10px 16px', cursor: 'pointer', borderBottom: `1px solid ${C.border}`,
+                  background: C.white, fontSize: '13px' }}
+                onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                onMouseLeave={e => e.currentTarget.style.background = C.white}>
+                <span style={{ fontWeight: '600', color: C.navy }}>{r.name}</span>
+                <span style={{ color: C.muted, marginLeft: '12px', fontSize: '12px' }}>
+                  현재: {r.locations ? `${r.locations.room}${r.locations.detail ? ' - ' + r.locations.detail : ''}` : '미지정'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 선택된 시약 */}
+        {selectedReagent && (
+          <div style={{ marginBottom: '16px', padding: '12px 16px',
+            background: '#EEF2FB', borderRadius: '8px', border: `1px solid ${C.navy}33`,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontWeight: '700', color: C.navy }}>{selectedReagent.name}</div>
+              <div style={{ fontSize: '12px', color: C.muted, marginTop: '2px' }}>
+                현재 위치: {selectedReagent.locations
+                  ? `${selectedReagent.locations.room}${selectedReagent.locations.detail ? ' - ' + selectedReagent.locations.detail : ''}`
+                  : '미지정'}
+              </div>
+            </div>
+            <button onClick={() => setSelectedReagent(null)} style={{
+              background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '16px' }}>✕</button>
+          </div>
+        )}
+
+        {/* 이동할 위치 */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={labelStyle}>이동할 위치 *</label>
+          <select value={toLocationId} onChange={e => setToLocationId(e.target.value)} style={inputStyle}>
+            <option value="">선택하세요</option>
+            {locations.map(l => (
+              <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ marginBottom: '20px' }}>
+          <label style={labelStyle}>메모</label>
+          <input value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder="선택사항" style={inputStyle} />
+        </div>
+
+        {/* 이동 미리보기 */}
+        {selectedReagent && toLocationId && (
+          <div style={{ marginBottom: '16px', padding: '12px 16px',
+            background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', fontSize: '13px' }}>
+            <strong style={{ color: '#276749' }}>이동 미리보기:</strong>
+            <div style={{ marginTop: '6px', color: '#2D6A4F' }}>
+              {selectedReagent.locations
+                ? `${selectedReagent.locations.room}${selectedReagent.locations.detail ? ' - ' + selectedReagent.locations.detail : ''}`
+                : '미지정'}
+              {' → '}
+              {(() => { const l = locations.find(l => l.id === toLocationId); return l ? `${l.room}${l.detail ? ' - ' + l.detail : ''}` : '' })()}
+            </div>
+          </div>
+        )}
+
+        <button onClick={moveReagent} style={{ ...btnPrimary, background: '#667EEA' }}>📍 위치 이동</button>
+      </Card>
+
+      {/* 이동 이력 */}
+      <Card title="📋 위치 이동 이력" noPadding>
+        {history.length === 0
+          ? <div style={{ padding: '24px', textAlign: 'center', color: C.muted, fontSize: '13px' }}>이동 이력이 없습니다</div>
+          : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>{['일시','시약명','이전 위치','새 위치','이동자','메모'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+              <tbody>
+                {history.map(h => (
+                  <tr key={h.id}>
+                    <td style={{ ...tdStyle, color: C.muted, fontSize: '11px', whiteSpace: 'nowrap' }}>{new Date(h.created_at).toLocaleDateString()}</td>
+                    <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>{h.reagent_name}</td>
+                    <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>{h.from_location_name || '미지정'}</td>
+                    <td style={{ ...tdStyle, fontSize: '12px' }}>
+                      <span style={{ color: '#276749', fontWeight: '600' }}>{h.to_location_name}</span>
+                    </td>
+                    <td style={{ ...tdStyle, fontSize: '12px' }}>{h.moved_by}</td>
+                    <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{h.notes || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>}
+      </Card>
+    </div>
   )
 }
 
@@ -574,11 +745,7 @@ function PurchaseTab({ onCountChange }) {
     await supabase.from('purchase_requests').update({
       status,
       ...(note ? { reject_note: note } : {}),
-      ...(status === 'ordered' ? {
-        ordered_at: new Date().toISOString(),
-        tracking_number: tracking.tracking_number || null,
-        estimated_arrival: tracking.estimated_arrival || null,
-      } : {}),
+      ...(status === 'ordered' ? { ordered_at: new Date().toISOString(), tracking_number: tracking.tracking_number || null, estimated_arrival: tracking.estimated_arrival || null } : {}),
       ...(status === 'delivered' ? { delivered_at: new Date().toISOString() } : {}),
     }).eq('id', id)
     fetchRequests()
@@ -602,9 +769,8 @@ function PurchaseTab({ onCountChange }) {
   const counts = { all: requests.length, pending: 0, approved: 0, ordered: 0, delivered: 0, rejected: 0, done: 0 }
   requests.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++ })
   const filterTabs = [
-    { key: 'all', label: '전체' }, { key: 'pending', label: '대기중' },
-    { key: 'approved', label: '승인됨' }, { key: 'ordered', label: '발주완료' },
-    { key: 'delivered', label: '배송완료' }, { key: 'done', label: '완료' }, { key: 'rejected', label: '반려' },
+    { key: 'all', label: '전체' }, { key: 'pending', label: '대기중' }, { key: 'approved', label: '승인됨' },
+    { key: 'ordered', label: '발주완료' }, { key: 'delivered', label: '배송완료' }, { key: 'done', label: '완료' }, { key: 'rejected', label: '반려' },
   ]
 
   return (
@@ -619,14 +785,12 @@ function PurchaseTab({ onCountChange }) {
         {filterTabs.map(f => (
           <button key={f.key} onClick={() => setFilter(f.key)} style={{
             padding: '5px 14px', borderRadius: '16px', border: 'none', cursor: 'pointer',
-            background: filter === f.key ? C.navy : C.bg,
-            color: filter === f.key ? '#fff' : C.text,
+            background: filter === f.key ? C.navy : C.bg, color: filter === f.key ? '#fff' : C.text,
             fontSize: '12px', fontWeight: filter === f.key ? '700' : '400',
           }}>{f.label} <span style={{ opacity: 0.7 }}>({counts[f.key] ?? 0})</span></button>
         ))}
       </div>
-      {filtered.length === 0
-        ? <p style={{ color: C.muted }}>해당하는 요청이 없습니다.</p>
+      {filtered.length === 0 ? <p style={{ color: C.muted }}>해당하는 요청이 없습니다.</p>
         : filtered.map(req => (
           <div key={req.id} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', marginBottom: '10px', overflow: 'hidden' }}>
             <div onClick={() => setExpandedId(expandedId === req.id ? null : req.id)}
@@ -642,8 +806,7 @@ function PurchaseTab({ onCountChange }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px', fontSize: '13px' }}>
                   {[
                     ['종류', req.target_type === 'reagent' ? '시약' : req.target_type === 'item' ? '물품' : '신규'],
-                    ['수량', req.quantity],
-                    ['요청 사유', req.reason || '-'],
+                    ['수량', req.quantity], ['요청 사유', req.reason || '-'],
                     req.reject_note && ['반려 사유', req.reject_note],
                     req.ordered_at && ['발주일', new Date(req.ordered_at).toLocaleDateString()],
                     req.tracking_number && ['운송장 번호', req.tracking_number],
@@ -657,10 +820,8 @@ function PurchaseTab({ onCountChange }) {
                   ))}
                 </div>
                 {(req.status === 'approved' || req.status === 'ordered') && (
-                  <div style={{ background: C.white, border: `1px solid ${C.border}`,
-                    borderRadius: '8px', padding: '12px 14px', marginBottom: '12px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: '700', color: C.muted,
-                      letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '10px' }}>배송 정보 입력</div>
+                  <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px 14px', marginBottom: '12px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: C.muted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '10px' }}>배송 정보 입력</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', color: C.muted, marginBottom: '4px' }}>운송장 번호</label>
@@ -677,34 +838,20 @@ function PurchaseTab({ onCountChange }) {
                           style={{ ...inputStyle, fontSize: '13px' }} />
                       </div>
                     </div>
-                    <button onClick={() => saveTracking(req.id)} style={{
-                      marginTop: '8px', background: C.bg, border: `1px solid ${C.border}`,
-                      borderRadius: '6px', padding: '5px 14px', cursor: 'pointer', fontSize: '12px', color: C.text,
-                    }}>저장</button>
+                    <button onClick={() => saveTracking(req.id)} style={{ marginTop: '8px', background: C.bg, border: `1px solid ${C.border}`, borderRadius: '6px', padding: '5px 14px', cursor: 'pointer', fontSize: '12px', color: C.text }}>저장</button>
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                   {req.status === 'pending' && (<>
-                    <button onClick={() => updateStatus(req.id, 'approved')}
-                      style={{ ...btnPrimary, background: '#38A169' }}>✓ 승인</button>
+                    <button onClick={() => updateStatus(req.id, 'approved')} style={{ ...btnPrimary, background: '#38A169' }}>✓ 승인</button>
                     <input placeholder="반려 사유" value={rejectNote[req.id] || ''}
                       onChange={e => setRejectNote({ ...rejectNote, [req.id]: e.target.value })}
                       style={{ ...inputStyle, width: '200px' }} />
-                    <button onClick={() => updateStatus(req.id, 'rejected', rejectNote[req.id])}
-                      style={{ ...btnPrimary, background: C.danger }}>✗ 반려</button>
+                    <button onClick={() => updateStatus(req.id, 'rejected', rejectNote[req.id])} style={{ ...btnPrimary, background: C.danger }}>✗ 반려</button>
                   </>)}
-                  {req.status === 'approved' && (
-                    <button onClick={() => updateStatus(req.id, 'ordered')}
-                      style={{ ...btnPrimary, background: '#667EEA' }}>📦 발주 완료</button>
-                  )}
-                  {req.status === 'ordered' && (
-                    <button onClick={() => updateStatus(req.id, 'delivered')}
-                      style={{ ...btnPrimary, background: '#38A169' }}>🚚 배송 완료</button>
-                  )}
-                  {req.status === 'delivered' && (
-                    <button onClick={() => updateStatus(req.id, 'done')}
-                      style={{ ...btnPrimary, background: '#A0AEC0' }}>✓ 완료 처리</button>
-                  )}
+                  {req.status === 'approved' && <button onClick={() => updateStatus(req.id, 'ordered')} style={{ ...btnPrimary, background: '#667EEA' }}>📦 발주 완료</button>}
+                  {req.status === 'ordered' && <button onClick={() => updateStatus(req.id, 'delivered')} style={{ ...btnPrimary, background: '#38A169' }}>🚚 배송 완료</button>}
+                  {req.status === 'delivered' && <button onClick={() => updateStatus(req.id, 'done')} style={{ ...btnPrimary, background: '#A0AEC0' }}>✓ 완료 처리</button>}
                 </div>
               </div>
             )}
@@ -744,8 +891,7 @@ function ReceiptTab() {
       fileUrl = urlData?.publicUrl || ''
     }
     await supabase.from('receipts').insert({
-      title: form.title, doc_type: form.doc_type,
-      date: form.date, notes: form.notes,
+      title: form.title, doc_type: form.doc_type, date: form.date, notes: form.notes,
       file_url: fileUrl || form.file_url || null,
     })
     alert('등록되었습니다!')
@@ -769,14 +915,11 @@ function ReceiptTab() {
       <Card title="🧾 서류 등록">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '12px' }}>
           <div><label style={labelStyle}>제목 *</label>
-            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
-              placeholder="예: Ethanol 구매 영수증" style={inputStyle} /></div>
+            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="예: Ethanol 구매 영수증" style={inputStyle} /></div>
           <div><label style={labelStyle}>서류 종류</label>
             <select value={form.doc_type} onChange={e => setForm({ ...form, doc_type: e.target.value })} style={inputStyle}>
-              <option value="receipt">영수증</option>
-              <option value="estimate">견적서</option>
-              <option value="statement">거래명세서</option>
-              <option value="other">기타</option>
+              <option value="receipt">영수증</option><option value="estimate">견적서</option>
+              <option value="statement">거래명세서</option><option value="other">기타</option>
             </select></div>
           <div><label style={labelStyle}>날짜 *</label>
             <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} style={inputStyle} /></div>
@@ -784,12 +927,10 @@ function ReceiptTab() {
             <input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} style={inputStyle} /></div>
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={labelStyle}>파일 첨부 (이미지/PDF)</label>
-            <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => setSelectedFile(e.target.files[0])}
-              style={{ ...inputStyle, padding: '6px' }} />
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => setSelectedFile(e.target.files[0])} style={{ ...inputStyle, padding: '6px' }} />
             {selectedFile && <p style={{ margin: '4px 0 0', fontSize: '12px', color: C.muted }}>선택됨: {selectedFile.name}</p>}
             <label style={{ ...labelStyle, marginTop: '8px' }}>또는 URL 직접 입력</label>
-            <input value={form.file_url} onChange={e => setForm({ ...form, file_url: e.target.value })}
-              placeholder="https://..." style={inputStyle} />
+            <input value={form.file_url} onChange={e => setForm({ ...form, file_url: e.target.value })} placeholder="https://..." style={inputStyle} />
           </div>
         </div>
         <button onClick={upload} disabled={uploading} style={{ ...btnPrimary, opacity: uploading ? 0.6 : 1 }}>
@@ -797,31 +938,19 @@ function ReceiptTab() {
         </button>
       </Card>
       <Card title="📁 서류 목록" noPadding>
-        {receipts.length === 0
-          ? <p style={{ padding: '20px', color: C.muted }}>등록된 서류가 없습니다.</p>
+        {receipts.length === 0 ? <p style={{ padding: '20px', color: C.muted }}>등록된 서류가 없습니다.</p>
           : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>{['날짜','종류','제목','비고','파일','삭제'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-              <tbody>
-                {receipts.map(r => (
-                  <tr key={r.id}>
-                    <td style={tdStyle}>{r.date}</td>
-                    <td style={tdStyle}>
-                      <span style={{ background: typeColor[r.doc_type] + '22', color: typeColor[r.doc_type],
-                        padding: '2px 8px', borderRadius: '10px', fontSize: '12px', fontWeight: '700' }}>
-                        {typeLabel[r.doc_type]}
-                      </span>
-                    </td>
-                    <td style={{ ...tdStyle, fontWeight: '600' }}>{r.title}</td>
-                    <td style={{ ...tdStyle, color: C.muted }}>{r.notes || '-'}</td>
-                    <td style={tdStyle}>{r.file_url
-                      ? <a href={r.file_url} target="_blank" rel="noreferrer" style={{ color: C.navy, fontSize: '13px' }}>📎 보기</a>
-                      : <span style={{ color: C.muted, fontSize: '12px' }}>없음</span>}</td>
-                    <td style={tdStyle}>
-                      <button onClick={() => del(r.id)} style={{ background: 'none', border: 'none', color: C.danger, cursor: 'pointer' }}>✕</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+              <tbody>{receipts.map(r => (
+                <tr key={r.id}>
+                  <td style={tdStyle}>{r.date}</td>
+                  <td style={tdStyle}><span style={{ background: typeColor[r.doc_type] + '22', color: typeColor[r.doc_type], padding: '2px 8px', borderRadius: '10px', fontSize: '12px', fontWeight: '700' }}>{typeLabel[r.doc_type]}</span></td>
+                  <td style={{ ...tdStyle, fontWeight: '600' }}>{r.title}</td>
+                  <td style={{ ...tdStyle, color: C.muted }}>{r.notes || '-'}</td>
+                  <td style={tdStyle}>{r.file_url ? <a href={r.file_url} target="_blank" rel="noreferrer" style={{ color: C.navy, fontSize: '13px' }}>📎 보기</a> : <span style={{ color: C.muted, fontSize: '12px' }}>없음</span>}</td>
+                  <td style={tdStyle}><button onClick={() => del(r.id)} style={{ background: 'none', border: 'none', color: C.danger, cursor: 'pointer' }}>✕</button></td>
+                </tr>
+              ))}</tbody>
             </table>}
       </Card>
     </div>
@@ -847,11 +976,9 @@ function ManageTab() {
       .select('*, reagents(name, locations(room, detail))')
       .lte('expiry_date', soonStr).gte('expiry_date', today).order('expiry_date')
     if (exp) setExpiring(exp)
-    const { data: rLow } = await supabase.from('reagent_lots')
-      .select('*, reagents(name)').eq('sealed_count', 0).lte('current_stock', 20)
+    const { data: rLow } = await supabase.from('reagent_lots').select('*, reagents(name)').eq('sealed_count', 0).lte('current_stock', 20)
     if (rLow) setLowReagents(rLow)
-    const { data: iLow } = await supabase.from('item_lots')
-      .select('*, items(name)').eq('sealed_count', 0).lte('current_stock', 20)
+    const { data: iLow } = await supabase.from('item_lots').select('*, items(name)').eq('sealed_count', 0).lte('current_stock', 20)
     if (iLow) setLowItems(iLow)
   }
 
@@ -860,10 +987,7 @@ function ManageTab() {
       <Card title={`⏰ 유통기한 임박 (${days}일 이내)`}
         extra={<div style={{ display: 'flex', gap: '6px' }}>
           {[14,30,60,90].map(d => (
-            <button key={d} onClick={() => setDays(d)} style={{
-              padding: '3px 10px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontSize: '12px',
-              background: days === d ? C.navy : C.bg, color: days === d ? '#fff' : C.text,
-            }}>{d}일</button>
+            <button key={d} onClick={() => setDays(d)} style={{ padding: '3px 10px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontSize: '12px', background: days === d ? C.navy : C.bg, color: days === d ? '#fff' : C.text }}>{d}일</button>
           ))}
         </div>}>
         {expiring.length === 0 ? <p style={{ color: C.muted }}>해당 없음</p>
@@ -927,8 +1051,7 @@ function LogTab() {
       const { data } = await supabase.from('admin_logs').select('*').order('created_at', { ascending: false }).limit(100)
       if (data) setLogs(data)
     } else {
-      const { data } = await supabase.from('stock_logs')
-        .select('*, reagent_lots(lot_no, reagents(name))').order('created_at', { ascending: false }).limit(100)
+      const { data } = await supabase.from('stock_logs').select('*, reagent_lots(lot_no, reagents(name))').order('created_at', { ascending: false }).limit(100)
       if (data) setStockLogs(data)
     }
   }
@@ -938,10 +1061,8 @@ function LogTab() {
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
         {[['admin','관리자 작업 로그'],['stock','재고 수정 로그']].map(([key, label]) => (
           <button key={key} onClick={() => setLogTab(key)} style={{
-            ...btnGhost,
-            background: logTab === key ? C.navy : '#fff',
-            color: logTab === key ? '#fff' : C.text,
-            border: `1px solid ${logTab === key ? C.navy : C.border}`,
+            ...btnGhost, background: logTab === key ? C.navy : '#fff',
+            color: logTab === key ? '#fff' : C.text, border: `1px solid ${logTab === key ? C.navy : C.border}`,
           }}>{label}</button>
         ))}
       </div>
