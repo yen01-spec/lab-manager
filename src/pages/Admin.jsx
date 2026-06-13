@@ -1404,12 +1404,10 @@ function BulkUpdateTab() {
 
   async function fetchReagents() {
   let query = supabase.from('reagents')
-    .select('id, name, cas_no, hazard', { count: 'exact' })
-    .order('name')
-    .range(0, 4999)
-  if (filter === 'empty') query = query.is('hazard', null)
-  const { data, count } = await query
-  if (count > 4999) {
+  .select('id, name, cas_no, hazard', { count: 'exact' })
+  .order('name')
+if (filter === 'empty') query = query.is('hazard', null)
+query = query.range(0, 4999) {
     alert(`⚠️ 시약이 ${count}개로 많아 일부만 표시됩니다.`)
   }
   if (data) setReagents(data)
