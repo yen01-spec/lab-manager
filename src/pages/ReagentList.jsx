@@ -913,14 +913,20 @@ onClick={e => toggleCheck(r.id, e, data)}>
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
             <tbody>
               {[
-                ['CAS No.', selectedReagent.cas_no],
-                ['회사', selectedReagent.company],
-                ['유별/성질', selectedReagent.category],
-                ['용량', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`],
-                ['유해·위험성', selectedReagent.hazard],
-                ['담당자', selectedReagent.manager],
-                ['비고', selectedReagent.notes],
-              ].map(([label, value]) => (
+  ['CAS No.', selectedReagent.cas_no],
+  ['회사', selectedReagent.company],
+  ['유별/성질', selectedReagent.category],
+  ['용량', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`],
+  ['유해·위험성', selectedReagent.hazard],
+  ['담당자', selectedReagent.manager],
+  ['정보 출처', 
+    selectedReagent.data_source === 'ghs_api' ? '🇰🇷 국내 GHS DB' :
+    selectedReagent.data_source === 'pubchem' ? '🌐 PubChem' :
+    selectedReagent.data_source === 'excel' ? '📊 엑셀 업로드' :
+    selectedReagent.data_source === 'manual' ? '✏️ 직접 입력' : '-'
+  ],
+  ['비고', selectedReagent.notes],
+].map(([label, value]) => (
                 <tr key={label}>
                   <td style={{ padding: '9px 14px', background: C.bg, fontWeight: '700', fontSize: '11px', color: C.muted, width: '35%', borderBottom: `1px solid ${C.border}`, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</td>
                   <td style={{ padding: '9px 14px', fontSize: '13px', borderBottom: `1px solid ${C.border}`, color: C.text }}>{value || '-'}</td>
