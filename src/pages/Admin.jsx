@@ -117,55 +117,88 @@ function ReagentAddTab({ locations }) {
   const [casLoading, setCasLoading] = useState(false)
   const [casResult, setCasResult] = useState(null)
 
-  async function lookupCAS() {
-    const cas = form.cas_no.trim()
-    if (!cas) { alert('CAS 번호를 먼저 입력해주세요'); return }
-    setCasLoading(true)
-    setCasResult(null)
+async function lookupCAS() {
+  const cas = form.cas_no.trim()
+  if (!cas) { alert('CAS 번호를 먼저 입력해주세요'); return }
+  setCasLoading(true)
+  setCasResult(null)
+
+  const GHS_KEY = 'e9bf2e5bc508d370a9660687c34a6730eae5237e78bad04e08f66705be15d597'
+  const MSDS_KEY = 'e9bf2e5bc508d370a9660687c34a6730eae5237e78bad04e08f66705be15d597'
+
+  try {
+    let result = { iupacName: '', formula: '', hazard: '', cid: null, korName: '', msdsUrl: '', isYudok: '' }
+
+    // 1) PubChem — 영문명, 분자식
     try {
-      const cidRes = await fetch(
-        `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(cas)}/cids/JSON`
-      )
-      if (!cidRes.ok) throw new Error('CAS 번호를 찾을 수 없어요')
-      const cidData = await cidRes.json()
-      const cid = cidData.IdentifierList.CID[0]
-      const propRes = await fetch(
-        `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/property/IUPACName,MolecularFormula/JSON`
-      )
-      const propData = await propRes.json()
-      const prop = propData.PropertyTable.Properties[0]
+      const cidRes = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(cas)}/cids/JSON`)
+      if (cidRes.ok) {
+        const cidData = await cidRes.json()
+        const cid = cidData.IdentifierList.CID[0]
+        result.cid = cid
+        const propRes = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/property/IUPACName,MolecularFormula/JSON`)
+        const propData = await propRes.json()
+        const prop = propData.PropertyTable.Properties[0]
+        result.iupacName = prop.IUPACName || ''
+        result.formula = prop.MolecularFormula || ''
+      }
+    } catch {}
+
+    // 2) 한국환경공단 GHS API — 한글명, 유독물 여부, 한글 유해성
+    try {
       const ghsRes = await fetch(
-        `https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/${cid}/JSON?heading=GHS+Classification`
+        `https://apis.data.go.kr/B552584/kecoapi/ncisghs/ghsList?serviceKey=${GHS_KEY}&casNo=${encodeURIComponent(cas)}&pageNo=1&numOfRows=1&type=json`
       )
-      let hazardText = ''
       if (ghsRes.ok) {
         const ghsData = await ghsRes.json()
-        try {
-          const sections = ghsData.Record.Section
-          const ghsSection = sections?.find(s => s.TOCHeading === 'Safety and Hazards')
-          const hazSection = ghsSection?.Section?.find(s => s.TOCHeading === 'Hazards Identification')
-          const ghsClass = hazSection?.Section?.find(s => s.TOCHeading === 'GHS Classification')
-          const hazardStatements = ghsClass?.Information?.find(i => i.Name === 'GHS Hazard Statements')
-          if (hazardStatements?.Value?.StringWithMarkup) {
-            hazardText = hazardStatements.Value.StringWithMarkup
-              .slice(0, 3).map(s => s.String.split('(')[0].trim()).join(', ')
-          }
-        } catch {}
+        const item = ghsData?.response?.body?.items?.item
+        const first = Array.isArray(item) ? item[0] : item
+        if (first) {
+          result.korName = first.korName || first.regnNm || ''
+          result.isYudok = first.yudokYn === 'Y' ? '유독물질' : ''
+          result.hazard = first.ghsYuhaeSungsNm || first.hazardText || ''
+        }
       }
-      const result = { iupacName: prop.IUPACName || '', formula: prop.MolecularFormula || '', hazard: hazardText, cid }
-      setCasResult(result)
-      setForm(prev => ({
-        ...prev,
-        name: prev.name || result.iupacName,
-        hazard: prev.hazard || result.hazard,
-        category: prev.category || result.formula,
-      }))
-    } catch (err) {
-      setCasResult({ error: err.message || '조회 실패' })
-    } finally {
-      setCasLoading(false)
+    } catch {}
+
+    // 3) 안전보건공단 MSDS API — MSDS 링크
+    try {
+      const msdsRes = await fetch(
+        `https://apis.data.go.kr/B552468/msdschem/getChemList?serviceKey=${MSDS_KEY}&casNo=${encodeURIComponent(cas)}&pageNo=1&numOfRows=1`
+      )
+      if (msdsRes.ok) {
+        const text = await msdsRes.text()
+        const parser = new DOMParser()
+        const xml = parser.parseFromString(text, 'text/xml')
+        const atchFileId = xml.querySelector('atchFileId')?.textContent
+        const dataNo = xml.querySelector('dataNo')?.textContent
+        if (dataNo) {
+          result.msdsUrl = `https://msds.kosha.or.kr/kcic/chemicalMaterial/msdsview.do?dataNo=${dataNo}`
+        }
+      }
+    } catch {}
+
+    setCasResult(result)
+
+    // 폼에 자동입력 (빈 칸만)
+    setForm(prev => ({
+      ...prev,
+      name: prev.name || result.korName || result.iupacName,
+      hazard: prev.hazard || result.hazard,
+      category: prev.category || result.formula,
+    }))
+
+    // MSDS URL 자동입력
+    if (result.msdsUrl && !form.notes) {
+      setForm(prev => ({ ...prev, notes: prev.notes }))
     }
+
+  } catch (err) {
+    setCasResult({ error: err.message || '조회 실패' })
+  } finally {
+    setCasLoading(false)
   }
+}
 
   async function addReagent() {
     if (!form.name.trim()) { alert('시약 이름을 입력해주세요'); return }
@@ -216,18 +249,37 @@ function ReagentAddTab({ locations }) {
               opacity: casLoading ? 0.7 : 1, whiteSpace: 'nowrap', padding: '9px 18px',
             }}>{casLoading ? '조회 중...' : '🔍 자동완성'}</button>
           </div>
-          {casResult && !casResult.error && (
-            <div style={{ marginTop: '10px', padding: '12px 16px',
-              background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', fontSize: '13px' }}>
-              <div style={{ fontWeight: '700', color: '#276749', marginBottom: '6px' }}>✅ PubChem 조회 성공</div>
-              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', color: '#2D6A4F' }}>
-                {casResult.iupacName && <span><strong>IUPAC명:</strong> {casResult.iupacName}</span>}
-                {casResult.formula && <span><strong>분자식:</strong> {casResult.formula}</span>}
-                {casResult.hazard && <span><strong>GHS:</strong> {casResult.hazard}</span>}
-              </div>
-              <div style={{ marginTop: '6px', fontSize: '11px', color: '#52B788' }}>빈 칸에 자동 입력됐어요. 직접 수정도 가능해요.</div>
-            </div>
-          )}
+{casResult && !casResult.error && (
+  <div style={{ marginTop: '10px', padding: '12px 16px',
+    background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', fontSize: '13px' }}>
+    <div style={{ fontWeight: '700', color: '#276749', marginBottom: '8px' }}>✅ 조회 성공</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', color: '#2D6A4F' }}>
+      {casResult.korName && <div><strong>한글명:</strong> {casResult.korName}</div>}
+      {casResult.iupacName && <div><strong>IUPAC명:</strong> {casResult.iupacName}</div>}
+      {casResult.formula && <div><strong>분자식:</strong> {casResult.formula}</div>}
+      {casResult.hazard && <div><strong>유해성:</strong> {casResult.hazard}</div>}
+      {casResult.isYudok && (
+        <div>
+          <span style={{ background: '#FFF5F5', color: C.danger, border: '1px solid #FC8181',
+            padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700' }}>
+            ⚠️ {casResult.isYudok}
+          </span>
+        </div>
+      )}
+      {casResult.msdsUrl && (
+        <div>
+          <a href={casResult.msdsUrl} target="_blank" rel="noreferrer"
+            style={{ color: C.navy, fontWeight: '600', fontSize: '12px' }}>
+            📄 MSDS 바로보기 →
+          </a>
+        </div>
+      )}
+    </div>
+    <div style={{ marginTop: '8px', fontSize: '11px', color: '#52B788' }}>
+      빈 칸에 자동 입력됐어요. 직접 수정도 가능해요.
+    </div>
+  </div>
+)}
           {casResult?.error && (
             <div style={{ marginTop: '10px', padding: '10px 14px',
               background: '#FFF5F5', border: '1px solid #FC8181',
