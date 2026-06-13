@@ -912,34 +912,39 @@ onClick={e => toggleCheck(r.id, e, data)}>
 
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
             <tbody>
-              {[
-  ['CAS No.', selectedReagent.cas_no],
-  ['회사', selectedReagent.company],
-  ['유별/성질', selectedReagent.category],
-  ['용량', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`],
-  ['유해·위험성', selectedReagent.hazard],
-  ['담당자', selectedReagent.manager],
-  ['정보 출처', 
-    selectedReagent.data_source === 'ghs_api' ? '🇰🇷 국내 GHS DB' :
+{[
+  ['CAS No.', selectedReagent.cas_no, selectedReagent.cas_source],
+  ['회사', selectedReagent.company, null],
+  ['유별/성질', selectedReagent.category, null],
+  ['용량', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`, null],
+  ['유해·위험성', selectedReagent.hazard, selectedReagent.hazard_source],
+  ['담당자', selectedReagent.manager, selectedReagent.manager_source],
+  ['정보 출처', selectedReagent.data_source === 'ghs_api' ? '🇰🇷 국내 GHS DB' :
     selectedReagent.data_source === 'pubchem' ? '🌐 PubChem' :
     selectedReagent.data_source === 'excel' ? '📊 엑셀 업로드' :
-    selectedReagent.data_source === 'manual' ? '✏️ 직접 입력' : '-'
-  ],
-  ['비고', selectedReagent.notes],
-].map(([label, value]) => (
-                <tr key={label}>
-                  <td style={{ padding: '9px 14px', background: C.bg, fontWeight: '700', fontSize: '11px', color: C.muted, width: '35%', borderBottom: `1px solid ${C.border}`, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</td>
-                  <td style={{ padding: '9px 14px', fontSize: '13px', borderBottom: `1px solid ${C.border}`, color: C.text }}>{value || '-'}</td>
-                </tr>
-              ))}
-              <tr>
-                <td style={{ padding: '9px 14px', background: C.bg, fontWeight: '700', fontSize: '11px', color: C.muted, borderBottom: `1px solid ${C.border}`, textTransform: 'uppercase', letterSpacing: '0.04em' }}>MSDS</td>
-                <td style={{ padding: '9px 14px', fontSize: '13px', borderBottom: `1px solid ${C.border}` }}>
-                  {selectedReagent.msds_url
-                    ? <a href={selectedReagent.msds_url} target="_blank" rel="noreferrer" style={{ color: C.navy, fontWeight: '600' }}>📄 MSDS 보기</a>
-                    : <span style={{ color: C.muted }}>-</span>}
-                </td>
-              </tr>
+    selectedReagent.data_source === 'manual' ? '✏️ 직접 입력' : '-', null],
+  ['비고', selectedReagent.notes, null],
+].map(([label, value, source]) => (
+  <tr key={label}>
+    <td style={{ padding: '9px 14px', background: C.bg, fontWeight: '700',
+      fontSize: '11px', color: C.muted, width: '35%', borderBottom: `1px solid ${C.border}`,
+      textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</td>
+    <td style={{ padding: '9px 14px', fontSize: '13px', borderBottom: `1px solid ${C.border}`, color: C.text }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span>{value || '-'}</span>
+        {source && (
+          <span style={{
+            fontSize: '10px', padding: '1px 6px', borderRadius: '8px', fontWeight: '600',
+            background: source === 'ghs_api' ? '#EBF8FF' : source === 'excel' ? '#F0FFF4' : source === 'pubchem' ? '#EEF2FB' : '#F7FAFC',
+            color: source === 'ghs_api' ? '#2B6CB0' : source === 'excel' ? '#276749' : source === 'pubchem' ? '#553C9A' : C.muted,
+          }}>
+            {source === 'ghs_api' ? '🇰🇷 GHS DB' : source === 'excel' ? '📊 엑셀' : source === 'pubchem' ? '🌐 PubChem' : '✏️ 직접입력'}
+          </span>
+        )}
+      </div>
+    </td>
+  </tr>
+))}
             </tbody>
           </table>
 
