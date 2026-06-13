@@ -459,7 +459,20 @@ function MoveTab({ locations }) {
   const [notes, setNotes] = useState('')
   const [history, setHistory] = useState([])
 
-  useEffect(() => { fetchHistory() }, [])
+  // 다량 이동용
+  const [bulkMode, setBulkMode] = useState(false)
+  const [bulkLocation, setBulkLocation] = useState('')
+  const [bulkSearch, setBulkSearch] = useState('')
+  const [bulkResults, setBulkResults] = useState([])
+  const [checkedIds, setCheckedIds] = useState(new Set())
+  const [bulkMovedBy, setBulkMovedBy] = useState('')
+
+  // 위치 이동 신청 목록
+  const [requests, setRequests] = useState([])
+  const [reqFilter, setReqFilter] = useState('pending')
+  const [adminName, setAdminName] = useState('')
+
+  useEffect(() => { fetchHistory(); fetchRequests() }, [])
 
   async function fetchHistory() {
     const { data } = await supabase.from('location_history')
@@ -467,11 +480,24 @@ function MoveTab({ locations }) {
     if (data) setHistory(data)
   }
 
+  async function fetchRequests() {
+    const { data } = await supabase.from('location_requests')
+      .select('*').order('created_at', { ascending: false })
+    if (data) setRequests(data)
+  }
+
   async function handleSearch() {
     if (!search.trim()) return
     const { data } = await supabase.from('reagents')
       .select('*, locations(*)').ilike('name', `%${search}%`)
     if (data) setSearchResults(data)
+  }
+
+  async function handleBulkSearch() {
+    const { data } = await supabase.from('reagents')
+      .select('*, locations(*)')
+      .ilike('name', `%${bulkSearch}%`)
+    if (data) setBulkResults(data)
   }
 
   async function moveReagent() {
@@ -487,127 +513,316 @@ function MoveTab({ locations }) {
     const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
 
     await supabase.from('reagents').update({ location_id: toLocationId }).eq('id', selectedReagent.id)
-
     await supabase.from('location_history').insert({
-      reagent_id: selectedReagent.id,
-      reagent_name: selectedReagent.name,
-      from_location_id: selectedReagent.location_id,
-      from_location_name: fromLocName,
-      to_location_id: toLocationId,
-      to_location_name: toLocName,
-      moved_by: movedBy,
-      notes,
+      reagent_id: selectedReagent.id, reagent_name: selectedReagent.name,
+      from_location_id: selectedReagent.location_id, from_location_name: fromLocName,
+      to_location_id: toLocationId, to_location_name: toLocName,
+      moved_by: movedBy, notes,
     })
-
     await supabase.from('admin_logs').insert({
       admin_name: movedBy, action: '위치 이동',
       target_type: 'reagent', target_id: selectedReagent.id,
       description: `${selectedReagent.name}: ${fromLocName} → ${toLocName}`,
     })
-
     alert(`✅ ${selectedReagent.name} 이동 완료!\n${fromLocName} → ${toLocName}`)
-    setSelectedReagent(null)
-    setToLocationId('')
-    setNotes('')
-    setSearch('')
-    setSearchResults([])
+    setSelectedReagent(null); setToLocationId(''); setNotes('')
+    setSearch(''); setSearchResults([])
     fetchHistory()
   }
 
+  async function bulkMove() {
+    if (checkedIds.size === 0) { alert('시약을 선택해주세요'); return }
+    if (!bulkLocation) { alert('이동할 위치를 선택해주세요'); return }
+    if (!bulkMovedBy.trim()) { alert('이동자 이름을 입력해주세요'); return }
+
+    const toLoc = locations.find(l => l.id === bulkLocation)
+    const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
+    const selected = bulkResults.filter(r => checkedIds.has(r.id))
+
+    for (const r of selected) {
+      const fromLocName = r.locations
+        ? `${r.locations.room}${r.locations.detail ? ' - ' + r.locations.detail : ''}`
+        : '미지정'
+      await supabase.from('reagents').update({ location_id: bulkLocation }).eq('id', r.id)
+      await supabase.from('location_history').insert({
+        reagent_id: r.id, reagent_name: r.name,
+        from_location_id: r.location_id, from_location_name: fromLocName,
+        to_location_id: bulkLocation, to_location_name: toLocName,
+        moved_by: bulkMovedBy,
+      })
+    }
+    await supabase.from('admin_logs').insert({
+      admin_name: bulkMovedBy, action: '다량 위치 이동',
+      target_type: 'reagent', target_id: null,
+      description: `${selected.length}개 시약 → ${toLocName}`,
+    })
+    alert(`✅ ${selected.length}개 시약 이동 완료! → ${toLocName}`)
+    setCheckedIds(new Set()); setBulkLocation(''); setBulkMovedBy('')
+    setBulkResults([]); setBulkSearch('')
+    fetchHistory()
+  }
+
+  async function approveRequest(req) {
+    if (!adminName.trim()) { alert('승인자 이름을 입력해주세요'); return }
+    if (!window.confirm(`"${req.reagent_name}" 위치 이동을 승인하시겠습니까?\n${req.from_location_name} → ${req.to_location_name}`)) return
+
+    await supabase.from('reagents').update({ location_id: req.to_location_id }).eq('id', req.reagent_id)
+    await supabase.from('location_requests').update({
+      status: 'approved', approved_by: adminName, approved_at: new Date().toISOString(),
+    }).eq('id', req.id)
+    await supabase.from('location_history').insert({
+      reagent_id: req.reagent_id, reagent_name: req.reagent_name,
+      from_location_id: req.from_location_id, from_location_name: req.from_location_name,
+      to_location_id: req.to_location_id, to_location_name: req.to_location_name,
+      moved_by: adminName, notes: `신청자: ${req.requested_by}`,
+    })
+    await supabase.from('admin_logs').insert({
+      admin_name: adminName, action: '위치 이동 승인',
+      target_type: 'reagent', target_id: req.reagent_id,
+      description: `${req.reagent_name}: ${req.from_location_name} → ${req.to_location_name}`,
+    })
+    fetchRequests(); fetchHistory()
+  }
+
+  async function rejectRequest(req) {
+    if (!adminName.trim()) { alert('처리자 이름을 입력해주세요'); return }
+    if (!window.confirm(`"${req.reagent_name}" 위치 이동 신청을 반려하시겠습니까?`)) return
+    await supabase.from('location_requests').update({ status: 'rejected' }).eq('id', req.id)
+    fetchRequests()
+  }
+
+  const toggleCheck = (id) => {
+    const next = new Set(checkedIds)
+    next.has(id) ? next.delete(id) : next.add(id)
+    setCheckedIds(next)
+  }
+
+  const toggleAll = () => {
+    if (checkedIds.size === bulkResults.length) setCheckedIds(new Set())
+    else setCheckedIds(new Set(bulkResults.map(r => r.id)))
+  }
+
+  const filteredReqs = reqFilter === 'all' ? requests : requests.filter(r => r.status === reqFilter)
+  const reqCounts = { all: requests.length, pending: 0, approved: 0, rejected: 0 }
+  requests.forEach(r => { if (reqCounts[r.status] !== undefined) reqCounts[r.status]++ })
+  const statusColor = { pending: '#E8A020', approved: '#38A169', rejected: C.danger }
+  const statusLabel = { pending: '대기중', approved: '승인됨', rejected: '반려' }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <Card title="📍 시약 위치 이동" sub="Move Reagent">
-        {/* 이동자 이름 */}
-        <div style={{ marginBottom: '20px', padding: '12px 16px',
+
+      {/* 위치 이동 신청 목록 */}
+      <Card title="📬 위치 이동 신청 목록" sub="학생 신청 승인/반려">
+        <div style={{ marginBottom: '16px', padding: '12px 16px',
           background: '#F0F4FF', borderRadius: '8px', border: '1px solid #C3D0F5' }}>
-          <label style={labelStyle}>이동자 이름 *</label>
-          <input value={movedBy} onChange={e => setMovedBy(e.target.value)}
+          <label style={labelStyle}>처리자 이름 *</label>
+          <input value={adminName} onChange={e => setAdminName(e.target.value)}
             placeholder="본인 이름" style={{ ...inputStyle, maxWidth: '240px' }} />
         </div>
-
-        {/* 시약 검색 */}
-        <div style={{ marginBottom: '16px' }}>
-          <label style={labelStyle}>시약 검색 *</label>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <input value={search}
-              onChange={e => { setSearch(e.target.value); setSelectedReagent(null) }}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              placeholder="시약 이름으로 검색..."
-              style={{ ...inputStyle, flex: 1 }} />
-            <button onClick={handleSearch} style={{ ...btnPrimary, padding: '9px 18px', flexShrink: 0 }}>검색</button>
-          </div>
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '16px' }}>
+          {[['all','전체'],['pending','대기중'],['approved','승인됨'],['rejected','반려']].map(([key, label]) => (
+            <button key={key} onClick={() => setReqFilter(key)} style={{
+              padding: '5px 14px', borderRadius: '16px', border: 'none', cursor: 'pointer',
+              background: reqFilter === key ? C.navy : C.bg,
+              color: reqFilter === key ? '#fff' : C.text,
+              fontSize: '12px', fontWeight: reqFilter === key ? '700' : '400',
+            }}>{label} <span style={{ opacity: 0.7 }}>({reqCounts[key] ?? 0})</span></button>
+          ))}
         </div>
-
-        {/* 검색 결과 */}
-        {searchResults.length > 0 && !selectedReagent && (
-          <div style={{ marginBottom: '16px', border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
-            {searchResults.map(r => (
-              <div key={r.id} onClick={() => { setSelectedReagent(r); setSearchResults([]) }}
-                style={{ padding: '10px 16px', cursor: 'pointer', borderBottom: `1px solid ${C.border}`,
-                  background: C.white, fontSize: '13px' }}
-                onMouseEnter={e => e.currentTarget.style.background = C.bg}
-                onMouseLeave={e => e.currentTarget.style.background = C.white}>
-                <span style={{ fontWeight: '600', color: C.navy }}>{r.name}</span>
-                <span style={{ color: C.muted, marginLeft: '12px', fontSize: '12px' }}>
-                  현재: {r.locations ? `${r.locations.room}${r.locations.detail ? ' - ' + r.locations.detail : ''}` : '미지정'}
+        {filteredReqs.length === 0
+          ? <div style={{ textAlign: 'center', padding: '24px', color: C.muted, fontSize: '13px' }}>신청 내역이 없습니다</div>
+          : filteredReqs.map(req => (
+            <div key={req.id} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px 16px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <span style={{ background: statusColor[req.status] + '22', color: statusColor[req.status],
+                  fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px' }}>
+                  {statusLabel[req.status]}
                 </span>
+                <span style={{ fontWeight: '700', color: C.navy }}>{req.reagent_name}</span>
+                <span style={{ color: C.muted, fontSize: '12px', marginLeft: 'auto' }}>{req.requested_by} · {new Date(req.created_at).toLocaleDateString()}</span>
               </div>
-            ))}
-          </div>
-        )}
-
-        {/* 선택된 시약 */}
-        {selectedReagent && (
-          <div style={{ marginBottom: '16px', padding: '12px 16px',
-            background: '#EEF2FB', borderRadius: '8px', border: `1px solid ${C.navy}33`,
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: '700', color: C.navy }}>{selectedReagent.name}</div>
-              <div style={{ fontSize: '12px', color: C.muted, marginTop: '2px' }}>
-                현재 위치: {selectedReagent.locations
-                  ? `${selectedReagent.locations.room}${selectedReagent.locations.detail ? ' - ' + selectedReagent.locations.detail : ''}`
-                  : '미지정'}
+              <div style={{ fontSize: '13px', color: C.muted, marginBottom: '8px' }}>
+                {req.from_location_name || '미지정'} → <strong style={{ color: '#276749' }}>{req.to_location_name}</strong>
+                {req.notes && <span style={{ marginLeft: '8px' }}>({req.notes})</span>}
               </div>
+              {req.status === 'pending' && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => approveRequest(req)}
+                    style={{ ...btnPrimary, background: '#38A169', padding: '5px 14px', fontSize: '12px' }}>✓ 승인</button>
+                  <button onClick={() => rejectRequest(req)}
+                    style={{ ...btnPrimary, background: C.danger, padding: '5px 14px', fontSize: '12px' }}>✗ 반려</button>
+                </div>
+              )}
+              {req.approved_by && <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px' }}>승인자: {req.approved_by}</div>}
             </div>
-            <button onClick={() => setSelectedReagent(null)} style={{
-              background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '16px' }}>✕</button>
-          </div>
-        )}
-
-        {/* 이동할 위치 */}
-        <div style={{ marginBottom: '16px' }}>
-          <label style={labelStyle}>이동할 위치 *</label>
-          <select value={toLocationId} onChange={e => setToLocationId(e.target.value)} style={inputStyle}>
-            <option value="">선택하세요</option>
-            {locations.map(l => (
-              <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>
-            ))}
-          </select>
-        </div>
-
-        <div style={{ marginBottom: '20px' }}>
-          <label style={labelStyle}>메모</label>
-          <input value={notes} onChange={e => setNotes(e.target.value)}
-            placeholder="선택사항" style={inputStyle} />
-        </div>
-
-        {/* 이동 미리보기 */}
-        {selectedReagent && toLocationId && (
-          <div style={{ marginBottom: '16px', padding: '12px 16px',
-            background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', fontSize: '13px' }}>
-            <strong style={{ color: '#276749' }}>이동 미리보기:</strong>
-            <div style={{ marginTop: '6px', color: '#2D6A4F' }}>
-              {selectedReagent.locations
-                ? `${selectedReagent.locations.room}${selectedReagent.locations.detail ? ' - ' + selectedReagent.locations.detail : ''}`
-                : '미지정'}
-              {' → '}
-              {(() => { const l = locations.find(l => l.id === toLocationId); return l ? `${l.room}${l.detail ? ' - ' + l.detail : ''}` : '' })()}
-            </div>
-          </div>
-        )}
-
-        <button onClick={moveReagent} style={{ ...btnPrimary, background: '#667EEA' }}>📍 위치 이동</button>
+          ))}
       </Card>
+
+      {/* 모드 전환 */}
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button onClick={() => setBulkMode(false)} style={{
+          ...btnPrimary, background: !bulkMode ? C.navy : C.bg,
+          color: !bulkMode ? '#fff' : C.text, border: `1px solid ${C.border}`,
+        }}>📍 단일 이동</button>
+        <button onClick={() => setBulkMode(true)} style={{
+          ...btnPrimary, background: bulkMode ? C.navy : C.bg,
+          color: bulkMode ? '#fff' : C.text, border: `1px solid ${C.border}`,
+        }}>📋 다량 이동</button>
+      </div>
+
+      {/* 단일 이동 */}
+      {!bulkMode && (
+        <Card title="📍 단일 시약 이동" sub="Single Move">
+          <div style={{ marginBottom: '20px', padding: '12px 16px',
+            background: '#F0F4FF', borderRadius: '8px', border: '1px solid #C3D0F5' }}>
+            <label style={labelStyle}>이동자 이름 *</label>
+            <input value={movedBy} onChange={e => setMovedBy(e.target.value)}
+              placeholder="본인 이름" style={{ ...inputStyle, maxWidth: '240px' }} />
+          </div>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>시약 검색 *</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input value={search}
+                onChange={e => { setSearch(e.target.value); setSelectedReagent(null) }}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                placeholder="시약 이름으로 검색..."
+                style={{ ...inputStyle, flex: 1 }} />
+              <button onClick={handleSearch} style={{ ...btnPrimary, padding: '9px 18px', flexShrink: 0 }}>검색</button>
+            </div>
+          </div>
+          {searchResults.length > 0 && !selectedReagent && (
+            <div style={{ marginBottom: '16px', border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
+              {searchResults.map(r => (
+                <div key={r.id} onClick={() => { setSelectedReagent(r); setSearchResults([]) }}
+                  style={{ padding: '10px 16px', cursor: 'pointer', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                  onMouseLeave={e => e.currentTarget.style.background = C.white}>
+                  <span style={{ fontWeight: '600', color: C.navy }}>{r.name}</span>
+                  <span style={{ color: C.muted, marginLeft: '12px', fontSize: '12px' }}>
+                    현재: {r.locations ? `${r.locations.room}${r.locations.detail ? ' - ' + r.locations.detail : ''}` : '미지정'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {selectedReagent && (
+            <div style={{ marginBottom: '16px', padding: '12px 16px',
+              background: '#EEF2FB', borderRadius: '8px', border: `1px solid ${C.navy}33`,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: '700', color: C.navy }}>{selectedReagent.name}</div>
+                <div style={{ fontSize: '12px', color: C.muted, marginTop: '2px' }}>
+                  현재: {selectedReagent.locations ? `${selectedReagent.locations.room}${selectedReagent.locations.detail ? ' - ' + selectedReagent.locations.detail : ''}` : '미지정'}
+                </div>
+              </div>
+              <button onClick={() => setSelectedReagent(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '16px' }}>✕</button>
+            </div>
+          )}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>이동할 위치 *</label>
+            <select value={toLocationId} onChange={e => setToLocationId(e.target.value)} style={inputStyle}>
+              <option value="">선택하세요</option>
+              {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+            </select>
+          </div>
+          <div style={{ marginBottom: '20px' }}>
+            <label style={labelStyle}>메모</label>
+            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="선택사항" style={inputStyle} />
+          </div>
+          {selectedReagent && toLocationId && (
+            <div style={{ marginBottom: '16px', padding: '10px 14px',
+              background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', fontSize: '13px' }}>
+              <strong style={{ color: '#276749' }}>이동 미리보기:</strong>
+              <div style={{ marginTop: '4px', color: '#2D6A4F' }}>
+                {selectedReagent.locations ? `${selectedReagent.locations.room}${selectedReagent.locations.detail ? ' - ' + selectedReagent.locations.detail : ''}` : '미지정'}
+                {' → '}
+                {(() => { const l = locations.find(l => l.id === toLocationId); return l ? `${l.room}${l.detail ? ' - ' + l.detail : ''}` : '' })()}
+              </div>
+            </div>
+          )}
+          <button onClick={moveReagent} style={{ ...btnPrimary, background: '#667EEA' }}>📍 위치 이동</button>
+        </Card>
+      )}
+
+      {/* 다량 이동 */}
+      {bulkMode && (
+        <Card title="📋 다량 시약 이동" sub="Bulk Move">
+          <div style={{ marginBottom: '20px', padding: '12px 16px',
+            background: '#F0F4FF', borderRadius: '8px', border: '1px solid #C3D0F5' }}>
+            <label style={labelStyle}>이동자 이름 *</label>
+            <input value={bulkMovedBy} onChange={e => setBulkMovedBy(e.target.value)}
+              placeholder="본인 이름" style={{ ...inputStyle, maxWidth: '240px' }} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <div>
+              <label style={labelStyle}>시약 검색</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input value={bulkSearch} onChange={e => setBulkSearch(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleBulkSearch()}
+                  placeholder="이름 검색 (빈칸=전체)"
+                  style={{ ...inputStyle, flex: 1 }} />
+                <button onClick={handleBulkSearch} style={{ ...btnPrimary, padding: '9px 14px', flexShrink: 0 }}>검색</button>
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>이동할 위치 *</label>
+              <select value={bulkLocation} onChange={e => setBulkLocation(e.target.value)} style={inputStyle}>
+                <option value="">선택하세요</option>
+                {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {bulkResults.length > 0 && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ fontSize: '13px', color: C.muted }}>
+                  <strong style={{ color: C.navy }}>{checkedIds.size}개</strong> 선택됨 / 총 {bulkResults.length}개
+                </div>
+                <button onClick={toggleAll} style={{ ...btnGhost, padding: '4px 12px', fontSize: '12px' }}>
+                  {checkedIds.size === bulkResults.length ? '전체 해제' : '전체 선택'}
+                </button>
+              </div>
+              <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden', marginBottom: '16px', maxHeight: '300px', overflowY: 'auto' }}>
+                {bulkResults.map(r => (
+                  <div key={r.id} onClick={() => toggleCheck(r.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                      padding: '10px 16px', cursor: 'pointer', borderBottom: `1px solid ${C.border}`,
+                      background: checkedIds.has(r.id) ? '#EEF2FB' : C.white,
+                    }}
+                    onMouseEnter={e => { if (!checkedIds.has(r.id)) e.currentTarget.style.background = C.bg }}
+                    onMouseLeave={e => { if (!checkedIds.has(r.id)) e.currentTarget.style.background = C.white }}>
+                    <input type="checkbox" checked={checkedIds.has(r.id)} onChange={() => {}} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontWeight: '600', color: C.navy, fontSize: '13px' }}>{r.name}</span>
+                      <span style={{ color: C.muted, fontSize: '12px', marginLeft: '12px' }}>
+                        {r.locations ? `${r.locations.room}${r.locations.detail ? ' - ' + r.locations.detail : ''}` : '미지정'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {checkedIds.size > 0 && bulkLocation && (
+            <div style={{ marginBottom: '16px', padding: '10px 14px',
+              background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', fontSize: '13px' }}>
+              <strong style={{ color: '#276749' }}>이동 미리보기:</strong>
+              <div style={{ marginTop: '4px', color: '#2D6A4F' }}>
+                선택된 {checkedIds.size}개 시약 →{' '}
+                {(() => { const l = locations.find(l => l.id === bulkLocation); return l ? `${l.room}${l.detail ? ' - ' + l.detail : ''}` : '' })()}
+              </div>
+            </div>
+          )}
+
+          <button onClick={bulkMove} style={{ ...btnPrimary, background: '#667EEA' }}>
+            📋 {checkedIds.size > 0 ? `${checkedIds.size}개 ` : ''}일괄 이동
+          </button>
+        </Card>
+      )}
 
       {/* 이동 이력 */}
       <Card title="📋 위치 이동 이력" noPadding>
@@ -621,9 +836,7 @@ function MoveTab({ locations }) {
                     <td style={{ ...tdStyle, color: C.muted, fontSize: '11px', whiteSpace: 'nowrap' }}>{new Date(h.created_at).toLocaleDateString()}</td>
                     <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>{h.reagent_name}</td>
                     <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>{h.from_location_name || '미지정'}</td>
-                    <td style={{ ...tdStyle, fontSize: '12px' }}>
-                      <span style={{ color: '#276749', fontWeight: '600' }}>{h.to_location_name}</span>
-                    </td>
+                    <td style={{ ...tdStyle, fontSize: '12px' }}><span style={{ color: '#276749', fontWeight: '600' }}>{h.to_location_name}</span></td>
                     <td style={{ ...tdStyle, fontSize: '12px' }}>{h.moved_by}</td>
                     <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{h.notes || '-'}</td>
                   </tr>
@@ -633,7 +846,7 @@ function MoveTab({ locations }) {
       </Card>
     </div>
   )
-}
+}}
 
 // ══════════════════════════════════════════════
 //  공지 / 안전정보
