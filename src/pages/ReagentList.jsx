@@ -919,7 +919,7 @@ onClick={e => toggleCheck(r.id, e, data)}>
   ['CAS NO.', 'cas_no', selectedReagent.cas_no, selectedReagent.cas_source, 'cas_source'],
   ['회사', 'company', selectedReagent.company, selectedReagent.company_source, 'company_source'],
   ['유별/성질', 'category', selectedReagent.category, selectedReagent.category_source, 'category_source'],
-  ['용량', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`, selectedReagent.volume_source],
+  ['용량', 'volume', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`, selectedReagent.volume_source, 'volume_source'],
   ['담당자', 'manager', selectedReagent.manager, selectedReagent.manager_source, 'manager_source'],
   ['Lot No.', null, lots[0]?.lot_no, lots[0]?.lot_source, null],
   ['MSDS URL', 'msds_url', selectedReagent.msds_url, selectedReagent.msds_source, 'msds_source'],
