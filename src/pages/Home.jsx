@@ -23,7 +23,7 @@ export default function Home() {
 
   async function fetchNotices() {
     const { data } = await supabase.from('notices').select('*')
-      .eq('type', 'notice').order('created_at', { ascending: false }).limit(6)
+      .eq('type', 'notice').order('created_at', { ascending: false }).limit(5)
     if (data) setNotices(data)
   }
 
