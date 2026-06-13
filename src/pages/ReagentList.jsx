@@ -919,7 +919,7 @@ onClick={e => toggleCheck(r.id, e, data)}>
   ['용량', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`, selectedReagent.volume_source],
   ['유해·위험성', selectedReagent.hazard, selectedReagent.hazard_source],
   ['담당자', selectedReagent.manager, selectedReagent.manager_source],
-  ['Lot No.', lots[0]?.lot_no, null],
+  ['Lot No.', lots[0]?.lot_no, lots[0]?.lot_source],
   ['비고', selectedReagent.notes, selectedReagent.notes_source],
 ].map(([label, value, source]) => (
   <tr key={label}>
