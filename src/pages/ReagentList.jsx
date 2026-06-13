@@ -50,6 +50,8 @@ export default function ReagentList() {
   const [showMoveModal, setShowMoveModal] = useState(false)
   const [moveForm, setMoveForm] = useState({ to_location_id: '', requested_by: '', notes: '' })
   const [showEditModal, setShowEditModal] = useState(false)
+  const [editingField, setEditingField] = useState(null) // 현재 편집 중인 필드
+  const [editingValue, setEditingValue] = useState('')
   const [editForm, setEditForm] = useState({})
 
   // 인라인 편집
@@ -292,6 +294,13 @@ function toggleCheck(id, e, allData) {
   })
   setShowEditModal(false)
   alert('저장되었습니다!')
+}
+async function saveField(field, value, sourceField) {
+  const updateData = { [field]: value }
+  if (sourceField) updateData[sourceField] = 'manual'
+  await supabase.from('reagents').update(updateData).eq('id', selectedReagent.id)
+  setSelectedReagent(prev => ({ ...prev, [field]: value, ...(sourceField ? { [sourceField]: 'manual' } : {}) }))
+  setEditingField(null)
 }
 
   function startInlineEdit(lotId, reagentId, field, currentValue, e) {
@@ -895,9 +904,12 @@ onClick={e => toggleCheck(r.id, e, data)}>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button onClick={() => setShowStockModal(true)} style={{ background: '#EBF8FF', color: '#2B6CB0', border: '1px solid #90CDF4', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📦 입출고</button>
               <button onClick={() => setShowMoveModal(true)} style={{ background: '#EEF2FB', color: '#667EEA', border: '1px solid #C3D0F5', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📍 위치{!isAdmin ? ' 신청' : ' 이동'}</button>
-              {isAdmin && <button onClick={() => setShowEditModal(true)} style={{ background: '#F0FFF4', color: '#276749', border: '1px solid #9AE6B4', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>✏️ 수정</button>}
-              <button onClick={() => setShowDisposalModal(true)} style={{ background: '#FFF5F5', color: C.danger, border: `1px solid #FC8181`, padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🗑️ 폐기</button>
-              <button onClick={() => setSelectedReagent(null)} style={{ background: C.bg, border: 'none', borderRadius: '6px', width: '32px', height: '32px', cursor: 'pointer', fontSize: '16px', color: C.muted }}>✕</button>
+              {isAdmin && <button onClick={() => setShowEditModal(!showEditModal)} style={{
+  background: showEditModal ? C.navy : '#F0FFF4',
+  color: showEditModal ? '#fff' : '#276749',
+  border: `1px solid ${showEditModal ? C.navy : '#9AE6B4'}`,
+  padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+}}>✏️ {showEditModal ? '수정 완료' : '수정'}</button>}
             </div>
           </div>
 
@@ -921,32 +933,61 @@ onClick={e => toggleCheck(r.id, e, data)}>
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
             <tbody>
 {[
-  ['CAS NO.', selectedReagent.cas_no, selectedReagent.cas_source],
-  ['회사', selectedReagent.company, selectedReagent.company_source],
-  ['유별/성질', selectedReagent.category, selectedReagent.category_source],
-  ['용량', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`, selectedReagent.volume_source],
-  ['유해·위험성', selectedReagent.hazard, selectedReagent.hazard_source],
-  ['담당자', selectedReagent.manager, selectedReagent.manager_source],
-  ['Lot No.', lots[0]?.lot_no, lots[0]?.lot_source],
-  ['비고', selectedReagent.notes, selectedReagent.notes_source],
-].map(([label, value, source]) => (
+  ['CAS NO.', 'cas_no', selectedReagent.cas_no, selectedReagent.cas_source, 'cas_source'],
+  ['회사', 'company', selectedReagent.company, selectedReagent.company_source, 'company_source'],
+  ['유별/성질', 'category', selectedReagent.category, selectedReagent.category_source, 'category_source'],
+  ['용량', 'volume', selectedReagent.volume, selectedReagent.volume_source, 'volume_source'],
+  ['유해·위험성', 'hazard', selectedReagent.hazard, selectedReagent.hazard_source, 'hazard_source'],
+  ['담당자', 'manager', selectedReagent.manager, selectedReagent.manager_source, 'manager_source'],
+  ['Lot No.', null, lots[0]?.lot_no, lots[0]?.lot_source, null],
+  ['MSDS URL', 'msds_url', selectedReagent.msds_url, selectedReagent.msds_source, 'msds_source'],
+  ['비고', 'notes', selectedReagent.notes, selectedReagent.notes_source, 'notes_source'],
+].map(([label, field, value, source, sourceField]) => (
   <tr key={label}>
     <td style={{ padding: '9px 14px', background: C.bg, fontWeight: '700',
       fontSize: '11px', color: C.muted, width: '35%', borderBottom: `1px solid ${C.border}`,
       textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</td>
     <td style={{ padding: '9px 14px', fontSize: '13px', borderBottom: `1px solid ${C.border}`, color: C.text }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span>{value || '-'}</span>
-        {source && value && (
+      {showEditModal && field && editingField === field ? (
+        <input
+          autoFocus
+          value={editingValue}
+          onChange={e => setEditingValue(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') saveField(field, editingValue, sourceField)
+            if (e.key === 'Escape') setEditingField(null)
+          }}
+          onBlur={() => saveField(field, editingValue, sourceField)}
+          style={{ ...inputStyle, padding: '4px 8px', fontSize: '13px' }}
+        />
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+          onClick={() => {
+            if (showEditModal && field) {
+              setEditingField(field)
+              setEditingValue(value || '')
+            }
+          }}
+          title={showEditModal && field ? '클릭하여 수정' : ''}
+        >
           <span style={{
-            fontSize: '10px', padding: '1px 6px', borderRadius: '8px', fontWeight: '600',
-            background: source === 'ghs_api' ? '#EBF8FF' : source === 'excel' ? '#F0FFF4' : source === 'pubchem' ? '#EEF2FB' : '#F7FAFC',
-            color: source === 'ghs_api' ? '#2B6CB0' : source === 'excel' ? '#276749' : source === 'pubchem' ? '#553C9A' : C.muted,
-          }}>
-            {source === 'ghs_api' ? '🇰🇷 GHS DB' : source === 'excel' ? '📊 엑셀' : source === 'pubchem' ? '🌐 PubChem' : '✏️ 직접입력'}
-          </span>
-        )}
-      </div>
+            cursor: showEditModal && field ? 'text' : 'default',
+            padding: showEditModal && field ? '2px 6px' : '0',
+            borderRadius: '4px',
+            border: showEditModal && field ? `1px dashed ${C.border}` : 'none',
+            minWidth: '40px', display: 'inline-block'
+          }}>{value || '-'}</span>
+          {source && value && (
+            <span style={{
+              fontSize: '10px', padding: '1px 6px', borderRadius: '8px', fontWeight: '600',
+              background: source === 'ghs_api' ? '#EBF8FF' : source === 'excel' ? '#F0FFF4' : source === 'pubchem' ? '#EEF2FB' : '#F7FAFC',
+              color: source === 'ghs_api' ? '#2B6CB0' : source === 'excel' ? '#276749' : source === 'pubchem' ? '#553C9A' : C.muted,
+            }}>
+              {source === 'ghs_api' ? '🇰🇷 GHS DB' : source === 'excel' ? '📊 엑셀' : source === 'pubchem' ? '🌐 PubChem' : '✏️ 직접입력'}
+            </span>
+          )}
+        </div>
+      )}
     </td>
   </tr>
 ))}
