@@ -1,11 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
-
-const C = {
-  navy: '#1a2a5e', gold: '#E8A020', white: '#FFFFFF',
-  bg: '#F0F2F7', border: '#DDE2EE', text: '#1C2B4A', muted: '#6B7A99', danger: '#D63031',
-}
+import { C, PageBanner } from '../design'
 
 export default function Notices() {
   const { isAdmin } = useOutletContext()
@@ -53,96 +49,117 @@ export default function Notices() {
   }
 
   return (
-    <div style={{ padding: '32px 24px', maxWidth: '900px', margin: '0 auto' }}>
-      {/* 헤더 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <div>
-          <div style={{ fontSize: '11px', color: C.gold, fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '4px' }}>Notices</div>
-          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '800', color: C.navy }}>공지사항</h1>
-        </div>
+    <div>
+      <PageBanner title="공지사항" sub="Notices" breadcrumb={['홈', '공지사항']} />
+
+      <div style={{ padding: '32px 40px', maxWidth: '960px', margin: '0 auto' }}>
+
+        {/* 글쓰기 버튼 */}
         {isAdmin && (
-          <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({ title: '', content: '' }) }} style={{
-            background: C.navy, color: C.white, border: 'none',
-            padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
-          }}>✏️ 글쓰기</button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+            <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({ title: '', content: '' }) }} style={{
+              background: C.navy, color: C.white, border: 'none',
+              padding: '9px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
+            }}>✏️ 글쓰기</button>
+          </div>
         )}
-      </div>
 
-      {/* 글쓰기 폼 */}
-      {showForm && isAdmin && (
-        <div style={{ background: C.white, borderRadius: '12px', padding: '20px', marginBottom: '20px', border: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: '14px', fontWeight: '700', color: C.navy, marginBottom: '12px' }}>
-            {editingId ? '공지 수정' : '새 공지 작성'}
+        {/* 글쓰기 폼 */}
+        {showForm && isAdmin && (
+          <div style={{ background: C.white, borderRadius: '10px', padding: '24px', marginBottom: '20px', border: `1px solid ${C.border}`, boxShadow: '0 2px 8px rgba(26,42,94,0.08)' }}>
+            <div style={{ fontSize: '15px', fontWeight: '700', color: C.navy, marginBottom: '16px' }}>
+              {editingId ? '✏️ 공지 수정' : '✏️ 새 공지 작성'}
+            </div>
+            <input
+              value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              placeholder="제목을 입력하세요"
+              style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, fontSize: '14px', marginBottom: '12px', boxSizing: 'border-box' }}
+            />
+            <textarea
+              value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+              placeholder="내용을 입력하세요"
+              rows={6}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, fontSize: '14px', resize: 'vertical', boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', gap: '8px', marginTop: '14px', justifyContent: 'flex-end' }}>
+              <button onClick={() => { setShowForm(false); setEditingId(null) }} style={{
+                padding: '8px 18px', borderRadius: '8px', border: `1px solid ${C.border}`,
+                background: C.white, cursor: 'pointer', fontSize: '13px',
+              }}>취소</button>
+              <button onClick={handleSubmit} style={{
+                padding: '8px 18px', borderRadius: '8px', border: 'none',
+                background: C.navy, color: C.white, cursor: 'pointer', fontSize: '13px', fontWeight: '600',
+              }}>저장</button>
+            </div>
           </div>
-          <input
-            value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-            placeholder="제목을 입력하세요"
-            style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, fontSize: '14px', marginBottom: '10px', boxSizing: 'border-box' }}
-          />
-          <textarea
-            value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-            placeholder="내용을 입력하세요"
-            rows={6}
-            style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, fontSize: '14px', resize: 'vertical', boxSizing: 'border-box' }}
-          />
-          <div style={{ display: 'flex', gap: '8px', marginTop: '12px', justifyContent: 'flex-end' }}>
-            <button onClick={() => { setShowForm(false); setEditingId(null) }} style={{
-              padding: '8px 16px', borderRadius: '8px', border: `1px solid ${C.border}`,
-              background: C.white, cursor: 'pointer', fontSize: '13px',
-            }}>취소</button>
-            <button onClick={handleSubmit} style={{
-              padding: '8px 16px', borderRadius: '8px', border: 'none',
-              background: C.navy, color: C.white, cursor: 'pointer', fontSize: '13px', fontWeight: '600',
-            }}>저장</button>
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* 공지 목록 */}
-      <div style={{ background: C.white, borderRadius: '12px', border: `1px solid ${C.border}`, overflow: 'hidden' }}>
-        {notices.length === 0 ? (
-          <div style={{ padding: '48px', textAlign: 'center', color: C.muted, fontSize: '14px' }}>
-            등록된 공지사항이 없습니다.
+        {/* 목록 테이블 */}
+        <div style={{ background: C.white, borderRadius: '10px', border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 1px 4px rgba(26,42,94,0.06)' }}>
+          {/* 테이블 헤더 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 100px 80px', background: C.bg, borderBottom: `2px solid ${C.border}`, padding: '12px 20px' }}>
+            <div style={{ fontSize: '11px', fontWeight: '700', color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>번호</div>
+            <div style={{ fontSize: '11px', fontWeight: '700', color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>제목</div>
+            <div style={{ fontSize: '11px', fontWeight: '700', color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>작성일</div>
+            {isAdmin && <div style={{ fontSize: '11px', fontWeight: '700', color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>관리</div>}
           </div>
-        ) : (
-          notices.map((notice, i) => (
-            <div key={notice.id}>
-              {i > 0 && <div style={{ borderTop: `1px solid ${C.border}` }} />}
-              <div
-                onClick={() => setSelected(selected?.id === notice.id ? null : notice)}
-                style={{ padding: '16px 20px', cursor: 'pointer', transition: 'background 0.1s' }}
-                onMouseEnter={e => e.currentTarget.style.background = '#F5F7FC'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ fontWeight: '600', fontSize: '14px', color: C.text }}>{notice.title}</div>
-                  <div style={{ fontSize: '12px', color: C.muted }}>
-                    {new Date(notice.created_at).toLocaleDateString('ko-KR')}
+
+          {notices.length === 0 ? (
+            <div style={{ padding: '60px', textAlign: 'center', color: C.muted, fontSize: '14px' }}>
+              등록된 공지사항이 없습니다.
+            </div>
+          ) : (
+            notices.map((notice, i) => (
+              <div key={notice.id}>
+                {/* 목록 행 */}
+                <div
+                  onClick={() => setSelected(selected?.id === notice.id ? null : notice)}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '60px 1fr 100px 80px',
+                    padding: '14px 20px', cursor: 'pointer',
+                    borderBottom: `1px solid ${C.border}`,
+                    background: selected?.id === notice.id ? '#F0F4FF' : 'transparent',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => { if (selected?.id !== notice.id) e.currentTarget.style.background = '#F5F7FC' }}
+                  onMouseLeave={e => { if (selected?.id !== notice.id) e.currentTarget.style.background = 'transparent' }}
+                >
+                  <div style={{ fontSize: '13px', color: C.muted }}>{notices.length - i}</div>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: selected?.id === notice.id ? C.navy : C.text }}>
+                    {notice.title}
                   </div>
-                </div>
-                {selected?.id === notice.id && (
-                  <div style={{ marginTop: '12px' }}>
-                    <div style={{ fontSize: '14px', color: C.text, lineHeight: '1.7', whiteSpace: 'pre-wrap' }}>
-                      {notice.content}
+                  <div style={{ fontSize: '12px', color: C.muted, textAlign: 'center' }}>
+                    {new Date(notice.created_at).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' })}
+                  </div>
+                  {isAdmin && (
+                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
+                      <button onClick={() => handleEdit(notice)} style={{
+                        padding: '3px 8px', borderRadius: '4px', border: `1px solid ${C.border}`,
+                        background: C.white, cursor: 'pointer', fontSize: '11px',
+                      }}>수정</button>
+                      <button onClick={() => handleDelete(notice.id)} style={{
+                        padding: '3px 8px', borderRadius: '4px', border: '1px solid #FC8181',
+                        background: '#FFF5F5', color: C.danger, cursor: 'pointer', fontSize: '11px',
+                      }}>삭제</button>
                     </div>
-                    {isAdmin && (
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                        <button onClick={e => { e.stopPropagation(); handleEdit(notice) }} style={{
-                          padding: '6px 12px', borderRadius: '6px', border: `1px solid ${C.border}`,
-                          background: C.white, cursor: 'pointer', fontSize: '12px',
-                        }}>✏️ 수정</button>
-                        <button onClick={e => { e.stopPropagation(); handleDelete(notice.id) }} style={{
-                          padding: '6px 12px', borderRadius: '6px', border: `1px solid #FC8181`,
-                          background: '#FFF5F5', color: C.danger, cursor: 'pointer', fontSize: '12px',
-                        }}>🗑️ 삭제</button>
-                      </div>
-                    )}
+                  )}
+                </div>
+
+                {/* 내용 펼치기 */}
+                {selected?.id === notice.id && (
+                  <div style={{
+                    padding: '20px 24px', background: '#F8FAFF',
+                    borderBottom: `1px solid ${C.border}`,
+                  }}>
+                    <div style={{ fontSize: '14px', color: C.text, lineHeight: '1.8', whiteSpace: 'pre-wrap' }}>
+                      {notice.content || '내용이 없습니다.'}
+                    </div>
                   </div>
                 )}
               </div>
-            </div>
-          ))
-        )}
+            ))
+          )}
+        </div>
       </div>
     </div>
   )

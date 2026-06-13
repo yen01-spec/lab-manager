@@ -106,15 +106,14 @@ export default function Home() {
           {/* 공지사항 */}
           <Card title="공지사항" sub="Notices"
             extra={
-  <span onClick={() => navigate('/notices')} style={{ fontSize: '11px', color: C.muted, cursor: 'pointer' }}>전체보기 →</span>
-}>
+<span onClick={() => navigate('/notices')} style={{ fontSize: '11px', color: C.muted, cursor: 'pointer' }}>전체보기 →</span>}>
             {notices.length === 0
               ? <EmptyState text="등록된 공지사항이 없습니다." />
               : notices.map((n, i) => (
                 <NoticeRow key={n.id} item={n} index={i} total={notices.length}
                   expanded={expandedId === n.id}
-                  onToggle={() => setExpandedId(expandedId === n.id ? null : n.id)} />
-              ))}
+onToggle={() => navigate('/notices')} />     
+         ))}
           </Card>
 
           {/* 연구실 안전관리 */}
