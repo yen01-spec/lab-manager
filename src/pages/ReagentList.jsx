@@ -861,34 +861,6 @@ onClick={e => toggleCheck(r.id, e, data)}>
         </div>
       )}
 
-      {/* MSDS/담당자 편집 모달 */}
-      {showEditModal && selectedReagent && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(26,42,94,0.55)', zIndex: 400,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setShowEditModal(false)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: C.white, borderRadius: '14px', padding: '28px',
-            width: '420px', maxWidth: '92vw', boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
-          }}>
-            <h3 style={{ margin: '0 0 20px', color: C.navy }}>✏️ 정보 수정</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>담당자</label>
-                <input value={editForm.manager} onChange={e => setEditForm({ ...editForm, manager: e.target.value })} placeholder="예: 홍길동" style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>MSDS URL</label>
-                <input value={editForm.msds_url} onChange={e => setEditForm({ ...editForm, msds_url: e.target.value })} placeholder="https://..." style={inputStyle} />
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
-              <button onClick={() => setShowEditModal(false)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
-              <button onClick={saveReagentInfo} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.navy, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>저장</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 시약 상세 모달 */}
       {selectedReagent && (
