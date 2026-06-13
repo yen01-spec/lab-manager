@@ -10,7 +10,6 @@ const TABS = [
   { key: 'disposal', label: '폐기 관리',       icon: '🗑️', sub: 'Disposal' },
   { key: 'move',     label: '위치 이동',       icon: '📍', sub: 'Move' },
   { key: 'update',   label: '정보 일괄갱신',   icon: '🔄', sub: 'Bulk Update' },
-  { key: 'notice',   label: '공지 / 안전정보', icon: '📢', sub: 'Notice' },
   { key: 'purchase', label: '구매 관리',       icon: '🛒', sub: 'Purchase' },
   { key: 'receipt',  label: '영수증 관리',     icon: '🧾', sub: 'Receipt' },
   { key: 'manage',   label: '관리',            icon: '⚠️', sub: 'Manage' },
@@ -94,7 +93,6 @@ export default function Admin() {
           {tab === 'disposal' && <DisposalTab onCountChange={fetchDisposalCount} />}
           {tab === 'move'     && <MoveTab locations={locations} />}
           {tab === 'update' && <BulkUpdateTab />}
-          {tab === 'notice'   && <NoticeTab />}
           {tab === 'purchase' && <PurchaseTab onCountChange={fetchPendingCount} />}
           {tab === 'receipt'  && <ReceiptTab />}
           {tab === 'manage'   && <ManageTab />}
