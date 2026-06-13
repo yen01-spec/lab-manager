@@ -913,16 +913,13 @@ onClick={e => toggleCheck(r.id, e, data)}>
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
             <tbody>
 {[
-  ['CAS No.', selectedReagent.cas_no, selectedReagent.cas_source],
+  ['CAS NO.', selectedReagent.cas_no, selectedReagent.cas_source],
   ['회사', selectedReagent.company, null],
   ['유별/성질', selectedReagent.category, null],
   ['용량', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`, null],
   ['유해·위험성', selectedReagent.hazard, selectedReagent.hazard_source],
   ['담당자', selectedReagent.manager, selectedReagent.manager_source],
-  ['정보 출처', selectedReagent.data_source === 'ghs_api' ? '🇰🇷 국내 GHS DB' :
-    selectedReagent.data_source === 'pubchem' ? '🌐 PubChem' :
-    selectedReagent.data_source === 'excel' ? '📊 엑셀 업로드' :
-    selectedReagent.data_source === 'manual' ? '✏️ 직접 입력' : '-', null],
+  ['Lot No.', lots[0]?.lot_no, null],
   ['비고', selectedReagent.notes, null],
 ].map(([label, value, source]) => (
   <tr key={label}>
