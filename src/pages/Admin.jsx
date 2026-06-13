@@ -155,9 +155,11 @@ try {
     const item = ghsData?.body?.items?.item
     const first = Array.isArray(item) ? item[0] : item
     if (first) {
-      result.korName = first.korNm || first.korName || ''
-      result.isYudok = first.yudokYn === 'Y' ? '유독물질' : ''
-      result.hazard = first.ghsYuhaeSungsNm || ''
+result.korName = first.sbstnNmKor || ''
+result.isYudok = first.sbstnTypeUnano || ''
+result.hazard = first.hrmflnClsfArtclNm
+  ? first.hrmflnClsfArtclNm.split('^').join(', ')
+  : ''
     }
   }
 } catch {}
