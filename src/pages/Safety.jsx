@@ -97,11 +97,22 @@ export default function Safety() {
               rows={6}
               style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, fontSize: '14px', resize: 'vertical', boxSizing: 'border-box', marginBottom: '12px' }}
             />
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-              <label style={{ fontSize: '13px', color: C.muted, fontWeight: '600' }}>📎 파일 첨부</label>
-              <input type="file" onChange={e => setFile(e.target.files[0])} style={{ fontSize: '13px' }} />
-              {file && <span style={{ fontSize: '12px', color: C.muted }}>{file.name}</span>}
-            </div>
+            <div style={{ marginBottom: '14px' }}>
+  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
+    <label style={{ fontSize: '13px', color: C.muted, fontWeight: '600' }}>📎 파일 첨부</label>
+    <input type="file" onChange={e => {
+      const f = e.target.files[0]
+      if (f && f.size > 50 * 1024 * 1024) {
+        alert('파일 크기가 너무 큽니다.\n최대 50MB까지 업로드할 수 있어요.')
+        e.target.value = ''
+        return
+      }
+      setFile(f)
+    }} style={{ fontSize: '13px' }} />
+    {file && <span style={{ fontSize: '12px', color: C.muted }}>{file.name} ({(file.size / 1024 / 1024).toFixed(1)}MB)</span>}
+  </div>
+  <div style={{ fontSize: '12px', color: C.muted }}>📌 최대 50MB까지 첨부 가능합니다. (PDF, 이미지 등)</div>
+</div>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button onClick={() => { setShowForm(false); setEditingId(null); setFile(null) }} style={{
                 padding: '8px 18px', borderRadius: '8px', border: `1px solid ${C.border}`,
