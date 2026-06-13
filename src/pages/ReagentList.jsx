@@ -865,43 +865,36 @@ onClick={e => toggleCheck(r.id, e, data)}>
       {/* 시약 상세 모달 */}
       {selectedReagent && (
         <Modal onClose={() => { setSelectedReagent(null); setShowDisposalModal(false); setShowStockModal(false); setShowMoveModal(false) }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-            <div><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-             <div>
-             </div>
-<button onClick={() => setSelectedReagent(null)} style={{ background: 'transparent', border: 'none', borderRadius: '6px', width: '32px', height: '32px', cursor: 'pointer', fontSize: '18px', color: '#CBD5E0' }}>×</button>               style={{
-    background: 'transparent', border: 'none',
-    borderRadius: '6px', width: '32px', height: '32px',
-    cursor: 'pointer', fontSize: '18px',
-    color: '#CBD5E0',
-  }}
-              <div style={{ fontSize: '10px', color: C.gold, fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '4px' }}>시약 상세</div>
-              <h2 style={{ margin: 0, color: C.navy, fontSize: '20px', fontWeight: '800' }}>{selectedReagent.name}</h2>
-              <p style={{ margin: '4px 0 0', color: C.muted, fontSize: '13px' }}>
-                {selectedReagent.locations?.room}{selectedReagent.locations?.detail && ' — ' + selectedReagent.locations.detail}
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowStockModal(true)} style={{ background: '#EBF8FF', color: '#2B6CB0', border: '1px solid #90CDF4', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📦 입출고</button>
-              <button onClick={() => setShowMoveModal(true)} style={{ background: '#EEF2FB', color: '#667EEA', border: '1px solid #C3D0F5', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📍 위치{!isAdmin ? ' 신청' : ' 이동'}</button>
-              {isAdmin && (
-  <div style={{ display: 'flex', gap: '6px' }}>
-    <button onClick={() => setShowEditModal(!showEditModal)} style={{
-      background: showEditModal ? C.navy : '#F0FFF4',
-      color: showEditModal ? '#fff' : '#276749',
-      border: `1px solid ${showEditModal ? C.navy : '#9AE6B4'}`,
-      padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-    }}>✏️ {showEditModal ? '수정 완료' : '수정'}</button>
-    {showEditModal && (
-      <button onClick={() => { setShowEditModal(false); setEditingField(null) }} style={{
-        background: '#FFF5F5', color: C.danger, border: `1px solid #FC8181`,
-        padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-      }}>✕ 취소</button>
-    )}
-  </div>
-)}
-            </div>
+ <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+          <div>
+            <div style={{ fontSize: '10px', color: C.gold, fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '4px' }}>시약 상세</div>
+            <h2 style={{ margin: 0, color: C.navy, fontSize: '20px', fontWeight: '800' }}>{selectedReagent.name}</h2>
+            <p style={{ margin: '4px 0 0', color: C.muted, fontSize: '13px' }}>
+              {selectedReagent.locations?.room}{selectedReagent.locations?.detail && ' — ' + selectedReagent.locations.detail}
+            </p>
           </div>
+          <button onClick={() => setSelectedReagent(null)} style={{ background: 'transparent', border: 'none', borderRadius: '6px', width: '32px', height: '32px', cursor: 'pointer', fontSize: '18px', color: '#CBD5E0' }}>×</button>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button onClick={() => setShowStockModal(true)} style={{ background: '#EBF8FF', color: '#2B6CB0', border: '1px solid #90CDF4', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔵 입출고</button>
+          <button onClick={() => setShowMoveModal(true)} style={{ background: '#EEF2FB', color: '#667EEA', border: '1px solid #C3D0F5', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔵 위치 이동</button>
+          {isAdmin && (
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button onClick={() => setShowEditModal(!showEditModal)} style={{
+                background: showEditModal ? C.navy : '#F0FFF4',
+                color: showEditModal ? '#fff' : '#276749',
+                border: `1px solid ${showEditModal ? C.navy : '#9AE6B4'}`,
+                padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+              }}>✏️ {showEditModal ? '수정 완료' : '수정'}</button>
+              {showEditModal && (
+                <button onClick={() => { setShowEditModal(false); setEditingField(null) }} style={{
+                  background: '#FFF5F5', color: C.danger, border: '1px solid #FC8181',
+                  padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+                }}>✕ 취소</button>
+              )}
+            </div>
+          )}
+        </div>
 
           {(selectedReagent.hazard || selectedReagent.ghs_live?.hazard) && (
   <div style={{ marginBottom: '16px' }}>
@@ -926,7 +919,7 @@ onClick={e => toggleCheck(r.id, e, data)}>
   ['CAS NO.', 'cas_no', selectedReagent.cas_no, selectedReagent.cas_source, 'cas_source'],
   ['회사', 'company', selectedReagent.company, selectedReagent.company_source, 'company_source'],
   ['유별/성질', 'category', selectedReagent.category, selectedReagent.category_source, 'category_source'],
-['용량', 'volume', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`, selectedReagent.volume_source, 'volume_source'],  ['유해·위험성', 'hazard', selectedReagent.hazard, selectedReagent.hazard_source, 'hazard_source'],
+  ['용량', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`, selectedReagent.volume_source],
   ['담당자', 'manager', selectedReagent.manager, selectedReagent.manager_source, 'manager_source'],
   ['Lot No.', null, lots[0]?.lot_no, lots[0]?.lot_source, null],
   ['MSDS URL', 'msds_url', selectedReagent.msds_url, selectedReagent.msds_source, 'msds_source'],
