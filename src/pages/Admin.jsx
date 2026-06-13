@@ -145,21 +145,22 @@ async function lookupCAS() {
     } catch {}
 
     // 2) 한국환경공단 GHS API — 한글명, 유독물 여부, 한글 유해성
-    try {
-      const ghsRes = await fetch(
-        `https://apis.data.go.kr/B552584/kecoapi/ncisghs/ghsList?serviceKey=${GHS_KEY}&casNo=${encodeURIComponent(cas)}&pageNo=1&numOfRows=1&type=json`
-      )
-      if (ghsRes.ok) {
-        const ghsData = await ghsRes.json()
-        const item = ghsData?.response?.body?.items?.item
-        const first = Array.isArray(item) ? item[0] : item
-        if (first) {
-          result.korName = first.korName || first.regnNm || ''
-          result.isYudok = first.yudokYn === 'Y' ? '유독물질' : ''
-          result.hazard = first.ghsYuhaeSungsNm || first.hazardText || ''
-        }
-      }
-    } catch {}
+    // 2) 한국환경공단 GHS API
+try {
+  const ghsRes = await fetch(
+    `https://apis.data.go.kr/B552584/kecoapi/ncisghs/ghsList?serviceKey=${GHS_KEY}&searchGubun=2&searchNm=${encodeURIComponent(cas)}&pageNo=1&numOfRows=1&returnType=JSON`
+  )
+  if (ghsRes.ok) {
+    const ghsData = await ghsRes.json()
+    const item = ghsData?.body?.items?.item
+    const first = Array.isArray(item) ? item[0] : item
+    if (first) {
+      result.korName = first.korNm || first.korName || ''
+      result.isYudok = first.yudokYn === 'Y' ? '유독물질' : ''
+      result.hazard = first.ghsYuhaeSungsNm || ''
+    }
+  }
+} catch {}
 
     // 3) 안전보건공단 MSDS API — MSDS 링크
     try {
