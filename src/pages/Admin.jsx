@@ -150,18 +150,18 @@ try {
   const ghsRes = await fetch(
     `https://apis.data.go.kr/B552584/kecoapi/ncisghs/ghsList?serviceKey=${GHS_KEY}&searchGubun=2&searchNm=${encodeURIComponent(cas)}&pageNo=1&numOfRows=1&returnType=JSON`
   )
-const ghsData = await ghsRes.json()
-const items = ghsData?.body?.items
-const first = Array.isArray(items) ? items[0] : items
-if (first) {
-  result.korName = first.sbstnNmKor || ''
-  result.isYudok = first.sbstnTypeUnqno
-    ? first.sbstnTypeUnqno.split('^')[0]
-    : ''
-  result.hazard = first.hrmflnList
-    ? first.hrmflnList.map(h => h.hrmflnClsfArtclNm).join(', ')
-    : ''
-}
+  if (ghsRes.ok) {
+    const ghsData = await ghsRes.json()
+    const items = ghsData?.body?.items
+    const first = Array.isArray(items) ? items[0] : items
+    if (first) {
+      result.korName = first.sbstnNmKor || ''
+      result.isYudok = first.sbstnTypeUnqno
+        ? first.sbstnTypeUnqno.split('^')[0]
+        : ''
+      result.hazard = first.hrmflnList
+        ? first.hrmflnList.map(h => h.hrmflnClsfArtclNm).join(', ')
+        : ''
     }
   }
 } catch {}
