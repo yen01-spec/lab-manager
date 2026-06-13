@@ -35,6 +35,8 @@ function useBreakpoint() {
 
 // ── 메뉴 아이템 ───────────────────────────────────────
 const NAV_ITEMS = [
+  { to: '/notices', label: '공지사항', sub: 'Notices', icon: '📢' },
+  { to: '/safety',  label: '안전 자료', sub: 'Safety Management', icon: '🛡️' },
   { to: '/',                   label: '홈',         sub: 'Home',             icon: '🏠', end: true },
   { to: '/reagents/locations', label: '시약장 위치', sub: 'Storage Location', icon: '📍' },
   { to: '/reagents/list',      label: '시약 목록',  sub: 'Reagent List',     icon: '🧪' },
