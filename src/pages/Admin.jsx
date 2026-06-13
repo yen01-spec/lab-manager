@@ -1416,22 +1416,51 @@ if (data) setReagents(data)
 }
 
   async function runBulkUpdate() {
-    const targets = reagents.filter(r => r.cas_no)
-    if (targets.length === 0) { alert('CAS 번호가 있는 시약이 없습니다'); return }
-    if (!window.confirm(`${targets.length}개 시약을 일괄 업데이트하시겠습니까?\n시간이 걸릴 수 있어요.`)) return
+  const targets = reagents.filter(r => r.cas_no || r.name)
+  if (targets.length === 0) { alert('시약이 없습니다'); return }
+  if (!window.confirm(`${targets.length}개 시약을 일괄 업데이트하시겠습니까?\n시간이 걸릴 수 있어요.`)) return
 
-    setLoading(true)
-    setProgress({ current: 0, total: targets.length, done: false })
-    setResults([])
+  setLoading(true)
+  setProgress({ current: 0, total: targets.length, done: false })
+  setResults([])
 
-    const newResults = []
-    for (let i = 0; i < targets.length; i++) {
-      const r = targets[i]
-      setProgress({ current: i + 1, total: targets.length, done: false })
-      try {
-        // GHS API 조회
+  const newResults = []
+  for (let i = 0; i < targets.length; i++) {
+    const r = targets[i]
+    setProgress({ current: i + 1, total: targets.length, done: false })
+    try {
+      let casNo = r.cas_no
+      let foundByCas = false
+      let foundByName = false
+
+      // CAS 없으면 시약명으로 PubChem에서 CAS 조회
+      if (!casNo && r.name) {
+        try {
+          const cidRes = await fetch(
+            `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(r.name)}/property/IUPACName,MolecularFormula/JSON`
+          )
+          if (cidRes.ok) {
+            // CAS 번호 조회
+            const synRes = await fetch(
+              `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(r.name)}/synonyms/JSON`
+            )
+            if (synRes.ok) {
+              const synData = await synRes.json()
+              const synonyms = synData?.InformationList?.Information?.[0]?.Synonym || []
+              const casPattern = /^\d{2,7}-\d{2}-\d$/
+              casNo = synonyms.find(s => casPattern.test(s)) || null
+              if (casNo) foundByName = true
+            }
+          }
+        } catch {}
+      } else if (casNo) {
+        foundByCas = true
+      }
+
+      // CAS 번호로 GHS API 조회
+      if (casNo) {
         const ghsRes = await fetch(
-          `https://apis.data.go.kr/B552584/kecoapi/ncisghs/ghsList?serviceKey=${GHS_KEY}&searchGubun=2&searchNm=${encodeURIComponent(r.cas_no)}&pageNo=1&numOfRows=1&returnType=JSON`
+          `https://apis.data.go.kr/B552584/kecoapi/ncisghs/ghsList?serviceKey=${GHS_KEY}&searchGubun=2&searchNm=${encodeURIComponent(casNo)}&pageNo=1&numOfRows=1&returnType=JSON`
         )
         if (ghsRes.ok) {
           const ghsData = await ghsRes.json()
@@ -1445,25 +1474,42 @@ if (data) setReagents(data)
             const isYudok = first.sbstnTypeUnqno ? first.sbstnTypeUnqno.split('^')[0] : ''
 
             // DB 업데이트
-            await supabase.from('reagents').update({
+            const updateData = {
               hazard: hazard || r.hazard,
-            }).eq('id', r.id)
+              data_source: 'ghs_api',
+            }
+            if (!r.cas_no && casNo) updateData.cas_no = casNo
+            if (!r.name && korName) updateData.name = korName
 
-            newResults.push({ name: r.name, cas_no: r.cas_no, korName, hazard, isYudok, status: 'success' })
+            await supabase.from('reagents').update(updateData).eq('id', r.id)
+
+            newResults.push({
+              name: r.name, cas_no: casNo, korName, hazard, isYudok,
+              source: foundByName ? '시약명→CAS→GHS' : 'CAS→GHS',
+              status: 'success'
+            })
           } else {
-            newResults.push({ name: r.name, cas_no: r.cas_no, status: 'notfound' })
+            // GHS DB에 없지만 CAS는 찾음
+            if (foundByName && casNo) {
+              await supabase.from('reagents').update({
+                cas_no: casNo, data_source: 'pubchem'
+              }).eq('id', r.id)
+            }
+            newResults.push({ name: r.name, cas_no: casNo, status: 'notfound', source: foundByName ? '시약명→CAS' : 'CAS만' })
           }
         }
-      } catch {
-        newResults.push({ name: r.name, cas_no: r.cas_no, status: 'error' })
+      } else {
+        newResults.push({ name: r.name, cas_no: null, status: 'nocas', source: '-' })
       }
-      setResults([...newResults])
-      // API 과부하 방지 (0.5초 딜레이)
-      await new Promise(res => setTimeout(res, 500))
+    } catch {
+      newResults.push({ name: r.name, cas_no: r.cas_no, status: 'error', source: '-' })
     }
-    setProgress(prev => ({ ...prev, done: true }))
-    setLoading(false)
+    setResults([...newResults])
+    await new Promise(res => setTimeout(res, 500))
   }
+  setProgress(prev => ({ ...prev, done: true }))
+  setLoading(false)
+}
 
   const successCount = results.filter(r => r.status === 'success').length
   const notFoundCount = results.filter(r => r.status === 'notfound').length
@@ -1531,7 +1577,7 @@ if (data) setReagents(data)
         <Card title="📋 갱신 결과" noPadding>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>{['시약명', 'CAS No.', '한글명', '유해성', '결과'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
+              <tr>{['시약명', 'CAS No.', '한글명', '유해성', '출처', '결과'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
             </thead>
             <tbody>
               {results.map((r, i) => (
@@ -1539,6 +1585,7 @@ if (data) setReagents(data)
                   <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>{r.name}</td>
                   <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>{r.cas_no}</td>
                   <td style={{ ...tdStyle, fontSize: '12px' }}>{r.korName || '-'}</td>
+                  <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{r.source || '-'}</td>
                   <td style={{ ...tdStyle, fontSize: '12px', maxWidth: '200px' }}>{r.hazard || '-'}</td>
                   <td style={tdStyle}>
                     {r.status === 'success' && <span style={{ color: '#276749', fontWeight: '700', fontSize: '12px' }}>✅ 성공</span>}
