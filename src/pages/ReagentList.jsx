@@ -105,12 +105,26 @@ export default function ReagentList() {
     setCheckedIds(new Set())
   }
 
-  function toggleCheck(id, e) {
-    e.stopPropagation()
-    const next = new Set(checkedIds)
+  const [lastChecked, setLastChecked] = useState(null)
+
+function toggleCheck(id, e, allData) {
+  e.stopPropagation()
+  const next = new Set(checkedIds)
+
+  if (e.shiftKey && lastChecked) {
+    // Shift+클릭 범위 선택
+    const ids = allData.map(r => r.id)
+    const start = ids.indexOf(lastChecked)
+    const end = ids.indexOf(id)
+    const range = ids.slice(Math.min(start, end), Math.max(start, end) + 1)
+    const allSelected = range.every(rid => next.has(rid))
+    range.forEach(rid => allSelected ? next.delete(rid) : next.add(rid))
+  } else {
     next.has(id) ? next.delete(id) : next.add(id)
-    setCheckedIds(next)
   }
+  setLastChecked(id)
+  setCheckedIds(next)
+}
 
   function toggleAll(data) {
     if (checkedIds.size === data.length) setCheckedIds(new Set())
@@ -367,7 +381,11 @@ export default function ReagentList() {
                         onMouseEnter={e => { if (!isChecked) e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg }}
                         onMouseLeave={e => { if (!isChecked) e.currentTarget.style.background = isLow ? '#FFF8F8' : C.white }}>
                         {editMode && (
-                          <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => toggleCheck(r.id, e)}>
+                          <td style={{ ...tdStyle, textAlign: 'center' }} // 행 클릭
+onClick={() => editMode ? toggleCheck(r.id, { stopPropagation: () => {}, shiftKey: false }, data) : openReagent(r)}
+
+// 체크박스 클릭
+onClick={e => toggleCheck(r.id, e, data)}>
                             <input type="checkbox" checked={isChecked} onChange={() => {}}
                               style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
                           </td>
@@ -477,8 +495,8 @@ export default function ReagentList() {
                 fontSize: '13px', fontWeight: '600', flexShrink: 0,
               }}>📥 엑셀</button>
             )}
-            {currentData.length > 0 && (
-              <button onClick={toggleEditMode} style={{
+            {isAdmin && currentData.length > 0 && (
+  <button onClick={toggleEditMode} style={{
                 background: editMode ? C.navy : C.white,
                 color: editMode ? C.white : C.text,
                 border: `1px solid ${editMode ? C.navy : C.border}`,
