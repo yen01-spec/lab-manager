@@ -66,22 +66,31 @@ export default function ReagentList() {
   }
 
   async function fetchReagentsByLocation(locationId) {
-    const { data } = await supabase.from('reagents')
-      .select('*, reagent_lots(*), locations(*)')
-      .eq('location_id', locationId)
-    if (data) setReagents(data.sort((a, b) => a.name.localeCompare(b.name)))
+  const { data, count } = await supabase.from('reagents')
+    .select('*, reagent_lots(*), locations(*)', { count: 'exact' })
+    .eq('location_id', locationId)
+    .range(0, 4999)
+  if (count > 4999) {
+    alert(`⚠️ 시약이 ${count}개로 많아 일부만 표시됩니다. 관리자에게 문의하세요.`)
   }
+  if (data) setReagents(data.sort((a, b) => a.name.localeCompare(b.name)))
+}
 
   async function refetchReagents() {
     if (selectedLocation) await fetchReagentsByLocation(selectedLocation.id)
   }
 
   async function handleSearch() {
-    if (!search.trim()) return
-    const { data } = await supabase.from('reagents')
-      .select('*, reagent_lots(*), locations(*)').ilike('name', `%${search}%`)
-    if (data) setSearchResults(data.sort((a, b) => a.name.localeCompare(b.name)))
+  if (!search.trim()) return
+  const { data, count } = await supabase.from('reagents')
+    .select('*, reagent_lots(*), locations(*)', { count: 'exact' })
+    .ilike('name', `%${search}%`)
+    .range(0, 4999)
+  if (count > 4999) {
+    alert(`⚠️ 검색 결과가 ${count}개로 많아 일부만 표시됩니다.`)
   }
+  if (data) setSearchResults(data.sort((a, b) => a.name.localeCompare(b.name)))
+}
 
   async function openReagent(reagent) {
   if (editMode) return
