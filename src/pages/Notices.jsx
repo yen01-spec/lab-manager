@@ -10,42 +10,60 @@ export default function Notices() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ title: '', content: '' })
   const [editingId, setEditingId] = useState(null)
-  const [file, setFile] = useState(null)
+  const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
 
   useEffect(() => { fetchNotices() }, [])
 
   async function fetchNotices() {
     const { data } = await supabase
-      .from('notices').select('*')
+      .from('notices').select('*, notice_files(*)')
       .eq('type', 'notice')
       .order('created_at', { ascending: false })
     setNotices(data || [])
   }
 
+  function handleFileAdd(e) {
+    const newFiles = Array.from(e.target.files)
+    const oversized = newFiles.filter(f => f.size > 50 * 1024 * 1024)
+    if (oversized.length > 0) {
+      alert(`파일 크기가 너무 큽니다.\n최대 50MB까지 업로드할 수 있어요.\n\n초과 파일: ${oversized.map(f => f.name).join(', ')}`)
+      e.target.value = ''
+      return
+    }
+    setFiles(prev => [...prev, ...newFiles])
+    e.target.value = ''
+  }
+
   async function handleSubmit() {
     if (!form.title.trim()) return alert('제목을 입력하세요')
     setUploading(true)
-    let file_url = null, file_name = null
 
-    if (file) {
+    let noticeId = editingId
+    if (editingId) {
+      await supabase.from('notices').update({ title: form.title, content: form.content }).eq('id', editingId)
+    } else {
+      const { data } = await supabase.from('notices').insert({ title: form.title, content: form.content, type: 'notice' }).select().single()
+      noticeId = data.id
+    }
+
+    for (const file of files) {
       const ext = file.name.split('.').pop()
-      const path = `notices/${Date.now()}.${ext}`
+      const path = `notices/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
       const { error } = await supabase.storage.from('documents').upload(path, file)
       if (!error) {
         const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path)
-        file_url = urlData.publicUrl
-        file_name = file.name
+        await supabase.from('notice_files').insert({
+          notice_id: noticeId,
+          file_url: urlData.publicUrl,
+          file_name: file.name,
+          file_size: file.size,
+        })
       }
     }
 
-    if (editingId) {
-      await supabase.from('notices').update({ title: form.title, content: form.content, ...(file_url && { file_url, file_name }) }).eq('id', editingId)
-    } else {
-      await supabase.from('notices').insert({ title: form.title, content: form.content, type: 'notice', file_url, file_name })
-    }
     setForm({ title: '', content: '' })
-    setFile(null)
+    setFiles([])
     setShowForm(false)
     setEditingId(null)
     setUploading(false)
@@ -59,11 +77,18 @@ export default function Notices() {
     fetchNotices()
   }
 
+  async function handleFileDelete(fileId) {
+    if (!confirm('첨부파일을 삭제하시겠습니까?')) return
+    await supabase.from('notice_files').delete().eq('id', fileId)
+    fetchNotices()
+  }
+
   function handleEdit(notice) {
     setForm({ title: notice.title, content: notice.content })
     setEditingId(notice.id)
     setShowForm(true)
     setSelected(null)
+    setFiles([])
   }
 
   return (
@@ -74,7 +99,7 @@ export default function Notices() {
 
         {isAdmin && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-            <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({ title: '', content: '' }); setFile(null) }} style={{
+            <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({ title: '', content: '' }); setFiles([]) }} style={{
               background: C.navy, color: C.white, border: 'none',
               padding: '9px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
             }}>✏️ 글쓰기</button>
@@ -97,24 +122,40 @@ export default function Notices() {
               rows={6}
               style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, fontSize: '14px', resize: 'vertical', boxSizing: 'border-box', marginBottom: '12px' }}
             />
-<div style={{ marginBottom: '14px' }}>
-  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
-    <label style={{ fontSize: '13px', color: C.muted, fontWeight: '600' }}>📎 파일 첨부</label>
-    <input type="file" onChange={e => {
-      const f = e.target.files[0]
-      if (f && f.size > 50 * 1024 * 1024) {
-        alert('파일 크기가 너무 큽니다.\n최대 50MB까지 업로드할 수 있어요.')
-        e.target.value = ''
-        return
-      }
-      setFile(f)
-    }} style={{ fontSize: '13px' }} />
-    {file && <span style={{ fontSize: '12px', color: C.muted }}>{file.name} ({(file.size / 1024 / 1024).toFixed(1)}MB)</span>}
-  </div>
-  <div style={{ fontSize: '12px', color: C.muted }}>📌 최대 50MB까지 첨부 가능합니다. (PDF, 이미지 등)</div>
-</div>
+
+            {/* 파일 첨부 */}
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '13px', color: C.muted, fontWeight: '600' }}>📎 파일 첨부</span>
+                <label style={{
+                  padding: '5px 12px', borderRadius: '6px', border: `1px solid ${C.border}`,
+                  background: C.white, cursor: 'pointer', fontSize: '12px', color: C.navy, fontWeight: '600',
+                }}>
+                  + 파일 추가
+                  <input type="file" multiple onChange={handleFileAdd} style={{ display: 'none' }} />
+                </label>
+              </div>
+              {files.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                  {files.map((f, i) => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '6px 10px', borderRadius: '6px', background: C.bg, border: `1px solid ${C.border}`,
+                    }}>
+                      <span style={{ fontSize: '13px', flex: 1 }}>📎 {f.name}</span>
+                      <span style={{ fontSize: '12px', color: C.muted }}>({(f.size / 1024 / 1024).toFixed(1)}MB)</span>
+                      <button onClick={() => setFiles(prev => prev.filter((_, idx) => idx !== i))} style={{
+                        background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '18px', lineHeight: 1,
+                      }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ fontSize: '12px', color: C.muted }}>📌 최대 50MB까지 첨부 가능합니다. (PDF, 이미지 등)</div>
+            </div>
+
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button onClick={() => { setShowForm(false); setEditingId(null); setFile(null) }} style={{
+              <button onClick={() => { setShowForm(false); setEditingId(null); setFiles([]) }} style={{
                 padding: '8px 18px', borderRadius: '8px', border: `1px solid ${C.border}`,
                 background: C.white, cursor: 'pointer', fontSize: '13px',
               }}>취소</button>
@@ -157,7 +198,9 @@ export default function Notices() {
                   <div style={{ fontSize: '13px', color: C.muted }}>{notices.length - i}</div>
                   <div style={{ fontSize: '14px', fontWeight: '600', color: selected?.id === notice.id ? C.navy : C.text }}>{notice.title}</div>
                   <div style={{ textAlign: 'center' }}>
-                    {notice.file_url && <span style={{ fontSize: '14px' }}>📎</span>}
+                    {notice.notice_files?.length > 0 && (
+                      <span style={{ fontSize: '13px' }}>📎{notice.notice_files.length > 1 ? notice.notice_files.length : ''}</span>
+                    )}
                   </div>
                   <div style={{ fontSize: '12px', color: C.muted, textAlign: 'center' }}>
                     {new Date(notice.created_at).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' })}
@@ -172,15 +215,27 @@ export default function Notices() {
 
                 {selected?.id === notice.id && (
                   <div style={{ padding: '20px 24px', background: '#F8FAFF', borderBottom: `1px solid ${C.border}` }}>
-                    <div style={{ fontSize: '14px', color: C.text, lineHeight: '1.8', whiteSpace: 'pre-wrap', marginBottom: notice.file_url ? '12px' : 0 }}>
+                    <div style={{ fontSize: '14px', color: C.text, lineHeight: '1.8', whiteSpace: 'pre-wrap', marginBottom: notice.notice_files?.length > 0 ? '12px' : 0 }}>
                       {notice.content || '내용이 없습니다.'}
                     </div>
-                    {notice.file_url && (
-                      <a href={notice.file_url} target="_blank" rel="noopener noreferrer" style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '6px',
-                        padding: '7px 14px', borderRadius: '6px', border: `1px solid ${C.border}`,
-                        background: C.white, color: C.navy, fontSize: '13px', fontWeight: '600', textDecoration: 'none',
-                      }}>📎 {notice.file_name || '첨부파일 다운로드'}</a>
+                    {notice.notice_files?.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {notice.notice_files.map(f => (
+                          <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <a href={f.file_url} target="_blank" rel="noopener noreferrer" style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '6px',
+                              padding: '6px 14px', borderRadius: '6px', border: `1px solid ${C.border}`,
+                              background: C.white, color: C.navy, fontSize: '13px', fontWeight: '600', textDecoration: 'none',
+                            }}>📎 {f.file_name}</a>
+                            <span style={{ fontSize: '12px', color: C.muted }}>({(f.file_size / 1024 / 1024).toFixed(1)}MB)</span>
+                            {isAdmin && (
+                              <button onClick={() => handleFileDelete(f.id)} style={{
+                                background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '16px',
+                              }}>×</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}
