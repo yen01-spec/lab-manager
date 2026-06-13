@@ -84,20 +84,49 @@ export default function ReagentList() {
   }
 
   async function openReagent(reagent) {
-    if (editMode) return
-    const { data } = await supabase.from('reagents')
-      .select('*, locations(*), reagent_lots(*)').eq('id', reagent.id).single()
-    if (data) {
-      setSelectedReagent(data)
-      setLots(data.reagent_lots || [])
-      setEditForm({ msds_url: data.msds_url || '', manager: data.manager || '' })
-      setMoveForm({ to_location_id: '', requested_by: '', notes: '' })
-      const { data: history } = await supabase.from('stock_history')
-        .select('*').eq('reagent_id', reagent.id)
-        .order('created_at', { ascending: false }).limit(20)
-      if (history) setStockHistory(history)
+  if (editMode) return
+  const { data } = await supabase.from('reagents')
+    .select('*, locations(*), reagent_lots(*)').eq('id', reagent.id).single()
+  if (data) {
+    setSelectedReagent(data)
+    setLots(data.reagent_lots || [])
+    setEditForm({ msds_url: data.msds_url || '', manager: data.manager || '' })
+    setMoveForm({ to_location_id: '', requested_by: '', notes: '' })
+    const { data: history } = await supabase.from('stock_history')
+      .select('*').eq('reagent_id', reagent.id)
+      .order('created_at', { ascending: false }).limit(20)
+    if (history) setStockHistory(history)
+
+    // CAS 번호로 GHS 자동 조회
+    if (data.cas_no) {
+      try {
+        const GHS_KEY = 'e9bf2e5bc508d370a9660687c34a6730eae5237e78bad04e08f66705be15d597'
+        const ghsRes = await fetch(
+          `https://apis.data.go.kr/B552584/kecoapi/ncisghs/ghsList?serviceKey=${GHS_KEY}&searchGubun=2&searchNm=${encodeURIComponent(data.cas_no)}&pageNo=1&numOfRows=1&returnType=JSON`
+        )
+        if (ghsRes.ok) {
+          const ghsData = await ghsRes.json()
+          const items = ghsData?.body?.items
+          const first = Array.isArray(items) ? items[0] : items
+          if (first) {
+            const korName = first.sbstnNmKor || ''
+            const isYudok = first.sbstnTypeUnqno ? first.sbstnTypeUnqno.split('^')[0] : ''
+            const hazard = first.hrmflnList
+              ? first.hrmflnList.map(h => h.hrmflnClsfArtclNm).join(', ')
+              : ''
+            // DB에 없으면 API 데이터로 채워서 표시
+            setSelectedReagent(prev => ({
+              ...prev,
+              name: prev.name || korName,
+              hazard: prev.hazard || hazard,
+              ghs_live: { korName, isYudok, hazard },
+            }))
+          }
+        }
+      } catch {}
     }
   }
+}
 
   // 편집 모드 토글
   function toggleEditMode() {
@@ -855,13 +884,22 @@ onClick={e => toggleCheck(r.id, e, data)}>
             </div>
           </div>
 
-          {selectedReagent.hazard && getGhsEmojis(selectedReagent.hazard).length > 0 && (
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-              {getGhsEmojis(selectedReagent.hazard).map(g => (
-                <span key={g.label} style={{ background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '6px', padding: '4px 10px', fontSize: '13px' }}>{g.emoji} {g.label}</span>
-              ))}
-            </div>
-          )}
+          {(selectedReagent.hazard || selectedReagent.ghs_live?.hazard) && (
+  <div style={{ marginBottom: '16px' }}>
+    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+      {getGhsEmojis(selectedReagent.hazard || selectedReagent.ghs_live?.hazard).map(g => (
+        <span key={g.label} style={{ background: '#FFF8E7', border: '1px solid #F6C343',
+          borderRadius: '6px', padding: '4px 10px', fontSize: '13px' }}>{g.emoji} {g.label}</span>
+      ))}
+    </div>
+    {selectedReagent.ghs_live?.isYudok && (
+      <span style={{ background: '#FFF5F5', color: C.danger, border: '1px solid #FC8181',
+        padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700' }}>
+        ⚠️ {selectedReagent.ghs_live.isYudok}
+      </span>
+    )}
+  </div>
+)}
 
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
             <tbody>
