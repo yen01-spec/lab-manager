@@ -876,12 +876,22 @@ onClick={e => toggleCheck(r.id, e, data)}>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button onClick={() => setShowStockModal(true)} style={{ background: '#EBF8FF', color: '#2B6CB0', border: '1px solid #90CDF4', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📦 입출고</button>
               <button onClick={() => setShowMoveModal(true)} style={{ background: '#EEF2FB', color: '#667EEA', border: '1px solid #C3D0F5', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📍 위치{!isAdmin ? ' 신청' : ' 이동'}</button>
-              {isAdmin && <button onClick={() => setShowEditModal(!showEditModal)} style={{
-  background: showEditModal ? C.navy : '#F0FFF4',
-  color: showEditModal ? '#fff' : '#276749',
-  border: `1px solid ${showEditModal ? C.navy : '#9AE6B4'}`,
-  padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-}}>✏️ {showEditModal ? '수정 완료' : '수정'}</button>}
+              {isAdmin && (
+  <div style={{ display: 'flex', gap: '6px' }}>
+    <button onClick={() => setShowEditModal(!showEditModal)} style={{
+      background: showEditModal ? C.navy : '#F0FFF4',
+      color: showEditModal ? '#fff' : '#276749',
+      border: `1px solid ${showEditModal ? C.navy : '#9AE6B4'}`,
+      padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+    }}>✏️ {showEditModal ? '수정 완료' : '수정'}</button>
+    {showEditModal && (
+      <button onClick={() => { setShowEditModal(false); setEditingField(null) }} style={{
+        background: '#FFF5F5', color: C.danger, border: `1px solid #FC8181`,
+        padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+      }}>✕ 취소</button>
+    )}
+  </div>
+)}
             </div>
           </div>
 
