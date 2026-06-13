@@ -866,7 +866,18 @@ onClick={e => toggleCheck(r.id, e, data)}>
       {selectedReagent && (
         <Modal onClose={() => { setSelectedReagent(null); setShowDisposalModal(false); setShowStockModal(false); setShowMoveModal(false) }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-            <div>
+            <div><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+  <div>
+    {/* 기존 제목/내용 (870~874줄) */}
+  </div>
+  {/* 여기에 추가 */}
+  <button onClick={() => setSelectedReagent(null)} style={{
+    background: 'transparent', border: 'none',
+    borderRadius: '6px', width: '32px', height: '32px',
+    cursor: 'pointer', fontSize: '18px',
+    color: '#CBD5E0',
+  }}>×</button>
+</div>
               <div style={{ fontSize: '10px', color: C.gold, fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '4px' }}>시약 상세</div>
               <h2 style={{ margin: 0, color: C.navy, fontSize: '20px', fontWeight: '800' }}>{selectedReagent.name}</h2>
               <p style={{ margin: '4px 0 0', color: C.muted, fontSize: '13px' }}>
@@ -918,7 +929,7 @@ onClick={e => toggleCheck(r.id, e, data)}>
   ['CAS NO.', 'cas_no', selectedReagent.cas_no, selectedReagent.cas_source, 'cas_source'],
   ['회사', 'company', selectedReagent.company, selectedReagent.company_source, 'company_source'],
   ['유별/성질', 'category', selectedReagent.category, selectedReagent.category_source, 'category_source'],
-  ['용량', 'volume', selectedReagent.volume, selectedReagent.volume_source, 'volume_source'],
+  ['용량', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`, selectedReagent.volume_source],
   ['유해·위험성', 'hazard', selectedReagent.hazard, selectedReagent.hazard_source, 'hazard_source'],
   ['담당자', 'manager', selectedReagent.manager, selectedReagent.manager_source, 'manager_source'],
   ['Lot No.', null, lots[0]?.lot_no, lots[0]?.lot_source, null],
