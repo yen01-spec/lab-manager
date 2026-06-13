@@ -35,8 +35,6 @@ function useBreakpoint() {
 
 // ── 메뉴 아이템 ───────────────────────────────────────
 const NAV_ITEMS = [
-  { to: '/notices', label: '공지사항', sub: 'Notices', icon: '📢' },
-  { to: '/safety',  label: '안전 자료', sub: 'Safety Management', icon: '🛡️' },
   { to: '/',                   label: '홈',         sub: 'Home',             icon: '🏠', end: true },
   { to: '/reagents/locations', label: '시약장 위치', sub: 'Storage Location', icon: '📍' },
   { to: '/reagents/list',      label: '시약 목록',  sub: 'Reagent List',     icon: '🧪' },
@@ -44,6 +42,8 @@ const NAV_ITEMS = [
   { to: '/requests',           label: '구매 요청',  sub: 'Purchase Request', icon: '🛒' },
   { to: '/calendar',           label: '달력',       sub: 'Calendar',         icon: '📅' },
   { to: '/inventory',          label: '재고 실사',  sub: 'Inventory Count',  icon: '📊' },
+  { to: '/notices',            label: '공지사항',   sub: 'Notices',          icon: '📢' },
+  { to: '/safety',             label: '안전 자료',  sub: 'Safety Management', icon: '🛡️' },
 ]
 
 // 하단 탭바에 표시할 주요 메뉴 (폰용, 5개까지)
