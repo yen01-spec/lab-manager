@@ -914,13 +914,13 @@ onClick={e => toggleCheck(r.id, e, data)}>
             <tbody>
 {[
   ['CAS NO.', selectedReagent.cas_no, selectedReagent.cas_source],
-  ['회사', selectedReagent.company, null],
-  ['유별/성질', selectedReagent.category, null],
-  ['용량', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`, null],
+  ['회사', selectedReagent.company, selectedReagent.company_source],
+  ['유별/성질', selectedReagent.category, selectedReagent.category_source],
+  ['용량', `${selectedReagent.volume || ''} ${selectedReagent.unit || ''}`, selectedReagent.volume_source],
   ['유해·위험성', selectedReagent.hazard, selectedReagent.hazard_source],
   ['담당자', selectedReagent.manager, selectedReagent.manager_source],
   ['Lot No.', lots[0]?.lot_no, null],
-  ['비고', selectedReagent.notes, null],
+  ['비고', selectedReagent.notes, selectedReagent.notes_source],
 ].map(([label, value, source]) => (
   <tr key={label}>
     <td style={{ padding: '9px 14px', background: C.bg, fontWeight: '700',
@@ -929,7 +929,7 @@ onClick={e => toggleCheck(r.id, e, data)}>
     <td style={{ padding: '9px 14px', fontSize: '13px', borderBottom: `1px solid ${C.border}`, color: C.text }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <span>{value || '-'}</span>
-        {source && (
+        {source && value && (
           <span style={{
             fontSize: '10px', padding: '1px 6px', borderRadius: '8px', fontWeight: '600',
             background: source === 'ghs_api' ? '#EBF8FF' : source === 'excel' ? '#F0FFF4' : source === 'pubchem' ? '#EEF2FB' : '#F7FAFC',
