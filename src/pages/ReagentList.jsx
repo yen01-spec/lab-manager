@@ -279,12 +279,20 @@ function toggleCheck(id, e, allData) {
     }
   }
 
-  async function saveReagentInfo() {
-    await supabase.from('reagents').update({ msds_url: editForm.msds_url, manager: editForm.manager }).eq('id', selectedReagent.id)
-    setSelectedReagent({ ...selectedReagent, ...editForm })
-    setShowEditModal(false)
-    alert('저장되었습니다!')
-  }
+ async function saveReagentInfo() {
+  await supabase.from('reagents').update({
+    msds_url: editForm.msds_url,
+    manager: editForm.manager,
+    msds_source: editForm.msds_url ? 'manual' : null,
+    manager_source: editForm.manager ? 'manual' : null,
+  }).eq('id', selectedReagent.id)
+  setSelectedReagent({ ...selectedReagent, ...editForm,
+    msds_source: editForm.msds_url ? 'manual' : null,
+    manager_source: editForm.manager ? 'manual' : null,
+  })
+  setShowEditModal(false)
+  alert('저장되었습니다!')
+}
 
   function startInlineEdit(lotId, reagentId, field, currentValue, e) {
     e.stopPropagation()
