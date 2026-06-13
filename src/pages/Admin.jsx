@@ -257,7 +257,12 @@ try {
 {casResult && !casResult.error && (
   <div style={{ marginTop: '10px', padding: '12px 16px',
     background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', fontSize: '13px' }}>
-    <div style={{ fontWeight: '700', color: '#276749', marginBottom: '8px' }}>✅ 조회 성공</div>
+    <div style={{ fontWeight: '700', color: '#276749', marginBottom: '8px' }}>
+      ✅ 조회 성공
+      <span style={{ fontSize: '11px', fontWeight: '400', color: '#52B788', marginLeft: '8px' }}>
+        {casResult.korName ? '🇰🇷 국내 DB' : '🌐 PubChem'}
+      </span>
+    </div>
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', color: '#2D6A4F' }}>
       {casResult.korName && <div><strong>한글명:</strong> {casResult.korName}</div>}
       {casResult.iupacName && <div><strong>IUPAC명:</strong> {casResult.iupacName}</div>}
@@ -277,6 +282,11 @@ try {
             style={{ color: C.navy, fontWeight: '600', fontSize: '12px' }}>
             📄 MSDS 바로보기 →
           </a>
+        </div>
+      )}
+      {!casResult.korName && !casResult.iupacName && !casResult.formula && (
+        <div style={{ color: '#E8A020', fontWeight: '600' }}>
+          ⚠️ 일치하는 물질을 찾지 못했어요. CAS 번호를 확인해주세요.
         </div>
       )}
     </div>
