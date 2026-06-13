@@ -106,8 +106,8 @@ export default function Home() {
           {/* 공지사항 */}
           <Card title="공지사항" sub="Notices"
             extra={
-              <span style={{ fontSize: '11px', color: C.muted, cursor: 'pointer' }}>전체보기 →</span>
-            }>
+  <span onClick={() => navigate('/notices')} style={{ fontSize: '11px', color: C.muted, cursor: 'pointer' }}>전체보기 →</span>
+}>
             {notices.length === 0
               ? <EmptyState text="등록된 공지사항이 없습니다." />
               : notices.map((n, i) => (
@@ -122,12 +122,11 @@ export default function Home() {
             title="연구실 안전관리"
             sub="Safety Management"
             extra={
-              <span style={{
-                background: '#FFF8E7', color: C.gold,
-                fontSize: '11px', fontWeight: '700',
-                padding: '3px 10px', borderRadius: '10px',
-              }}>중요</span>
-            }>
+  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+    <span onClick={() => navigate('/safety')} style={{ fontSize: '11px', color: C.muted, cursor: 'pointer' }}>전체보기 →</span>
+    <span style={{ background: '#FFF8E7', color: C.gold, fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '10px' }}>중요</span>
+  </div>
+}>
             {safetyInfos.length === 0
               ? <EmptyState text="등록된 안전 정보가 없습니다." />
               : safetyInfos.map((s, i) => (
@@ -144,7 +143,7 @@ export default function Home() {
   )
 }
 
-function NoticeRow({ item, index, total, isSafety, expanded, onToggle }) {
+function NoticeRow({ item, index, total, isSafety, expanded, onToggle, onNavigate }) {
   return (
     <div style={{
       borderBottom: index < total - 1 ? `1px solid ${C.border}` : 'none',
