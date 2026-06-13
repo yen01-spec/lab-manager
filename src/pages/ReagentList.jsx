@@ -868,12 +868,8 @@ onClick={e => toggleCheck(r.id, e, data)}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
             <div><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
              <div>
-                {/* 기존 제목/내용 (870~874줄) */}
              </div>
-                {/* 여기에 추가 */}
-              <button onClick={() => setSelectedReagent(null)} ...>×</button>  {/* 맨 마지막에 */}
-            </div>
-               style={{
+<button onClick={() => setSelectedReagent(null)} style={{ background: 'transparent', border: 'none', borderRadius: '6px', width: '32px', height: '32px', cursor: 'pointer', fontSize: '18px', color: '#CBD5E0' }}>×</button>               style={{
     background: 'transparent', border: 'none',
     borderRadius: '6px', width: '32px', height: '32px',
     cursor: 'pointer', fontSize: '18px',
