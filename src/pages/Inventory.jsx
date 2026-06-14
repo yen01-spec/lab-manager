@@ -18,6 +18,7 @@ function ZoneBadge({ status }) {
 }
 
 export default function Inventory() {
+  const [stockPicker, setStockPicker] = useState(null)
   const { isAdmin } = useOutletContext?.() || {}
   const [view, setView] = useState('main')
   const [sessions, setSessions] = useState([])
@@ -414,7 +415,7 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
           ))}
         </div>
 
-        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden' }} onClick={() => setStockPicker(null)}></div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
@@ -469,27 +470,36 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
                           }}
                         />
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'center' }}>
-                        <input
-                          ref={el => inputRefs.current[`stock_${lot.id}`] = el}
-                          type="number" min="0" max="100"
-                          defaultValue={actualStock ?? ''}
-                          placeholder="%"
-                          onBlur={e => { if (e.target.value !== '') saveCount(lot, 'actual_stock', e.target.value) }}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                              if (e.target.value !== '') saveCount(lot, 'actual_stock', e.target.value)
-                              const nextLot = filteredLots[idx + 1]
-                              if (nextLot && inputRefs.current[`stock_${nextLot.id}`]) inputRefs.current[`stock_${nextLot.id}`].focus()
-                            }
-                          }}
-                          style={{
-                            width: '60px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
-                            border: `2px solid ${actualStock != null ? '#A5D6A7' : C.border}`,
-                            fontSize: '14px', fontWeight: '600', background: C.white,
-                          }}
-                        />
-                      </td>
+                 <td style={{ ...tdStyle, textAlign: 'center', position: 'relative' }}>
+  <button
+    onClick={() => setStockPicker(stockPicker === lot.id ? null : lot.id)}
+    style={{
+      width: '72px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
+      border: `2px solid ${actualStock != null ? '#A5D6A7' : C.border}`,
+      fontSize: '13px', fontWeight: '600', background: C.white, cursor: 'pointer',
+    }}
+  >
+    {actualStock != null ? `${actualStock}%` : '%'}
+  </button>
+  {stockPicker === lot.id && (
+    <div style={{
+      position: 'absolute', zIndex: 100, background: C.white,
+      border: `1px solid ${C.border}`, borderRadius: '8px',
+      boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+      display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+      gap: '4px', padding: '8px', right: 0, top: '100%', width: '140px',
+    }}>
+      {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => (
+        <button key={v} onClick={() => { saveCount(lot, 'actual_stock', v); setStockPicker(null) }} style={{
+          padding: '6px', borderRadius: '6px', border: `1px solid ${C.border}`,
+          background: actualStock === v ? C.navy : C.white,
+          color: actualStock === v ? '#fff' : C.text,
+          cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+        }}>{v}%</button>
+      ))}
+    </div>
+  )}
+</td>
                       <td style={{ ...tdStyle, textAlign: 'center', fontWeight: '700', color: diff === null ? C.muted : diff === 0 ? '#38A169' : C.danger }}>
                         {diff === null ? '-' : diff > 0 ? `+${diff}` : diff}
                       </td>
