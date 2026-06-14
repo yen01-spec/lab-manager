@@ -464,35 +464,38 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
                         />
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'center', position: 'relative' }} onClick={e => e.stopPropagation()}>
-                        <button
-                          onClick={() => setStockPicker(stockPicker === lot.id ? null : lot.id)}
-                          style={{
-                            width: '72px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
-                            border: `2px solid ${actualStock != null ? '#A5D6A7' : C.border}`,
-                            fontSize: '13px', fontWeight: '600', background: C.white, cursor: 'pointer',
-                          }}
-                        >
-                          {actualStock != null ? `${actualStock}%` : '%'}
-                        </button>
-                        {stockPicker === lot.id && (
-                          <div style={{
-                            position: 'absolute', zIndex: 100, background: C.white,
-                            border: `1px solid ${C.border}`, borderRadius: '8px',
-                            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-                            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-                            gap: '4px', padding: '8px', right: 0, top: '100%', width: '140px',
-                          }}>
-                            {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => (
-                              <button key={v} onClick={() => { saveCount(lot, 'actual_stock', v); setStockPicker(null) }} style={{
-                                padding: '6px', borderRadius: '6px', border: `1px solid ${C.border}`,
-                                background: actualStock === v ? C.navy : C.white,
-                                color: actualStock === v ? '#fff' : C.text,
-                                cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-                              }}>{v}%</button>
-                            ))}
-                          </div>
-                        )}
-                      </td>
+  <button
+    onClick={() => setStockPicker(stockPicker === lot.id ? null : lot.id)}
+    style={{
+      width: '72px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
+      border: `2px solid ${actualStock != null ? '#A5D6A7' : C.border}`,
+      fontSize: '13px', fontWeight: '600', background: C.white, cursor: 'pointer',
+    }}
+  >
+    {actualStock != null ? `${actualStock}%` : '%'}
+  </button>
+  {stockPicker === lot.id && (
+    <div style={{
+      position: 'absolute', zIndex: 100, background: C.white,
+      border: `1px solid ${C.border}`, borderRadius: '8px',
+      boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+      padding: '12px 16px', right: 0, top: '100%', width: '200px',
+    }}>
+      <div style={{ fontSize: '12px', color: C.muted, marginBottom: '8px', textAlign: 'center' }}>
+        잔량: <strong style={{ color: C.navy }}>{actualStock != null ? `${actualStock}%` : '-'}</strong>
+      </div>
+      <input
+        type="range" min="0" max="100" step="10"
+        value={actualStock ?? 100}
+        onChange={e => saveCount(lot, 'actual_stock', Number(e.target.value))}
+        style={{ width: '100%', cursor: 'pointer' }}
+      />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: C.muted, marginTop: '4px' }}>
+        <span>0%</span><span>50%</span><span>100%</span>
+      </div>
+    </div>
+  )}
+</td>
                       <td style={{ ...tdStyle, textAlign: 'center', fontWeight: '700', color: diff === null ? C.muted : diff === 0 ? '#38A169' : C.danger }}>
                         {diff === null ? '-' : diff > 0 ? `+${diff}` : diff}
                       </td>
