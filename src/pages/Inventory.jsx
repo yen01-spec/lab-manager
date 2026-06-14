@@ -18,7 +18,6 @@ function ZoneBadge({ status }) {
 }
 
 export default function Inventory() {
-  const [stockPicker, setStockPicker] = useState(null)
   const { isAdmin } = useOutletContext?.() || {}
   const [view, setView] = useState('main')
   const [sessions, setSessions] = useState([])
@@ -94,7 +93,6 @@ export default function Inventory() {
 
   async function addAssignment() {
     if (!assignForm.zone || !assignForm.assigned_to.trim()) { alert('구역과 담당자를 입력해주세요'); return }
-    // 중복 체크
     const exists = assignments.find(a => a.zone === assignForm.zone && a.assigned_to === assignForm.assigned_to)
     if (exists) { alert('이미 배정된 담당자입니다'); return }
     await supabase.from('inventory_assignments').insert({ session_id: activeSession.id, zone: assignForm.zone, assigned_to: assignForm.assigned_to })
@@ -133,15 +131,23 @@ export default function Inventory() {
 
   const progressPct = progress.total > 0 ? Math.round(progress.done / progress.total * 100) : 0
   const rooms = [...new Set(locations.map(l => l.room))]
-
-  // 구역별로 담당자 묶기
   const zoneGroups = assignments.reduce((acc, a) => {
     if (!acc[a.zone]) acc[a.zone] = []
     acc[a.zone].push(a)
     return acc
   }, {})
 
-  if (view === 'main') return (
+  if (view === 'count') return (
+    <InventoryCountView
+      session={activeSession}
+      myName={myName}
+      myAssignments={myAssignments}
+      isAdmin={isAdmin}
+      onBack={() => { setView('main'); fetchProgress() }}
+    />
+  )
+
+  return (
     <div>
       <PageBanner title="재고 실사" sub="Inventory Count" breadcrumb={['홈', '재고 실사']} />
       <div style={{ padding: '28px 40px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -204,7 +210,6 @@ export default function Inventory() {
                     <button onClick={addAssignment} style={btnPrimary}>추가</button>
                   </div>
                 </div>
-
                 {Object.keys(zoneGroups).length === 0
                   ? <p style={{ color: C.muted, fontSize: '13px' }}>배정된 구역이 없습니다.</p>
                   : Object.entries(zoneGroups).map(([zone, members]) => (
@@ -281,16 +286,6 @@ export default function Inventory() {
       )}
     </div>
   )
-
-  return (
-    <InventoryCountView
-      session={activeSession}
-      myName={myName}
-      myAssignments={myAssignments}
-      isAdmin={isAdmin}
-      onBack={() => { setView('main'); fetchProgress() }}
-    />
-  )
 }
 
 function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack }) {
@@ -300,7 +295,8 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [saving, setSaving] = useState({})
-  const [changeModal, setChangeModal] = useState(null) // { lot, reagent }
+  const [stockPicker, setStockPicker] = useState(null)
+  const [changeModal, setChangeModal] = useState(null)
   const [changeForm, setChangeForm] = useState({ field_name: 'name', new_value: '' })
   const inputRefs = useRef({})
 
@@ -311,9 +307,7 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
     const { data: lotData } = await supabase.from('reagent_lots')
       .select('*, reagents(id, name, cas_no, category, hazard, volume, unit, locations(room, detail))')
       .order('reagents(name)')
-
     const { data: countData } = await supabase.from('inventory_counts').select('*').eq('session_id', session.id)
-
     if (lotData) {
       let filtered = lotData
       if (!isAdmin && myAssignments.length > 0) {
@@ -382,13 +376,12 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
 
   const doneCnt = lots.filter(l => counts[l.id]?.actual_sealed != null).length
   const pct = lots.length > 0 ? Math.round(doneCnt / lots.length * 100) : 0
-
   const fieldLabels = { name: '시약명', volume: '용량', unit: '단위', category: '성상/유별', hazard: '유해위험성', cas_no: 'CAS No.' }
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: C.muted }}>불러오는 중...</div>
 
   return (
-    <div>
+    <div onClick={() => setStockPicker(null)}>
       <PageBanner title="실사 입력" sub={`${session.year}년 재고 실사 · ${myName}`} breadcrumb={['홈', '재고 실사', '실사 입력']} />
 
       <div style={{ padding: '20px 40px' }}>
@@ -415,7 +408,7 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
           ))}
         </div>
 
-          <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden' }} onClick={() => setStockPicker(null)}></div>
+        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
@@ -470,36 +463,36 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
                           }}
                         />
                       </td>
-                 <td style={{ ...tdStyle, textAlign: 'center', position: 'relative' }}>
-  <button
-    onClick={() => setStockPicker(stockPicker === lot.id ? null : lot.id)}
-    style={{
-      width: '72px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
-      border: `2px solid ${actualStock != null ? '#A5D6A7' : C.border}`,
-      fontSize: '13px', fontWeight: '600', background: C.white, cursor: 'pointer',
-    }}
-  >
-    {actualStock != null ? `${actualStock}%` : '%'}
-  </button>
-  {stockPicker === lot.id && (
-    <div style={{
-      position: 'absolute', zIndex: 100, background: C.white,
-      border: `1px solid ${C.border}`, borderRadius: '8px',
-      boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-      display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-      gap: '4px', padding: '8px', right: 0, top: '100%', width: '140px',
-    }}>
-      {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => (
-        <button key={v} onClick={() => { saveCount(lot, 'actual_stock', v); setStockPicker(null) }} style={{
-          padding: '6px', borderRadius: '6px', border: `1px solid ${C.border}`,
-          background: actualStock === v ? C.navy : C.white,
-          color: actualStock === v ? '#fff' : C.text,
-          cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-        }}>{v}%</button>
-      ))}
-    </div>
-  )}
-</td>
+                      <td style={{ ...tdStyle, textAlign: 'center', position: 'relative' }} onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => setStockPicker(stockPicker === lot.id ? null : lot.id)}
+                          style={{
+                            width: '72px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
+                            border: `2px solid ${actualStock != null ? '#A5D6A7' : C.border}`,
+                            fontSize: '13px', fontWeight: '600', background: C.white, cursor: 'pointer',
+                          }}
+                        >
+                          {actualStock != null ? `${actualStock}%` : '%'}
+                        </button>
+                        {stockPicker === lot.id && (
+                          <div style={{
+                            position: 'absolute', zIndex: 100, background: C.white,
+                            border: `1px solid ${C.border}`, borderRadius: '8px',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+                            gap: '4px', padding: '8px', right: 0, top: '100%', width: '140px',
+                          }}>
+                            {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => (
+                              <button key={v} onClick={() => { saveCount(lot, 'actual_stock', v); setStockPicker(null) }} style={{
+                                padding: '6px', borderRadius: '6px', border: `1px solid ${C.border}`,
+                                background: actualStock === v ? C.navy : C.white,
+                                color: actualStock === v ? '#fff' : C.text,
+                                cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+                              }}>{v}%</button>
+                            ))}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ ...tdStyle, textAlign: 'center', fontWeight: '700', color: diff === null ? C.muted : diff === 0 ? '#38A169' : C.danger }}>
                         {diff === null ? '-' : diff > 0 ? `+${diff}` : diff}
                       </td>
@@ -521,7 +514,6 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
         </div>
       </div>
 
-      {/* 변경 요청 모달 */}
       {changeModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26,42,94,0.45)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={() => setChangeModal(null)}>
