@@ -463,7 +463,7 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
                           }}
                         />
                       </td>
-                     <td style={{ ...tdStyle, textAlign: 'center', position: 'relative' }} onClick={e => e.stopPropagation()}>
+                    <td style={{ ...tdStyle, textAlign: 'center', position: 'relative' }} onClick={e => e.stopPropagation()}>
   <button
     onClick={() => setStockPicker(stockPicker === lot.id ? null : lot.id)}
     style={{
@@ -475,13 +475,20 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
     {actualStock != null ? `${actualStock}%` : '%'}
   </button>
   {stockPicker === lot.id && (
-    <div style={{
-      position: 'absolute', zIndex: 100, background: C.white,
-      border: `1px solid ${C.border}`, borderRadius: '8px',
-      boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-      right: 0, top: '100%', width: '80px',
-      maxHeight: '180px', overflowY: 'auto',
-    }}>
+    <div
+      ref={el => {
+        if (el && actualStock != null) {
+          const index = actualStock / 10
+          el.scrollTop = index * 37 - 37
+        }
+      }}
+      style={{
+        position: 'absolute', zIndex: 100, background: C.white,
+        border: `1px solid ${C.border}`, borderRadius: '8px',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+        right: '50%', transform: 'translateX(50%)', top: 'calc(100% + 2px)', width: '80px',
+        maxHeight: '185px', overflowY: 'auto',
+      }}>
       {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => (
         <div key={v} onClick={() => { saveCount(lot, 'actual_stock', v); setStockPicker(null) }} style={{
           padding: '8px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
