@@ -10,6 +10,7 @@ import Requests from './pages/Requests'
 import Admin from './pages/Admin'
 import Calendar from './pages/Calendar'
 import Inventory from './pages/Inventory'
+import NoticeDetail from './pages/NoticeDetail'
 
 function App() {
   return (
@@ -24,6 +25,8 @@ function App() {
         <Route path="admin" element={<Admin />} />
         <Route path="inventory" element={<Inventory />} />
         <Route path="notices" element={<Notices />} />
+        <Route path="notices/:id" element={<NoticeDetail />} />
+<Route path="safety/:id" element={<NoticeDetail />} />
         <Route path="safety" element={<Safety />} />
       </Route>
     </Routes>
