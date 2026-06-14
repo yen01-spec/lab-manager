@@ -486,7 +486,7 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
         position: 'absolute', zIndex: 100, background: C.white,
         border: `1px solid ${C.border}`, borderRadius: '8px',
         boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-        right: '50%', transform: 'translateX(50%)', top: '100%', width: '80px',
+        right: '50%', transform: 'translateX(50%)', top: '60%', width: '80px',
         maxHeight: '185px', overflowY: 'auto',
       }}>
       {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => (
