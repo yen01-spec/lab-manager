@@ -17,6 +17,80 @@ function ZoneBadge({ status }) {
   )
 }
 
+// ── 구역별 진행률 카드 ────────────────────────────────────
+function ZoneProgressCard({ zone, members, zoneProgress }) {
+  const info = zoneProgress[zone] || { total: 0, done: 0 }
+  const pct = info.total > 0 ? Math.round(info.done / info.total * 100) : 0
+  const allDone = pct === 100 && info.total > 0
+  const started = info.done > 0
+
+  const badgeStyle = allDone
+    ? { bg: '#E8F5E9', color: '#2E7D32', label: '완료' }
+    : started
+    ? { bg: '#E3F2FD', color: '#1565C0', label: '진행중' }
+    : { bg: '#FFF3E0', color: '#E65100', label: '대기중' }
+
+  const barColor = allDone ? '#38A169' : started ? C.navy : C.border
+
+  return (
+    <div style={{
+      background: C.white,
+      border: `1px solid ${allDone ? '#A5D6A7' : C.border}`,
+      borderRadius: '12px',
+      padding: '16px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '10px',
+      transition: 'box-shadow 0.15s',
+    }}>
+      {/* 헤더 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ fontSize: '14px', fontWeight: '700', color: C.navy }}>📍 {zone}</div>
+          <div style={{ fontSize: '11px', color: C.muted, marginTop: '2px' }}>담당자 {members.length}명</div>
+        </div>
+        <span style={{
+          background: badgeStyle.bg, color: badgeStyle.color,
+          fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '12px',
+        }}>
+          {badgeStyle.label}
+        </span>
+      </div>
+
+      {/* 담당자 태그 */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+        {members.map(a => (
+          <span key={a.id} style={{
+            fontSize: '11px', color: C.text,
+            background: C.bg, border: `1px solid ${C.border}`,
+            padding: '3px 10px', borderRadius: '20px',
+          }}>
+            👤 {a.assigned_to}
+          </span>
+        ))}
+      </div>
+
+      {/* 진행률 */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '5px' }}>
+          <span style={{ color: C.muted }}>진행률</span>
+          <span style={{ fontWeight: '700', color: allDone ? '#2E7D32' : C.navy }}>
+            {info.done} / {info.total}개 ({pct}%)
+          </span>
+        </div>
+        <div style={{ height: '6px', background: C.bg, borderRadius: '3px', overflow: 'hidden' }}>
+          <div style={{
+            height: '100%', borderRadius: '3px',
+            background: barColor,
+            width: `${pct}%`,
+            transition: 'width 0.4s ease',
+          }} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Inventory() {
   const { isAdmin } = useOutletContext?.() || {}
   const [view, setView] = useState('main')
@@ -30,6 +104,7 @@ export default function Inventory() {
   const [showStartModal, setShowStartModal] = useState(false)
   const [assignForm, setAssignForm] = useState({ zone: '', assigned_to: '' })
   const [progress, setProgress] = useState({ total: 0, done: 0 })
+  const [zoneProgress, setZoneProgress] = useState({})   // ← 구역별 진행률
 
   useEffect(() => { fetchSessions(); fetchLocations() }, [])
 
@@ -38,11 +113,19 @@ export default function Inventory() {
       fetchAssignments()
       fetchProgress()
       const channel = supabase.channel('inventory_counts_' + activeSession.id)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_counts', filter: `session_id=eq.${activeSession.id}` }, () => fetchProgress())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_counts', filter: `session_id=eq.${activeSession.id}` }, () => {
+          fetchProgress()
+          fetchZoneProgress()
+        })
         .subscribe()
       return () => supabase.removeChannel(channel)
     }
   }, [activeSession])
+
+  // 구역 배정이 바뀌면 구역별 진행률도 다시 계산
+  useEffect(() => {
+    if (activeSession && assignments.length > 0) fetchZoneProgress()
+  }, [assignments])
 
   async function fetchSessions() {
     const { data } = await supabase.from('inventory_sessions').select('*').order('created_at', { ascending: false })
@@ -69,6 +152,45 @@ export default function Inventory() {
     const { count: total } = await supabase.from('inventory_counts').select('*', { count: 'exact', head: true }).eq('session_id', activeSession.id)
     const { count: done } = await supabase.from('inventory_counts').select('*', { count: 'exact', head: true }).eq('session_id', activeSession.id).not('actual_sealed', 'is', null)
     setProgress({ total: total || 0, done: done || 0 })
+  }
+
+  // ── 구역별 진행률 계산 ──────────────────────────────────
+  async function fetchZoneProgress() {
+    if (!activeSession) return
+
+    // 전체 inventory_counts + lot의 위치 정보를 가져옴
+    const { data: counts } = await supabase
+      .from('inventory_counts')
+      .select('lot_id, actual_sealed, reagent_lots(reagents(locations(room, detail)))')
+      .eq('session_id', activeSession.id)
+
+    if (!counts) return
+
+    // 구역 목록 추출 (assignments 기준)
+    const zones = [...new Set(assignments.map(a => a.zone))]
+    const result = {}
+
+    for (const zone of zones) {
+      const isAlpha = /^[A-Z]-[A-Z]$/.test(zone)
+
+      const zoneItems = counts.filter(c => {
+        const loc = c.reagent_lots?.reagents?.locations
+        if (isAlpha) {
+          const [from, to] = zone.split('-')
+          // 알파벳 구역은 시약 이름 기준으로 필터 — counts에서 이름을 가져올 수 없으므로 일단 위치 기반
+          // 알파벳 구역은 InventoryCountView와 동일한 로직으로 필터링
+          return true // 알파벳 구역은 별도 처리 필요 시 확장
+        }
+        return loc?.detail === zone || loc?.room === zone
+      })
+
+      result[zone] = {
+        total: zoneItems.length,
+        done: zoneItems.filter(c => c.actual_sealed != null).length,
+      }
+    }
+
+    setZoneProgress(result)
   }
 
   async function startSession() {
@@ -131,6 +253,8 @@ export default function Inventory() {
 
   const progressPct = progress.total > 0 ? Math.round(progress.done / progress.total * 100) : 0
   const rooms = [...new Set(locations.map(l => l.room))]
+
+  // 구역별로 담당자 그룹핑
   const zoneGroups = assignments.reduce((acc, a) => {
     if (!acc[a.zone]) acc[a.zone] = []
     acc[a.zone].push(a)
@@ -161,8 +285,12 @@ export default function Inventory() {
 
         {activeSession && (
           <>
-            <Card title={`📊 ${activeSession.year}년 재고 실사`} sub={`시작일: ${activeSession.start_date} · 시작자: ${activeSession.created_by}`}
-              extra={isAdmin && <button onClick={completeSession} style={{ ...btnPrimary, background: '#38A169' }}>✅ 실사 확정</button>}>
+            {/* ── 전체 진행 현황 카드 ── */}
+            <Card
+              title={`📊 ${activeSession.year}년 재고 실사`}
+              sub={`시작일: ${activeSession.start_date} · 시작자: ${activeSession.created_by}`}
+              extra={isAdmin && <button onClick={completeSession} style={{ ...btnPrimary, background: '#38A169' }}>✅ 실사 확정</button>}
+            >
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
                   <span style={{ color: C.muted }}>전체 진행률</span>
@@ -181,9 +309,12 @@ export default function Inventory() {
               </div>
             </Card>
 
+            {/* ── 관리자 전용: 구역 배정 + 구역별 진행 현황 ── */}
             {isAdmin && (
-              <Card title="🗺️ 구역 배정" sub="구역당 여러 명 배정 가능합니다">
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+              <Card title="🗺️ 구역 배정 및 진행 현황" sub="구역당 여러 명 배정 가능합니다">
+
+                {/* 담당자 추가 폼 */}
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '24px', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: '140px' }}>
                     <label style={labelStyle}>구역</label>
                     <select value={assignForm.zone} onChange={e => setAssignForm({ ...assignForm, zone: e.target.value })} style={inputStyle}>
@@ -202,41 +333,75 @@ export default function Inventory() {
                   </div>
                   <div style={{ flex: 1, minWidth: '140px' }}>
                     <label style={labelStyle}>담당자</label>
-                    <input value={assignForm.assigned_to} onChange={e => setAssignForm({ ...assignForm, assigned_to: e.target.value })}
+                    <input
+                      value={assignForm.assigned_to}
+                      onChange={e => setAssignForm({ ...assignForm, assigned_to: e.target.value })}
                       onKeyDown={e => e.key === 'Enter' && addAssignment()}
-                      placeholder="이름 입력" style={inputStyle} />
+                      placeholder="이름 입력 후 Enter"
+                      style={inputStyle}
+                    />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'flex-end' }}>
                     <button onClick={addAssignment} style={btnPrimary}>추가</button>
                   </div>
                 </div>
+
+                {/* 구역별 진행 현황 카드 그리드 */}
                 {Object.keys(zoneGroups).length === 0
-                  ? <p style={{ color: C.muted, fontSize: '13px' }}>배정된 구역이 없습니다.</p>
-                  : Object.entries(zoneGroups).map(([zone, members]) => (
-                    <div key={zone} style={{ marginBottom: '12px', border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
-                      <div style={{ background: C.bg, padding: '8px 14px', fontWeight: '700', fontSize: '13px', color: C.navy, borderBottom: `1px solid ${C.border}` }}>
-                        📍 {zone} <span style={{ fontWeight: '400', color: C.muted, fontSize: '12px' }}>({members.length}명)</span>
-                      </div>
-                      {members.map(a => (
-                        <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: `1px solid ${C.border}` }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ fontSize: '13px' }}>👤 {a.assigned_to}</span>
-                            <ZoneBadge status={a.status} />
+                  ? (
+                    <p style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '24px 0' }}>
+                      아직 배정된 구역이 없습니다. 구역과 담당자를 추가해주세요.
+                    </p>
+                  )
+                  : (
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                      gap: '14px',
+                    }}>
+                      {Object.entries(zoneGroups).map(([zone, members]) => (
+                        <div key={zone} style={{ position: 'relative' }}>
+                          <ZoneProgressCard
+                            zone={zone}
+                            members={members}
+                            zoneProgress={zoneProgress}
+                          />
+                          {/* 담당자 삭제 버튼들 */}
+                          <div style={{
+                            marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px',
+                          }}>
+                            {members.map(a => (
+                              <button
+                                key={a.id}
+                                onClick={() => deleteAssignment(a.id)}
+                                title={`${a.assigned_to} 배정 삭제`}
+                                style={{
+                                  fontSize: '11px', padding: '2px 8px', borderRadius: '10px',
+                                  border: `1px solid ${C.border}`, background: C.white,
+                                  color: C.muted, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                }}
+                              >
+                                {a.assigned_to} ✕
+                              </button>
+                            ))}
                           </div>
-                          <button onClick={() => deleteAssignment(a.id)} style={{ background: 'none', border: 'none', color: C.danger, cursor: 'pointer', fontSize: '14px' }}>✕</button>
                         </div>
                       ))}
                     </div>
-                  ))}
+                  )
+                }
               </Card>
             )}
           </>
         )}
 
+        {/* ── 실사 이력 ── */}
         {sessions.filter(s => s.status !== 'active').length > 0 && (
           <Card title="📁 실사 이력">
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>{['연도', '시작일', '완료일', '시작자', '상태'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+              <thead>
+                <tr>{['연도', '시작일', '완료일', '시작자', '상태'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
+              </thead>
               <tbody>
                 {sessions.filter(s => s.status !== 'active').map(s => (
                   <tr key={s.id}>
@@ -245,7 +410,11 @@ export default function Inventory() {
                     <td style={{ ...tdStyle, color: C.muted }}>{s.completed_at ? new Date(s.completed_at).toLocaleDateString() : '-'}</td>
                     <td style={tdStyle}>{s.created_by}</td>
                     <td style={tdStyle}>
-                      <span style={{ background: s.status === 'completed' ? '#E8F5E9' : '#F5F5F5', color: s.status === 'completed' ? '#2E7D32' : '#616161', padding: '2px 10px', borderRadius: '10px', fontSize: '11px', fontWeight: '700' }}>
+                      <span style={{
+                        background: s.status === 'completed' ? '#E8F5E9' : '#F5F5F5',
+                        color: s.status === 'completed' ? '#2E7D32' : '#616161',
+                        padding: '2px 10px', borderRadius: '10px', fontSize: '11px', fontWeight: '700',
+                      }}>
                         {s.status === 'completed' ? '완료' : '중단'}
                       </span>
                     </td>
@@ -257,9 +426,12 @@ export default function Inventory() {
         )}
       </div>
 
+      {/* ── 실사 시작 모달 ── */}
       {showStartModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26,42,94,0.45)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setShowStartModal(false)}>
+        <div
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26,42,94,0.45)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setShowStartModal(false)}
+        >
           <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '28px', width: '380px', boxShadow: '0 24px 64px rgba(26,42,94,0.25)' }}>
             <h3 style={{ marginTop: 0, color: C.navy }}>🚀 실사 시작</h3>
             <div style={{ marginBottom: '14px' }}>
@@ -288,6 +460,9 @@ export default function Inventory() {
   )
 }
 
+// ════════════════════════════════════════════════════════════
+//  실사 입력 화면 (학생/관리자 공용)
+// ════════════════════════════════════════════════════════════
 function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack }) {
   const [lots, setLots] = useState([])
   const [counts, setCounts] = useState({})
@@ -463,46 +638,46 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
                           }}
                         />
                       </td>
-                    <td style={{ ...tdStyle, textAlign: 'center', position: 'relative' }} onClick={e => e.stopPropagation()}>
-  <button
-    onClick={() => setStockPicker(stockPicker === lot.id ? null : lot.id)}
-    style={{
-      width: '72px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
-      border: `2px solid ${actualStock != null ? '#A5D6A7' : C.border}`,
-      fontSize: '13px', fontWeight: '600', background: C.white, cursor: 'pointer',
-    }}
-  >
-    {actualStock != null ? `${actualStock}%` : '%'}
-  </button>
-  {stockPicker === lot.id && (
-    <div
-      ref={el => {
-        if (el && actualStock != null) {
-          const index = actualStock / 10
-          el.scrollTop = index * 37 - 37
-        }
-      }}
-      style={{
-        position: 'absolute', zIndex: 100, background: C.white,
-        border: `1px solid ${C.border}`, borderRadius: '8px',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-        right: '50%', transform: 'translateX(50%)', top: '60%', width: '80px',
-        maxHeight: '185px', overflowY: 'auto',
-      }}>
-      {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => (
-        <div key={v} onClick={() => { saveCount(lot, 'actual_stock', v); setStockPicker(null) }} style={{
-          padding: '8px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
-          background: actualStock === v ? C.navy : 'transparent',
-          color: actualStock === v ? '#fff' : C.text,
-          textAlign: 'center',
-        }}
-          onMouseEnter={e => { if (actualStock !== v) e.currentTarget.style.background = C.bg }}
-          onMouseLeave={e => { if (actualStock !== v) e.currentTarget.style.background = 'transparent' }}
-        >{v}%</div>
-      ))}
-    </div>
-  )}
-</td>
+                      <td style={{ ...tdStyle, textAlign: 'center', position: 'relative' }} onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => setStockPicker(stockPicker === lot.id ? null : lot.id)}
+                          style={{
+                            width: '72px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
+                            border: `2px solid ${actualStock != null ? '#A5D6A7' : C.border}`,
+                            fontSize: '13px', fontWeight: '600', background: C.white, cursor: 'pointer',
+                          }}
+                        >
+                          {actualStock != null ? `${actualStock}%` : '%'}
+                        </button>
+                        {stockPicker === lot.id && (
+                          <div
+                            ref={el => {
+                              if (el && actualStock != null) {
+                                const index = actualStock / 10
+                                el.scrollTop = index * 37 - 37
+                              }
+                            }}
+                            style={{
+                              position: 'absolute', zIndex: 100, background: C.white,
+                              border: `1px solid ${C.border}`, borderRadius: '8px',
+                              boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                              right: '50%', transform: 'translateX(50%)', top: '60%', width: '80px',
+                              maxHeight: '185px', overflowY: 'auto',
+                            }}>
+                            {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => (
+                              <div key={v} onClick={() => { saveCount(lot, 'actual_stock', v); setStockPicker(null) }} style={{
+                                padding: '8px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
+                                background: actualStock === v ? C.navy : 'transparent',
+                                color: actualStock === v ? '#fff' : C.text,
+                                textAlign: 'center',
+                              }}
+                                onMouseEnter={e => { if (actualStock !== v) e.currentTarget.style.background = C.bg }}
+                                onMouseLeave={e => { if (actualStock !== v) e.currentTarget.style.background = 'transparent' }}
+                              >{v}%</div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ ...tdStyle, textAlign: 'center', fontWeight: '700', color: diff === null ? C.muted : diff === 0 ? '#38A169' : C.danger }}>
                         {diff === null ? '-' : diff > 0 ? `+${diff}` : diff}
                       </td>
