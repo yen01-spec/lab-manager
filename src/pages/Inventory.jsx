@@ -105,6 +105,7 @@ export default function Inventory() {
   const [assignForm, setAssignForm] = useState({ zone: '', assigned_to: '' })
   const [progress, setProgress] = useState({ total: 0, done: 0 })
   const [zoneProgress, setZoneProgress] = useState({})   // ← 구역별 진행률
+  const [pausing, setPausing] = useState(false)          // ← 일시중단 처리 중
 
   useEffect(() => { fetchSessions(); fetchLocations() }, [])
 
@@ -131,7 +132,7 @@ export default function Inventory() {
     const { data } = await supabase.from('inventory_sessions').select('*').order('created_at', { ascending: false })
     if (data) {
       setSessions(data)
-      const active = data.find(s => s.status === 'active')
+      const active = data.find(s => s.status === 'active' || s.status === 'paused')
       if (active) setActiveSession(active)
     }
   }
@@ -228,6 +229,28 @@ export default function Inventory() {
     fetchAssignments()
   }
 
+  async function pauseSession() {
+    if (!window.confirm('실사를 일시중단하시겠습니까?\n입력된 데이터는 저장되며, 학생들의 접근이 차단됩니다.')) return
+    setPausing(true)
+    await supabase.from('inventory_sessions').update({
+      status: 'paused',
+      paused_at: new Date().toISOString(),
+      paused_by: activeSession.created_by,
+    }).eq('id', activeSession.id)
+    await fetchSessions()
+    setPausing(false)
+  }
+
+  async function resumeSession() {
+    if (!window.confirm('실사를 재개하시겠습니까?')) return
+    await supabase.from('inventory_sessions').update({
+      status: 'active',
+      paused_at: null,
+      paused_by: null,
+    }).eq('id', activeSession.id)
+    await fetchSessions()
+  }
+
   async function completeSession() {
     if (!window.confirm('실사를 확정하시겠습니까?\n실측 수량이 재고에 반영됩니다.')) return
     const { data: counts } = await supabase.from('inventory_counts').select('*').eq('session_id', activeSession.id).not('actual_sealed', 'is', null)
@@ -289,8 +312,40 @@ export default function Inventory() {
             <Card
               title={`📊 ${activeSession.year}년 재고 실사`}
               sub={`시작일: ${activeSession.start_date} · 시작자: ${activeSession.created_by}`}
-              extra={isAdmin && <button onClick={completeSession} style={{ ...btnPrimary, background: '#38A169' }}>✅ 실사 확정</button>}
+              extra={isAdmin && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {activeSession.status === 'paused'
+                    ? <button onClick={resumeSession} style={{ ...btnPrimary, background: '#1565C0' }}>▶ 재개</button>
+                    : <button onClick={pauseSession} disabled={pausing} style={{ ...btnGhost, color: '#E65100', borderColor: '#E65100', opacity: pausing ? 0.6 : 1 }}>
+                        ⏸ 일시중단
+                      </button>
+                  }
+                  {activeSession.status !== 'paused' &&
+                    <button onClick={completeSession} style={{ ...btnPrimary, background: '#38A169' }}>✅ 실사 확정</button>
+                  }
+                </div>
+              )}
             >
+              {/* 일시중단 상태 배너 */}
+              {activeSession.status === 'paused' && (
+                <div style={{
+                  background: '#FFF3E0', border: '1px solid #FFB74D', borderRadius: '8px',
+                  padding: '10px 14px', marginBottom: '16px',
+                  display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#E65100',
+                }}>
+                  <span style={{ fontSize: '16px' }}>⏸</span>
+                  <div>
+                    <strong>실사가 일시중단되었습니다.</strong>
+                    {activeSession.paused_at && (
+                      <span style={{ color: '#BF5700', marginLeft: '8px', fontSize: '12px' }}>
+                        {new Date(activeSession.paused_at).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 중단
+                      </span>
+                    )}
+                    {!isAdmin && <div style={{ marginTop: '2px', fontSize: '12px', color: '#BF5700' }}>관리자가 재개할 때까지 입력이 제한됩니다.</div>}
+                  </div>
+                </div>
+              )}
+
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
                   <span style={{ color: C.muted }}>전체 진행률</span>
@@ -300,13 +355,20 @@ export default function Inventory() {
                   <div style={{ height: '100%', borderRadius: '5px', background: progressPct === 100 ? '#38A169' : C.navy, width: `${progressPct}%`, transition: 'width 0.3s' }} />
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
-                <div style={{ flex: 1, maxWidth: '240px' }}>
-                  <label style={labelStyle}>내 이름</label>
-                  <input value={myName} onChange={e => setMyName(e.target.value)} placeholder="본인 이름 입력" style={inputStyle} />
-                </div>
-                <button onClick={enterCounting} style={btnPrimary}>📝 실사 입력 시작</button>
-              </div>
+
+              {/* 일시중단 중엔 학생 입력 차단 */}
+              {activeSession.status === 'paused' && !isAdmin
+                ? null
+                : (
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1, maxWidth: '240px' }}>
+                      <label style={labelStyle}>내 이름</label>
+                      <input value={myName} onChange={e => setMyName(e.target.value)} placeholder="본인 이름 입력" style={inputStyle} />
+                    </div>
+                    <button onClick={enterCounting} style={btnPrimary}>📝 실사 입력 시작</button>
+                  </div>
+                )
+              }
             </Card>
 
             {/* ── 관리자 전용: 구역 배정 + 구역별 진행 현황 ── */}
@@ -396,14 +458,14 @@ export default function Inventory() {
         )}
 
         {/* ── 실사 이력 ── */}
-        {sessions.filter(s => s.status !== 'active').length > 0 && (
+        {sessions.filter(s => s.status !== 'active' && s.status !== 'paused').length > 0 && (
           <Card title="📁 실사 이력">
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>{['연도', '시작일', '완료일', '시작자', '상태'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
               </thead>
               <tbody>
-                {sessions.filter(s => s.status !== 'active').map(s => (
+                {sessions.filter(s => s.status !== 'active' && s.status !== 'paused').map(s => (
                   <tr key={s.id}>
                     <td style={tdStyle}>{s.year}년</td>
                     <td style={tdStyle}>{s.start_date}</td>
