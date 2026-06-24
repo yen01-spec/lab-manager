@@ -18,19 +18,22 @@ function ZoneBadge({ status }) {
 }
 
 // ── 구역별 진행률 카드 ────────────────────────────────────
-function ZoneProgressCard({ zone, members, zoneProgress }) {
+function ZoneProgressCard({ zone, members, zoneProgress, onComplete, isAdmin }) {
   const info = zoneProgress[zone] || { total: 0, done: 0 }
   const pct = info.total > 0 ? Math.round(info.done / info.total * 100) : 0
+  const isCompleted = members.every(a => a.completed_at)
   const allDone = pct === 100 && info.total > 0
   const started = info.done > 0
 
-  const badgeStyle = allDone
-    ? { bg: '#E8F5E9', color: '#2E7D32', label: '완료' }
+  const badgeStyle = isCompleted
+    ? { bg: '#E8F5E9', color: '#2E7D32', label: '✅ 완료확정' }
+    : allDone
+    ? { bg: '#C8E6C9', color: '#1B5E20', label: '입력완료' }
     : started
     ? { bg: '#E3F2FD', color: '#1565C0', label: '진행중' }
     : { bg: '#FFF3E0', color: '#E65100', label: '대기중' }
 
-  const barColor = allDone ? '#38A169' : started ? C.navy : C.border
+  const barColor = isCompleted || allDone ? '#38A169' : started ? C.navy : C.border
 
   return (
     <div style={{
@@ -74,7 +77,7 @@ function ZoneProgressCard({ zone, members, zoneProgress }) {
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '5px' }}>
           <span style={{ color: C.muted }}>진행률</span>
-          <span style={{ fontWeight: '700', color: allDone ? '#2E7D32' : C.navy }}>
+          <span style={{ fontWeight: '700', color: isCompleted ? '#2E7D32' : allDone ? '#1B5E20' : C.navy }}>
             {info.done} / {info.total}개 ({pct}%)
           </span>
         </div>
@@ -87,6 +90,30 @@ function ZoneProgressCard({ zone, members, zoneProgress }) {
           }} />
         </div>
       </div>
+
+      {/* 구역 완료 버튼 (관리자만, 아직 완료확정 전일 때) */}
+      {isAdmin && !isCompleted && (
+        <button
+          onClick={onComplete}
+          disabled={!allDone}
+          style={{
+            padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '700',
+            border: `1px solid ${allDone ? '#38A169' : C.border}`,
+            background: allDone ? '#E8F5E9' : C.bg,
+            color: allDone ? '#2E7D32' : C.muted,
+            cursor: allDone ? 'pointer' : 'not-allowed',
+            transition: 'all 0.15s',
+          }}
+          title={allDone ? '구역 실사 완료 처리' : '모든 항목 입력 후 완료 처리 가능'}
+        >
+          {allDone ? '✅ 구역 완료 처리' : '⏳ 입력 완료 후 확정 가능'}
+        </button>
+      )}
+      {isCompleted && (
+        <div style={{ fontSize: '11px', color: '#2E7D32', textAlign: 'center' }}>
+          {new Date(members[0].completed_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })} 완료확정
+        </div>
+      )}
     </div>
   )
 }
@@ -100,7 +127,7 @@ export default function Inventory() {
   const [locations, setLocations] = useState([])
   const [myName, setMyName] = useState(() => localStorage.getItem('inventory_user_name') || '')
   const [myAssignments, setMyAssignments] = useState([])
-  const [startForm, setStartForm] = useState({ year: new Date().getFullYear(), start_date: '', created_by: '' })
+  const [startForm, setStartForm] = useState({ year: new Date().getFullYear(), start_date: '', created_by: '', label: '' })
   const [showStartModal, setShowStartModal] = useState(false)
   const [assignForm, setAssignForm] = useState({ zone: '', assigned_to: '' })
   const [progress, setProgress] = useState({ total: 0, done: 0 })
@@ -197,20 +224,35 @@ export default function Inventory() {
   async function startSession() {
     if (!startForm.created_by.trim()) { alert('관리자 이름을 입력해주세요'); return }
     if (!startForm.start_date) { alert('날짜를 선택해주세요'); return }
-    if (activeSession) await supabase.from('inventory_sessions').update({ status: 'closed' }).eq('id', activeSession.id)
+    // 기존 세션 강제 종료 없음 — 횟수 제한 없이 새 세션 생성
     const { data } = await supabase.from('inventory_sessions').insert({
-      year: startForm.year, start_date: startForm.start_date, created_by: startForm.created_by,
+      year: startForm.year,
+      start_date: startForm.start_date,
+      created_by: startForm.created_by,
+      label: startForm.label.trim() || null,
     }).select().single()
     if (data) {
-      const { data: lots } = await supabase.from('reagent_lots').select('id, reagent_id, sealed_count, current_stock')
+      // 선택된 구역 범위에 해당하는 lot만 스냅샷
+      let lotsQuery = supabase.from('reagent_lots').select('id, reagent_id, sealed_count, current_stock, reagents(locations(room, detail))')
+      const { data: lots } = await lotsQuery
       if (lots) {
-        const rows = lots.map(l => ({ session_id: data.id, reagent_id: l.reagent_id, lot_id: l.id, book_sealed: l.sealed_count, book_stock: l.current_stock }))
+        // 구역 범위 필터 (startForm.zones가 비어있으면 전체)
+        let filtered = lots
+        if (startForm.zones && startForm.zones.length > 0) {
+          filtered = lots.filter(l => {
+            const room = l.reagents?.locations?.room || ''
+            const detail = l.reagents?.locations?.detail || ''
+            return startForm.zones.some(z => room === z || detail === z)
+          })
+        }
+        const rows = filtered.map(l => ({ session_id: data.id, reagent_id: l.reagent_id, lot_id: l.id, book_sealed: l.sealed_count, book_stock: l.current_stock }))
         for (let i = 0; i < rows.length; i += 100) await supabase.from('inventory_counts').insert(rows.slice(i, i + 100))
+        setActiveSession(data)
+        setShowStartModal(false)
+        setStartForm({ year: new Date().getFullYear(), start_date: '', created_by: '', label: '', zones: [] })
+        fetchSessions(); fetchAssignments(); fetchProgress()
+        alert(`실사가 시작되었습니다! 총 ${rows.length}개 Lot`)
       }
-      setActiveSession(data)
-      setShowStartModal(false)
-      fetchSessions(); fetchAssignments(); fetchProgress()
-      alert(`실사가 시작되었습니다! 총 ${lots?.length || 0}개 Lot`)
     }
   }
 
@@ -230,7 +272,7 @@ export default function Inventory() {
   }
 
   async function pauseSession() {
-    if (!window.confirm('실사를 일시중단하시겠습니까?\n입력된 데이터는 저장되며, 학생들의 접근이 차단됩니다.')) return
+    if (!window.confirm('실사를 일시중단하시겠습니까?\n지금까지 입력된 내용은 임시저장되며, 학생들의 접근이 차단됩니다.\n실사 확정 전까지는 실제 재고에 반영되지 않습니다.')) return
     setPausing(true)
     await supabase.from('inventory_sessions').update({
       status: 'paused',
@@ -249,6 +291,32 @@ export default function Inventory() {
       paused_by: null,
     }).eq('id', activeSession.id)
     await fetchSessions()
+  }
+
+  async function completeZone(zone) {
+    if (!window.confirm(`'${zone}' 구역 실사를 완료 처리하시겠습니까?\n해당 구역의 실측 수량이 재고에 반영됩니다.`)) return
+    // 해당 구역 lot의 counts만 가져와서 반영
+    const { data: counts } = await supabase.from('inventory_counts')
+      .select('*, reagent_lots(reagents(locations(room, detail)))')
+      .eq('session_id', activeSession.id)
+      .not('actual_sealed', 'is', null)
+    if (counts) {
+      const zoneCounts = counts.filter(c => {
+        const loc = c.reagent_lots?.reagents?.locations
+        return loc?.detail === zone || loc?.room === zone
+      })
+      for (const c of zoneCounts) {
+        await supabase.from('reagent_lots').update({ sealed_count: c.actual_sealed, current_stock: c.actual_stock ?? c.book_stock }).eq('id', c.lot_id)
+      }
+    }
+    // 구역 assignment에 completed_at 기록
+    const zoneAssignments = assignments.filter(a => a.zone === zone)
+    for (const a of zoneAssignments) {
+      await supabase.from('inventory_assignments').update({ completed_at: new Date().toISOString() }).eq('id', a.id)
+    }
+    fetchAssignments()
+    fetchProgress()
+    alert(`'${zone}' 구역 완료 처리되었습니다!`)
   }
 
   async function completeSession() {
@@ -310,7 +378,7 @@ export default function Inventory() {
           <>
             {/* ── 전체 진행 현황 카드 ── */}
             <Card
-              title={`📊 ${activeSession.year}년 재고 실사`}
+              title={`📊 ${activeSession.year}년 재고 실사${activeSession.label ? ` · ${activeSession.label}` : ''}`}
               sub={`시작일: ${activeSession.start_date} · 시작자: ${activeSession.created_by}`}
               extra={isAdmin && (
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -335,13 +403,13 @@ export default function Inventory() {
                 }}>
                   <span style={{ fontSize: '16px' }}>⏸</span>
                   <div>
-                    <strong>실사가 일시중단되었습니다.</strong>
+                    <strong>실사가 임시저장 상태로 중단되었습니다.</strong>
                     {activeSession.paused_at && (
                       <span style={{ color: '#BF5700', marginLeft: '8px', fontSize: '12px' }}>
                         {new Date(activeSession.paused_at).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 중단
                       </span>
                     )}
-                    {!isAdmin && <div style={{ marginTop: '2px', fontSize: '12px', color: '#BF5700' }}>관리자가 재개할 때까지 입력이 제한됩니다.</div>}
+                    {!isAdmin && <div style={{ marginTop: '2px', fontSize: '12px', color: '#BF5700' }}>관리자가 재개할 때까지 입력이 제한됩니다. 기존 입력 내용은 유지됩니다.</div>}
                   </div>
                 </div>
               )}
@@ -427,6 +495,8 @@ export default function Inventory() {
                             zone={zone}
                             members={members}
                             zoneProgress={zoneProgress}
+                            onComplete={() => completeZone(zone)}
+                            isAdmin={isAdmin}
                           />
                           {/* 담당자 삭제 버튼들 */}
                           <div style={{
@@ -462,12 +532,13 @@ export default function Inventory() {
           <Card title="📁 실사 이력">
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr>{['연도', '시작일', '완료일', '시작자', '상태'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
+                <tr>{['연도', '라벨', '시작일', '완료일', '시작자', '상태'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {sessions.filter(s => s.status !== 'active' && s.status !== 'paused').map(s => (
                   <tr key={s.id}>
                     <td style={tdStyle}>{s.year}년</td>
+                    <td style={tdStyle}>{s.label || <span style={{ color: C.muted }}>-</span>}</td>
                     <td style={tdStyle}>{s.start_date}</td>
                     <td style={{ ...tdStyle, color: C.muted }}>{s.completed_at ? new Date(s.completed_at).toLocaleDateString() : '-'}</td>
                     <td style={tdStyle}>{s.created_by}</td>
@@ -501,12 +572,55 @@ export default function Inventory() {
               <input type="number" value={startForm.year} onChange={e => setStartForm({ ...startForm, year: Number(e.target.value) })} style={inputStyle} />
             </div>
             <div style={{ marginBottom: '14px' }}>
+              <label style={labelStyle}>라벨 (선택)</label>
+              <input value={startForm.label || ''} onChange={e => setStartForm({ ...startForm, label: e.target.value })} placeholder="예: 1학기, 여름방학, 3층 점검" style={inputStyle} />
+            </div>
+            <div style={{ marginBottom: '14px' }}>
               <label style={labelStyle}>시작일 *</label>
               <input type="date" value={startForm.start_date} onChange={e => setStartForm({ ...startForm, start_date: e.target.value })} style={inputStyle} />
             </div>
-            <div style={{ marginBottom: '20px' }}>
+            <div style={{ marginBottom: '14px' }}>
               <label style={labelStyle}>관리자 이름 *</label>
               <input value={startForm.created_by} onChange={e => setStartForm({ ...startForm, created_by: e.target.value })} placeholder="본인 이름" style={inputStyle} />
+            </div>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={labelStyle}>실사 범위</label>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <button
+                  onClick={() => setStartForm({ ...startForm, zones: [] })}
+                  style={{
+                    padding: '6px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer',
+                    border: `1px solid ${!startForm.zones?.length ? C.navy : C.border}`,
+                    background: !startForm.zones?.length ? C.navy : C.white,
+                    color: !startForm.zones?.length ? '#fff' : C.text,
+                  }}
+                >전체</button>
+                <button
+                  onClick={() => setStartForm({ ...startForm, zones: startForm.zones?.length ? startForm.zones : ['선택'] })}
+                  style={{
+                    padding: '6px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer',
+                    border: `1px solid ${startForm.zones?.length ? C.navy : C.border}`,
+                    background: startForm.zones?.length ? C.navy : C.white,
+                    color: startForm.zones?.length ? '#fff' : C.text,
+                  }}
+                >구역 선택</button>
+              </div>
+              {startForm.zones?.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '10px', background: C.bg, borderRadius: '8px' }}>
+                  {rooms.map(r => (
+                    <button key={r} onClick={() => {
+                      const cur = startForm.zones || []
+                      setStartForm({ ...startForm, zones: cur.includes(r) ? cur.filter(z => z !== r) : [...cur, r] })
+                    }} style={{
+                      padding: '4px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
+                      border: `1px solid ${(startForm.zones || []).includes(r) ? C.navy : C.border}`,
+                      background: (startForm.zones || []).includes(r) ? C.navy : C.white,
+                      color: (startForm.zones || []).includes(r) ? '#fff' : C.text,
+                      fontWeight: (startForm.zones || []).includes(r) ? '700' : '400',
+                    }}>{r}</button>
+                  ))}
+                </div>
+              )}
             </div>
             <div style={{ background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px', padding: '10px 14px', marginBottom: '20px', fontSize: '13px', color: '#92400E' }}>
               ⚠️ 실사 시작 시 전체 Lot의 현재 재고가 장부 수량으로 저장됩니다.
