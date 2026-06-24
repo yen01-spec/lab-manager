@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { useFCM } from './hooks/useFCM'
+import { useFCM } from '../hooks/useFCM'
 
 // ── 디자인 토큰 ──────────────────────────────────────
 const C = {
