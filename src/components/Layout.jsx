@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { useFCM } from './hooks/useFCM'
 
 // ── 디자인 토큰 ──────────────────────────────────────
 const C = {
@@ -18,6 +19,7 @@ const C = {
 }
 
 // ── 브레이크포인트 훅 ─────────────────────────────────
+
 function useBreakpoint() {
   const [width, setWidth] = useState(window.innerWidth)
   useEffect(() => {
@@ -55,6 +57,7 @@ const BOTTOM_NAV = [
 
 export default function Layout() {
   const [isAdmin, setIsAdmin] = useState(false)
+  useFCM(isAdmin)   // ← 이 줄 추가
   const [drawerOpen, setDrawerOpen] = useState(false)
   const location = useLocation()
   const { isMobile, isTablet, isDesktop } = useBreakpoint()
