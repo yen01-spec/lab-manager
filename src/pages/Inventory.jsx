@@ -293,6 +293,44 @@ export default function Inventory() {
     await fetchSessions()
   }
 
+  async function cancelSession() {
+    if (!window.confirm('실사를 취소하시겠습니까?\n입력된 모든 데이터는 재고에 반영되지 않으며, 실사가 종료됩니다.')) return
+    await supabase.from('inventory_sessions').update({ status: 'closed' }).eq('id', activeSession.id)
+    alert('실사가 취소되었습니다.')
+    setActiveSession(null)
+    fetchSessions()
+  }
+
+  async function resetZone(zone) {
+    if (!window.confirm(`'${zone}' 구역의 입력값을 초기화하시겠습니까?\n담당자가 처음부터 다시 입력해야 합니다.`)) return
+    // 해당 구역 lot ID 목록 조회
+    const { data: counts } = await supabase
+      .from('inventory_counts')
+      .select('id, reagent_lots(reagents(locations(room, detail)))')
+      .eq('session_id', activeSession.id)
+    if (counts) {
+      const zoneCountIds = counts
+        .filter(c => {
+          const loc = c.reagent_lots?.reagents?.locations
+          return loc?.detail === zone || loc?.room === zone
+        })
+        .map(c => c.id)
+      if (zoneCountIds.length === 0) { alert('초기화할 입력값이 없습니다.'); return }
+      await supabase.from('inventory_counts')
+        .update({ actual_sealed: null, actual_stock: null, counted_by: null, counted_at: null })
+        .in('id', zoneCountIds)
+    }
+    // 구역 완료 처리도 되돌리기
+    const zoneAssignments = assignments.filter(a => a.zone === zone)
+    for (const a of zoneAssignments) {
+      await supabase.from('inventory_assignments').update({ completed_at: null }).eq('id', a.id)
+    }
+    fetchAssignments()
+    fetchProgress()
+    fetchZoneProgress()
+    alert(`'${zone}' 구역 입력값이 초기화되었습니다.`)
+  }
+
   async function completeZone(zone) {
     if (!window.confirm(`'${zone}' 구역 실사를 완료 처리하시겠습니까?\n해당 구역의 실측 수량이 재고에 반영됩니다.`)) return
     // 해당 구역 lot의 counts만 가져와서 반영
@@ -388,6 +426,7 @@ export default function Inventory() {
                         ⏸ 일시중단
                       </button>
                   }
+                  <button onClick={cancelSession} style={{ ...btnGhost, color: C.danger, borderColor: C.danger }}>🗑️ 실사 취소</button>
                   {activeSession.status !== 'paused' &&
                     <button onClick={completeSession} style={{ ...btnPrimary, background: '#38A169' }}>✅ 실사 확정</button>
                   }
@@ -498,24 +537,33 @@ export default function Inventory() {
                             onComplete={() => completeZone(zone)}
                             isAdmin={isAdmin}
                           />
-                          {/* 담당자 삭제 버튼들 */}
-                          <div style={{
-                            marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px',
-                          }}>
-                            {members.map(a => (
-                              <button
-                                key={a.id}
-                                onClick={() => deleteAssignment(a.id)}
-                                title={`${a.assigned_to} 배정 삭제`}
-                                style={{
-                                  fontSize: '11px', padding: '2px 8px', borderRadius: '10px',
-                                  border: `1px solid ${C.border}`, background: C.white,
-                                  color: C.muted, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                                }}
-                              >
-                                {a.assigned_to} ✕
-                              </button>
-                            ))}
+                          {/* 담당자 삭제 + 구역 초기화 버튼 */}
+                          <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                              {members.map(a => (
+                                <button
+                                  key={a.id}
+                                  onClick={() => deleteAssignment(a.id)}
+                                  title={`${a.assigned_to} 배정 삭제`}
+                                  style={{
+                                    fontSize: '11px', padding: '2px 8px', borderRadius: '10px',
+                                    border: `1px solid ${C.border}`, background: C.white,
+                                    color: C.muted, cursor: 'pointer',
+                                  }}
+                                >
+                                  {a.assigned_to} ✕
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              onClick={() => resetZone(zone)}
+                              title="구역 입력값 초기화"
+                              style={{
+                                fontSize: '11px', padding: '2px 10px', borderRadius: '10px',
+                                border: `1px solid ${C.danger}`, background: C.white,
+                                color: C.danger, cursor: 'pointer',
+                              }}
+                            >↺ 초기화</button>
                           </div>
                         </div>
                       ))}
