@@ -15,9 +15,11 @@ const TABS = [
   { key: 'receipt',  label: '영수증 관리',     icon: '🧾', sub: 'Receipt' },
   { key: 'manage',   label: '관리',            icon: '⚠️', sub: 'Manage' },
   { key: 'log',      label: '변경 로그',       icon: '📋', sub: 'Logs' },
+  (isSuper ? [{ key: 'super', label: '슈퍼관리자', icon: '👑', sub: 'Super Admin' }] : []),
 ]
 
 export default function Admin() {
+  const { isAdmin, isSuper } = useOutletContext()
   const { isAdmin } = useOutletContext()
   const navigate = useNavigate()
   const [tab, setTab] = useState('reagent')
@@ -99,6 +101,7 @@ export default function Admin() {
           {tab === 'receipt'  && <ReceiptTab />}
           {tab === 'manage'   && <ManageTab />}
           {tab === 'log'      && <LogTab />}
+          {tab === 'super' && isSuper && <SuperTab />}
         </div>
       </div>
     </div>
@@ -1698,5 +1701,120 @@ function ChangeRequestTab() {
           </div>
         ))}
     </Card>
+  )
+}
+
+// ══════════════════════════════════════════════
+//  슈퍼관리자 탭 (비밀번호 변경 + FCM 토큰 초기화)
+// ══════════════════════════════════════════════
+function SuperTab() {
+  const [adminPw, setAdminPw] = useState({ current: '', new1: '', new2: '' })
+  const [superPw, setSuperPw] = useState({ current: '', new1: '', new2: '' })
+  const [tokenCount, setTokenCount] = useState(0)
+
+  useEffect(() => { fetchTokenCount() }, [])
+
+  async function fetchTokenCount() {
+    const { count } = await supabase.from('fcm_tokens').select('*', { count: 'exact', head: true })
+    setTokenCount(count || 0)
+  }
+
+  async function changeAdminPassword() {
+    if (!adminPw.new1.trim()) { alert('새 비밀번호를 입력해주세요'); return }
+    if (adminPw.new1 !== adminPw.new2) { alert('새 비밀번호가 일치하지 않습니다'); return }
+    if (adminPw.new1.length < 6) { alert('비밀번호는 6자 이상이어야 합니다'); return }
+
+    // 현재 비밀번호 확인
+    const { data } = await supabase.from('app_settings').select('value').eq('key', 'admin_password').single()
+    if (data?.value !== adminPw.current) { alert('현재 비밀번호가 틀렸습니다'); return }
+
+    // 비밀번호 변경 + FCM 토큰 전체 삭제
+    await supabase.from('app_settings').update({ value: adminPw.new1 }).eq('key', 'admin_password')
+    await supabase.from('fcm_tokens').delete().eq('role', 'admin')
+
+    alert('✅ 일반관리자 비밀번호가 변경되었습니다.\n기존 관리자 기기의 알림이 초기화되었어요.\n새 관리자가 로그인하면 알림이 다시 등록됩니다.')
+    setAdminPw({ current: '', new1: '', new2: '' })
+    fetchTokenCount()
+  }
+
+  async function changeSuperPassword() {
+    if (!superPw.new1.trim()) { alert('새 비밀번호를 입력해주세요'); return }
+    if (superPw.new1 !== superPw.new2) { alert('새 비밀번호가 일치하지 않습니다'); return }
+    if (superPw.new1.length < 6) { alert('비밀번호는 6자 이상이어야 합니다'); return }
+
+    const { data } = await supabase.from('app_settings').select('value').eq('key', 'super_password').single()
+    if (data?.value !== superPw.current) { alert('현재 비밀번호가 틀렸습니다'); return }
+
+    await supabase.from('app_settings').update({ value: superPw.new1 }).eq('key', 'super_password')
+    await supabase.from('fcm_tokens').delete().eq('role', 'admin')
+
+    alert('✅ 슈퍼관리자 비밀번호가 변경되었습니다.\nFCM 토큰도 초기화되었어요.')
+    setSuperPw({ current: '', new1: '', new2: '' })
+    fetchTokenCount()
+  }
+
+  async function clearAllTokens() {
+    if (!window.confirm('모든 FCM 토큰을 삭제하시겠습니까?\n모든 기기에서 알림이 초기화됩니다.')) return
+    await supabase.from('fcm_tokens').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+    alert('FCM 토큰이 초기화되었습니다.')
+    fetchTokenCount()
+  }
+
+  const C_local = {
+    navy: '#1a2a5e', muted: '#6B7A99', border: '#DDE2EE',
+    bg: '#F0F2F7', white: '#FFFFFF', danger: '#D63031',
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* 일반관리자 비밀번호 변경 */}
+      <Card title="🔑 일반관리자 비밀번호 변경" sub="관리자 비밀번호 변경 시 FCM 토큰도 초기화됩니다">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '360px' }}>
+          <div>
+            <label style={labelStyle}>현재 비밀번호</label>
+            <input type="password" value={adminPw.current} onChange={e => setAdminPw({ ...adminPw, current: e.target.value })} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>새 비밀번호 (6자 이상)</label>
+            <input type="password" value={adminPw.new1} onChange={e => setAdminPw({ ...adminPw, new1: e.target.value })} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>새 비밀번호 확인</label>
+            <input type="password" value={adminPw.new2} onChange={e => setAdminPw({ ...adminPw, new2: e.target.value })} style={inputStyle} />
+          </div>
+          <button onClick={changeAdminPassword} style={{ ...btnPrimary }}>변경</button>
+        </div>
+      </Card>
+
+      {/* 슈퍼관리자 비밀번호 변경 */}
+      <Card title="👑 슈퍼관리자 비밀번호 변경">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '360px' }}>
+          <div>
+            <label style={labelStyle}>현재 비밀번호</label>
+            <input type="password" value={superPw.current} onChange={e => setSuperPw({ ...superPw, current: e.target.value })} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>새 비밀번호 (6자 이상)</label>
+            <input type="password" value={superPw.new1} onChange={e => setSuperPw({ ...superPw, new1: e.target.value })} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>새 비밀번호 확인</label>
+            <input type="password" value={superPw.new2} onChange={e => setSuperPw({ ...superPw, new2: e.target.value })} style={inputStyle} />
+          </div>
+          <button onClick={changeSuperPassword} style={{ ...btnPrimary }}>변경</button>
+        </div>
+      </Card>
+
+      {/* FCM 토큰 관리 */}
+      <Card title="🔔 FCM 알림 토큰 관리">
+        <div style={{ fontSize: '13px', color: C_local.muted, marginBottom: '16px' }}>
+          현재 등록된 알림 토큰: <strong style={{ color: C_local.navy }}>{tokenCount}개</strong>
+        </div>
+        <div style={{ padding: '12px 16px', background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
+          ⚠️ 비밀번호 변경 시 자동으로 토큰이 초기화됩니다. 수동으로 초기화가 필요한 경우에만 아래 버튼을 사용하세요.
+        </div>
+        <button onClick={clearAllTokens} style={{ ...btnPrimary, background: '#D63031' }}>🗑️ 전체 토큰 초기화</button>
+      </Card>
+    </div>
   )
 }

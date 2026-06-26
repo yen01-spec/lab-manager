@@ -1,8 +1,8 @@
-import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { supabase } from '../supabase'
 import { useFCM } from '../hooks/useFCM'
 
-// ── 디자인 토큰 ──────────────────────────────────────
 const C = {
   navy:      '#1a2a5e',
   navyDark:  '#111d42',
@@ -17,8 +17,6 @@ const C = {
   muted:     '#6B7A99',
   danger:    '#D63031',
 }
-
-// ── 브레이크포인트 훅 ─────────────────────────────────
 
 function useBreakpoint() {
   const [width, setWidth] = useState(window.innerWidth)
@@ -35,7 +33,6 @@ function useBreakpoint() {
   }
 }
 
-// ── 메뉴 아이템 ───────────────────────────────────────
 const NAV_ITEMS = [
   { to: '/',                   label: '홈',         sub: 'Home',             icon: '🏠', end: true },
   { to: '/reagents/locations', label: '시약장 위치', sub: 'Storage Location', icon: '📍' },
@@ -44,9 +41,8 @@ const NAV_ITEMS = [
   { to: '/requests',           label: '구매 요청',  sub: 'Purchase Request', icon: '🛒' },
   { to: '/calendar',           label: '달력',       sub: 'Calendar',         icon: '📅' },
   { to: '/inventory',          label: '재고 실사',  sub: 'Inventory Count',  icon: '📊' },
- ]
+]
 
-// 하단 탭바에 표시할 주요 메뉴 (폰용, 5개까지)
 const BOTTOM_NAV = [
   { to: '/',              label: '홈',      icon: '🏠', end: true },
   { to: '/reagents/list', label: '시약',    icon: '🧪' },
@@ -57,18 +53,38 @@ const BOTTOM_NAV = [
 
 export default function Layout() {
   const [isAdmin, setIsAdmin] = useState(false)
-  useFCM(isAdmin)   // ← 이 줄 추가
+  const [isSuper, setIsSuper] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const location = useLocation()
   const { isMobile, isTablet, isDesktop } = useBreakpoint()
 
-  function handleAdminLogin() {
+  useFCM(isAdmin || isSuper)
+
+  async function handleAdminLogin() {
     const pw = prompt('관리자 비밀번호를 입력하세요')
-    if (pw === 'admin1234') { setIsAdmin(true) }
-    else if (pw !== null) alert('비밀번호가 틀렸습니다')
+    if (pw === null) return
+
+    // DB에서 비밀번호 확인
+    const { data } = await supabase.from('app_settings').select('key, value').in('key', ['admin_password', 'super_password'])
+    const settings = {}
+    data?.forEach(d => { settings[d.key] = d.value })
+
+    if (pw === settings['super_password']) {
+      setIsAdmin(true)
+      setIsSuper(true)
+    } else if (pw === settings['admin_password']) {
+      setIsAdmin(true)
+      setIsSuper(false)
+    } else {
+      alert('비밀번호가 틀렸습니다')
+    }
   }
 
-  // 페이지 이동 시 드로어 닫기
+  function handleLogout() {
+    setIsAdmin(false)
+    setIsSuper(false)
+  }
+
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
 
   const sidebarWidth = isDesktop ? '220px' : isTablet ? '64px' : '0px'
@@ -79,8 +95,6 @@ export default function Layout() {
       fontFamily: "'Pretendard', 'Apple SD Gothic Neo', sans-serif",
       background: C.bg,
     }}>
-
-      {/* ── 상단 헤더 ── */}
       <header style={{
         height: '52px', background: C.navy,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -88,7 +102,6 @@ export default function Layout() {
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200,
         boxShadow: '0 2px 12px rgba(26,42,94,0.3)',
       }}>
-        {/* 모바일: 햄버거 버튼 */}
         {isMobile && (
           <button onClick={() => setDrawerOpen(true)} style={{
             background: 'none', border: 'none', color: C.white,
@@ -96,7 +109,6 @@ export default function Layout() {
           }}>☰</button>
         )}
 
-        {/* 로고 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{
             width: '30px', height: '30px', background: C.gold,
@@ -117,16 +129,17 @@ export default function Layout() {
           )}
         </div>
 
-        {/* 관리자 버튼 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {isAdmin ? (
             <>
               {!isMobile && (
-                <NavLink to="/admin" style={{ color: C.goldLight, textDecoration: 'none', fontSize: '13px', fontWeight: '600' }}>
-                  ⚙️ 관리자
+                <NavLink to="/admin" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: C.goldLight, fontSize: '13px', fontWeight: '600' }}>
+                    {isSuper ? '👑 슈퍼관리자' : '⚙️ 관리자'}
+                  </span>
                 </NavLink>
               )}
-              <button onClick={() => setIsAdmin(false)} style={{
+              <button onClick={handleLogout} style={{
                 background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.25)',
                 color: C.white, padding: '4px 10px', borderRadius: '5px',
                 cursor: 'pointer', fontSize: '12px',
@@ -144,7 +157,6 @@ export default function Layout() {
 
       <div style={{ display: 'flex', marginTop: '52px', minHeight: 'calc(100vh - 52px)' }}>
 
-        {/* ── 태블릿: 아이콘 사이드바 ── */}
         {isTablet && (
           <aside style={{
             width: '64px', background: C.white,
@@ -184,7 +196,7 @@ export default function Layout() {
                     borderLeft: location.pathname.startsWith('/admin') ? `3px solid ${C.gold}` : '3px solid transparent',
                     cursor: 'pointer',
                   }}>
-                    <span style={{ fontSize: '20px' }}>⚙️</span>
+                    <span style={{ fontSize: '20px' }}>{isSuper ? '👑' : '⚙️'}</span>
                     <span style={{ fontSize: '9px', color: C.muted }}>관리자</span>
                   </div>
                 </NavLink>
@@ -193,7 +205,6 @@ export default function Layout() {
           </aside>
         )}
 
-        {/* ── 데스크탑: 풀 사이드바 ── */}
         {isDesktop && (
           <aside style={{
             width: '220px', background: C.white,
@@ -236,7 +247,9 @@ export default function Layout() {
               <>
                 <div style={{ margin: '12px 20px', borderTop: `1px solid ${C.border}` }} />
                 <div style={{ padding: '4px 20px 10px', fontSize: '10px', fontWeight: '700',
-                  letterSpacing: '0.1em', color: C.muted, textTransform: 'uppercase' }}>관리자</div>
+                  letterSpacing: '0.1em', color: C.muted, textTransform: 'uppercase' }}>
+                  {isSuper ? '👑 슈퍼관리자' : '관리자'}
+                </div>
                 <NavLink to="/admin" style={{ textDecoration: 'none' }}>
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 20px',
@@ -248,7 +261,7 @@ export default function Layout() {
                     onMouseLeave={e => e.currentTarget.style.background =
                       location.pathname.startsWith('/admin') ? '#EEF2FB' : 'transparent'}
                   >
-                    <span style={{ fontSize: '16px', width: '20px', textAlign: 'center' }}>⚙️</span>
+                    <span style={{ fontSize: '16px', width: '20px', textAlign: 'center' }}>{isSuper ? '👑' : '⚙️'}</span>
                     <div>
                       <div style={{ fontSize: '13px', fontWeight: '500', color: C.text }}>관리자 메뉴</div>
                       <div style={{ fontSize: '10px', color: C.muted }}>Admin Panel</div>
@@ -266,22 +279,18 @@ export default function Layout() {
           </aside>
         )}
 
-        {/* ── 모바일: 드로어 ── */}
         {isMobile && drawerOpen && (
           <>
-            {/* 배경 오버레이 */}
             <div onClick={() => setDrawerOpen(false)} style={{
               position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
               background: 'rgba(26,42,94,0.5)', zIndex: 300,
             }} />
-            {/* 드로어 */}
             <div style={{
               position: 'fixed', top: 0, left: 0, bottom: 0, width: '260px',
               background: C.white, zIndex: 400,
               display: 'flex', flexDirection: 'column',
               boxShadow: '4px 0 24px rgba(26,42,94,0.2)',
             }}>
-              {/* 드로어 헤더 */}
               <div style={{ background: C.navy, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{ width: '28px', height: '28px', background: C.gold, borderRadius: '5px',
@@ -295,7 +304,6 @@ export default function Layout() {
                 }}>✕</button>
               </div>
 
-              {/* 메뉴 목록 */}
               <div style={{ flex: 1, overflowY: 'auto', paddingTop: '8px' }}>
                 <div style={{ padding: '8px 20px 6px', fontSize: '10px', fontWeight: '700',
                   letterSpacing: '0.1em', color: C.muted, textTransform: 'uppercase' }}>메뉴</div>
@@ -331,7 +339,7 @@ export default function Layout() {
                         background: location.pathname.startsWith('/admin') ? '#EEF2FB' : 'transparent',
                         borderLeft: location.pathname.startsWith('/admin') ? `3px solid ${C.gold}` : '3px solid transparent',
                       }}>
-                        <span style={{ fontSize: '18px' }}>⚙️</span>
+                        <span style={{ fontSize: '18px' }}>{isSuper ? '👑' : '⚙️'}</span>
                         <div>
                           <div style={{ fontSize: '14px', fontWeight: '500', color: C.text }}>관리자 메뉴</div>
                           <div style={{ fontSize: '11px', color: C.muted }}>Admin Panel</div>
@@ -342,10 +350,9 @@ export default function Layout() {
                 )}
               </div>
 
-              {/* 관리자 버튼 */}
               <div style={{ padding: '16px 20px', borderTop: `1px solid ${C.border}` }}>
                 {isAdmin ? (
-                  <button onClick={() => setIsAdmin(false)} style={{
+                  <button onClick={handleLogout} style={{
                     width: '100%', padding: '10px', borderRadius: '8px',
                     border: `1px solid ${C.border}`, background: C.white,
                     cursor: 'pointer', fontSize: '13px', color: C.muted,
@@ -365,17 +372,15 @@ export default function Layout() {
           </>
         )}
 
-        {/* ── 메인 콘텐츠 ── */}
         <main style={{
           marginLeft: sidebarWidth,
           flex: 1, minWidth: 0,
-          paddingBottom: isMobile ? '64px' : 0, // 하단 탭바 공간
+          paddingBottom: isMobile ? '64px' : 0,
         }}>
-          <Outlet context={{ isAdmin }} />
+          <Outlet context={{ isAdmin, isSuper }} />
         </main>
       </div>
 
-      {/* ── 모바일: 하단 탭바 ── */}
       {isMobile && (
         <nav style={{
           position: 'fixed', bottom: 0, left: 0, right: 0, height: '60px',
@@ -401,7 +406,6 @@ export default function Layout() {
               </NavLink>
             )
           })}
-          {/* 더보기 (전체 메뉴) */}
           <button onClick={() => setDrawerOpen(true)} style={{
             flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
             justifyContent: 'center', gap: '3px', border: 'none', background: 'none', cursor: 'pointer',
