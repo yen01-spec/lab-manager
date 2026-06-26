@@ -106,7 +106,7 @@ if (!tokens?.length) {
           body: JSON.stringify({
             message: {
               token,
-              notification: { title, body },
+              data: { title, body },
             }
           })
         })
