@@ -4,10 +4,6 @@ import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
 import { exportReagents } from '../exportUtils'
 
-const [lowStockNew, setLowStockNew] = useState(() => 
-  JSON.parse(localStorage.getItem('low_stock_new') || '[]')
-)
-
 const GHS_MAP = [
   { keywords: ['인화', '발화', '가연', 'flammable', 'flame'],        emoji: '🔥', label: '인화성' },
   { keywords: ['독성', '독극', 'toxic', 'poison', '독'],              emoji: '💀', label: '독성' },
@@ -27,6 +23,9 @@ function getGhsEmojis(hazard) {
 }
 
 export default function ReagentList() {
+  const [lowStockNew, setLowStockNew] = useState(() => 
+  JSON.parse(localStorage.getItem('low_stock_new') || '[]')
+)
   const { isAdmin } = useOutletContext?.() || {}
   const [locations, setLocations] = useState([])
   const [selectedLocation, setSelectedLocation] = useState(null)
