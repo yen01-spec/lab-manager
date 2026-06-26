@@ -9,19 +9,17 @@ export function useFCM(isAdmin) {
   // onMessage는 항상 등록 (로그인 여부 무관)
   useEffect(() => {
     const unsubscribe = onMessage(messaging, payload => {
-      const { title, body } = payload.notification || {}
+      const title = payload.notification?.title || payload.data?.title || '시약관리 알림'
+      const body = payload.notification?.body || payload.data?.body || ''
       if (navigator.serviceWorker.controller) {
         navigator.serviceWorker.ready.then(registration => {
-          registration.showNotification(title || '시약관리 알림', {
-            body: body || '',
+          registration.showNotification(title, {
+            body,
             icon: '/favicon.ico',
           })
         })
       } else if (Notification.permission === 'granted') {
-        new Notification(title || '시약관리 알림', {
-          body: body || '',
-          icon: '/favicon.ico',
-        })
+        new Notification(title, { body, icon: '/favicon.ico' })
       }
     })
     return () => unsubscribe()
