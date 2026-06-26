@@ -4,7 +4,6 @@ import { supabase } from '../supabase'
 import { C, PageBanner, Card, StatusBadge, inputStyle, labelStyle, btnPrimary, btnGhost, thStyle, tdStyle } from '../design'
 import { exportPurchaseRequests } from '../exportUtils'
 import { notifyLowStockIfNeeded } from '../notificationUtils'
-import { registerAdminFcmToken } from '../hooks/useFCM'
 
 export default function Admin() {
   const { isAdmin, isSuper } = useOutletContext()
@@ -1743,7 +1742,6 @@ function SuperTab() {
     // 비밀번호 변경 + FCM 토큰 전체 삭제
     await supabase.from('app_settings').update({ value: adminPw.new1 }).eq('key', 'admin_password')
     await supabase.from('fcm_tokens').delete().eq('role', 'admin')
-    await registerAdminFcmToken()
 
     alert('✅ 일반관리자 비밀번호가 변경되었습니다.\n기존 관리자 기기의 알림이 초기화되었어요.\n새 관리자가 로그인하면 알림이 다시 등록됩니다.')
     setAdminPw({ current: '', new1: '', new2: '' })
@@ -1760,9 +1758,8 @@ function SuperTab() {
 
     await supabase.from('app_settings').update({ value: superPw.new1 }).eq('key', 'super_password')
     await supabase.from('fcm_tokens').delete().eq('role', 'admin')
-    await registerAdminFcmToken()
 
-    alert('✅ 슈퍼관리자 비밀번호가 변경되었습니다.\nFCM 토큰도 초기화되었어요.')
+    alert('✅ 슈퍼관리자 비밀번호가 변경되었습니다.\nFCM 토큰도 초기화되었어요.\n다시 로그인하면 알림이 새로 등록됩니다.')
     setSuperPw({ current: '', new1: '', new2: '' })
     fetchTokenCount()
   }
@@ -1770,10 +1767,7 @@ function SuperTab() {
   async function clearAllTokens() {
     if (!window.confirm('모든 FCM 토큰을 삭제하시겠습니까?\n모든 기기에서 알림이 초기화됩니다.')) return
     await supabase.from('fcm_tokens').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-    const result = await registerAdminFcmToken()
-    alert(result.ok
-      ? 'FCM 토큰이 초기화되었고, 현재 기기 알림이 다시 등록되었습니다.'
-      : 'FCM 토큰이 초기화되었습니다. 현재 기기 재등록은 실패했으니 알림 권한을 확인한 뒤 관리자 로그인을 다시 해주세요.')
+    alert('FCM 토큰이 초기화되었습니다.\n알림을 받을 관리자/슈퍼관리자는 다시 로그인해야 새로 등록됩니다.')
     fetchTokenCount()
   }
 
