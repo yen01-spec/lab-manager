@@ -470,7 +470,7 @@ onClick={e => toggleCheck(r.id, e, data)}>
   <>
     <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
       color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>
-    {lowStockNew.includes(r.lots?.[0]?.id) && (
+    {lowStockNew.includes(lotList[0]?.id) && (
       <span
         onClick={e => {
           e.stopPropagation()
