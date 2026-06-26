@@ -53,14 +53,17 @@ export default function Requests() {
       target_id: form.target_type !== 'new' ? form.target_id : null,
       target_name: targetName, quantity: form.quantity, reason: form.reason,
     })
-    // 관리자에게 FCM 알림 발송
-supabase.functions.invoke('send-notification', {
-  body: {
-    title: '📦 새 구매 요청',
-    body: `${form.user_name}님이 ${targetName} ${form.quantity} 구매를 요청했습니다.`,
-    role: 'admin',
-  }
-}).catch(err => console.error('알림 발송 실패:', err))
+
+    // 관리자에게 FCM 알림 발송 (비동기, 실패해도 무시)
+    supabase.functions.invoke('send-notification', {
+      body: {
+        title: '📦 새 구매 요청',
+        body: `${form.user_name}님이 ${targetName} ${form.quantity} 구매를 요청했습니다.`,
+        role: 'admin',
+      }
+    }).then(res => console.log('알림 발송 결과:', res))
+      .catch(err => console.error('알림 발송 실패:', err))
+
     alert('구매 요청이 접수되었습니다!')
     const name = form.user_name
     setForm({ user_name: name, target_type: 'reagent', target_id: '', target_name: '', quantity: '', reason: '' })
