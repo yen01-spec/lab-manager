@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, btnPrimary, btnGhost, inputStyle, labelStyle, thStyle, tdStyle } from '../design'
+import { notifyLowStockIfNeeded } from '../notificationUtils'
 
 function ZoneBadge({ status }) {
   const map = {
@@ -252,14 +253,24 @@ export default function Inventory() {
   async function completeZone(zone) {
     if (!window.confirm(`'${zone}' 구역 실사를 완료 처리하시겠습니까?\n해당 구역의 실측 수량이 재고에 반영됩니다.`)) return
     const { data: counts } = await supabase.from('inventory_counts')
-      .select('*, reagent_lots(reagents(locations(room, detail)))').eq('session_id', activeSession.id).not('actual_sealed', 'is', null)
+      .select('*, reagent_lots(sealed_count, current_stock, lot_no, reagents(name, locations(room, detail)))').eq('session_id', activeSession.id).not('actual_sealed', 'is', null)
     if (counts) {
       const zoneCounts = counts.filter(c => {
         const loc = c.reagent_lots?.reagents?.locations
         return loc?.detail === zone || loc?.room === zone
       })
       for (const c of zoneCounts) {
-        await supabase.from('reagent_lots').update({ sealed_count: c.actual_sealed, current_stock: c.actual_stock ?? c.book_stock }).eq('id', c.lot_id)
+        const after = { sealed_count: c.actual_sealed, current_stock: c.actual_stock ?? c.book_stock }
+        const { error } = await supabase.from('reagent_lots').update(after).eq('id', c.lot_id)
+        if (!error) {
+          await notifyLowStockIfNeeded({
+            type: 'reagent',
+            name: c.reagent_lots?.reagents?.name,
+            lotNo: c.reagent_lots?.lot_no,
+            before: c.reagent_lots,
+            after,
+          })
+        }
       }
     }
     for (const a of assignments.filter(a => a.zone === zone)) {
@@ -271,10 +282,23 @@ export default function Inventory() {
 
   async function completeSession() {
     if (!window.confirm('실사를 확정하시겠습니까?\n실측 수량이 재고에 반영됩니다.')) return
-    const { data: counts } = await supabase.from('inventory_counts').select('*').eq('session_id', activeSession.id).not('actual_sealed', 'is', null)
+    const { data: counts } = await supabase.from('inventory_counts')
+      .select('*, reagent_lots(sealed_count, current_stock, lot_no, reagents(name))')
+      .eq('session_id', activeSession.id)
+      .not('actual_sealed', 'is', null)
     if (counts) {
       for (const c of counts) {
-        await supabase.from('reagent_lots').update({ sealed_count: c.actual_sealed, current_stock: c.actual_stock ?? c.book_stock }).eq('id', c.lot_id)
+        const after = { sealed_count: c.actual_sealed, current_stock: c.actual_stock ?? c.book_stock }
+        const { error } = await supabase.from('reagent_lots').update(after).eq('id', c.lot_id)
+        if (!error) {
+          await notifyLowStockIfNeeded({
+            type: 'reagent',
+            name: c.reagent_lots?.reagents?.name,
+            lotNo: c.reagent_lots?.lot_no,
+            before: c.reagent_lots,
+            after,
+          })
+        }
       }
     }
     await supabase.from('inventory_sessions').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', activeSession.id)

@@ -3,6 +3,8 @@ import { useOutletContext, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, StatusBadge, inputStyle, labelStyle, btnPrimary, btnGhost, thStyle, tdStyle } from '../design'
 import { exportPurchaseRequests } from '../exportUtils'
+import { notifyLowStockIfNeeded } from '../notificationUtils'
+import { registerAdminFcmToken } from '../hooks/useFCM'
 
 export default function Admin() {
   const { isAdmin, isSuper } = useOutletContext()
@@ -436,7 +438,19 @@ function DisposalTab({ onCountChange }) {
     if (!window.confirm(`"${req.reagent_name}" 폐기를 완료 처리하시겠습니까?\n⚠️ 재고에서 차감됩니다.`)) return
     if (req.lot_id) {
       const { data: lot } = await supabase.from('reagent_lots').select('*').eq('id', req.lot_id).single()
-      if (lot) await supabase.from('reagent_lots').update({ sealed_count: Math.max(0, lot.sealed_count - 1) }).eq('id', req.lot_id)
+      if (lot) {
+        const after = { ...lot, sealed_count: Math.max(0, lot.sealed_count - 1) }
+        const { error } = await supabase.from('reagent_lots').update({ sealed_count: after.sealed_count }).eq('id', req.lot_id)
+        if (!error) {
+          await notifyLowStockIfNeeded({
+            type: 'reagent',
+            name: req.reagent_name,
+            lotNo: lot.lot_no || req.lot_no,
+            before: lot,
+            after,
+          })
+        }
+      }
     }
     await supabase.from('disposal_requests').update({ status: 'disposed', disposed_at: new Date().toISOString() }).eq('id', req.id)
     await supabase.from('admin_logs').insert({
@@ -1729,6 +1743,7 @@ function SuperTab() {
     // 비밀번호 변경 + FCM 토큰 전체 삭제
     await supabase.from('app_settings').update({ value: adminPw.new1 }).eq('key', 'admin_password')
     await supabase.from('fcm_tokens').delete().eq('role', 'admin')
+    await registerAdminFcmToken()
 
     alert('✅ 일반관리자 비밀번호가 변경되었습니다.\n기존 관리자 기기의 알림이 초기화되었어요.\n새 관리자가 로그인하면 알림이 다시 등록됩니다.')
     setAdminPw({ current: '', new1: '', new2: '' })
@@ -1745,6 +1760,7 @@ function SuperTab() {
 
     await supabase.from('app_settings').update({ value: superPw.new1 }).eq('key', 'super_password')
     await supabase.from('fcm_tokens').delete().eq('role', 'admin')
+    await registerAdminFcmToken()
 
     alert('✅ 슈퍼관리자 비밀번호가 변경되었습니다.\nFCM 토큰도 초기화되었어요.')
     setSuperPw({ current: '', new1: '', new2: '' })
@@ -1754,7 +1770,10 @@ function SuperTab() {
   async function clearAllTokens() {
     if (!window.confirm('모든 FCM 토큰을 삭제하시겠습니까?\n모든 기기에서 알림이 초기화됩니다.')) return
     await supabase.from('fcm_tokens').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-    alert('FCM 토큰이 초기화되었습니다.')
+    const result = await registerAdminFcmToken()
+    alert(result.ok
+      ? 'FCM 토큰이 초기화되었고, 현재 기기 알림이 다시 등록되었습니다.'
+      : 'FCM 토큰이 초기화되었습니다. 현재 기기 재등록은 실패했으니 알림 권한을 확인한 뒤 관리자 로그인을 다시 해주세요.')
     fetchTokenCount()
   }
 

@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, StatusBadge, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
+import { notifyPurchaseRequest } from '../notificationUtils'
 
 export default function Requests() {
   const { isAdmin } = useOutletContext()
@@ -88,25 +89,29 @@ export default function Requests() {
       // 기존 요청에 수량 추가 (메모 형태로 reason에 덧붙임)
       const target = duplicates[0]
       const addNote = `\n[추가 요청 by ${form.user_name}] 수량: ${form.quantity}`
-      await supabase.from('purchase_requests')
+      const { error } = await supabase.from('purchase_requests')
         .update({ reason: (target.reason || '') + addNote })
         .eq('id', target.id)
+      if (error) { alert('요청 저장에 실패했습니다. 다시 시도해주세요.'); return }
+      await notifyPurchaseRequest({
+        userName: form.user_name,
+        targetName: target.target_name || targetName,
+        quantity: form.quantity,
+        appended: true,
+      })
       alert('기존 요청에 수량이 추가되었습니다!')
     } else {
-      await supabase.from('purchase_requests').insert({
+      const { error } = await supabase.from('purchase_requests').insert({
         user_name: form.user_name, target_type: form.target_type,
         target_id: form.target_type !== 'new' ? form.target_id : null,
         target_name: targetName, quantity: form.quantity, reason: form.reason,
       })
-      // 관리자에게 FCM 알림 발송
-supabase.functions.invoke('send-notification', {
-  body: {
-    title: '📦 새 구매 요청',
-    body: `${form.user_name}님이 ${targetName} ${form.quantity} 구매를 요청했습니다.`,
-    role: 'admin',
-  }
-}).then(res => console.log('알림 발송 결과:', res))
-  .catch(err => console.error('알림 발송 실패:', err))
+      if (error) { alert('요청 저장에 실패했습니다. 다시 시도해주세요.'); return }
+      await notifyPurchaseRequest({
+        userName: form.user_name,
+        targetName,
+        quantity: form.quantity,
+      })
       alert('구매 요청이 접수되었습니다!')
     }
 

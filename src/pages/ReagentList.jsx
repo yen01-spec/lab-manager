@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
 import { exportReagents } from '../exportUtils'
+import { notifyLowStockIfNeeded } from '../notificationUtils'
 
 const GHS_MAP = [
   { keywords: ['인화', '발화', '가연', 'flammable', 'flame'],        emoji: '🔥', label: '인화성' },
@@ -234,7 +235,15 @@ function toggleCheck(id, e, allData) {
       newStock = 100
       await supabase.from('reagent_lots').update({ opened_date: new Date().toISOString().split('T')[0] }).eq('id', firstLot.id)
     }
-    await supabase.from('reagent_lots').update({ sealed_count: newSealed, current_stock: newStock }).eq('id', firstLot.id)
+    const { error } = await supabase.from('reagent_lots').update({ sealed_count: newSealed, current_stock: newStock }).eq('id', firstLot.id)
+    if (error) { alert('재고 저장에 실패했습니다. 다시 시도해주세요.'); return }
+    await notifyLowStockIfNeeded({
+      type: 'reagent',
+      name: selectedReagent.name,
+      lotNo: firstLot.lot_no,
+      before: firstLot,
+      after: { ...firstLot, sealed_count: newSealed, current_stock: newStock },
+    })
     await supabase.from('stock_history').insert({
       reagent_id: selectedReagent.id, lot_id: firstLot.id,
       reagent_name: selectedReagent.name, action: stockForm.action,
@@ -311,7 +320,10 @@ async function saveField(field, value, sourceField) {
       setShowNameModal(true)
       return
     }
-    setInlineEdit({ lotId, reagentId, field, value: currentValue })
+    const source = selectedReagent?.id === reagentId
+      ? selectedReagent
+      : [...reagents, ...searchResults].find(r => r.id === reagentId)
+    setInlineEdit({ lotId, reagentId, field, value: currentValue, reagentName: source?.name })
   }
 
   async function saveInlineEdit(lot) {
@@ -319,7 +331,16 @@ async function saveField(field, value, sourceField) {
     const { lotId, field, value } = inlineEdit
     const numVal = Number(value)
     if (isNaN(numVal)) { alert('숫자를 입력해주세요'); return }
-    await supabase.from('reagent_lots').update({ [field]: numVal }).eq('id', lotId)
+    const afterLot = { ...lot, [field]: numVal }
+    const { error } = await supabase.from('reagent_lots').update({ [field]: numVal }).eq('id', lotId)
+    if (error) { alert('재고 저장에 실패했습니다. 다시 시도해주세요.'); return }
+    await notifyLowStockIfNeeded({
+      type: 'reagent',
+      name: inlineEdit.reagentName || selectedReagent?.name,
+      lotNo: lot.lot_no,
+      before: lot,
+      after: afterLot,
+    })
     await supabase.from('stock_logs').insert({
       target_type: 'reagent', lot_id: lotId, user_name: userName,
       before_sealed: lot.sealed_count,
