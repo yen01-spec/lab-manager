@@ -107,6 +107,15 @@ if (!tokens?.length) {
             message: {
               token,
               notification: { title, body },
+              data: { title, body },
+              webpush: {
+                notification: {
+                  title,
+                  body,
+                  icon: '/favicon.ico',
+                  badge: '/favicon.ico',
+                },
+              },
             }
           })
         })

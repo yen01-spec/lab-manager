@@ -14,9 +14,11 @@ const messaging = firebase.messaging()
 
 // 백그라운드 메시지 수신 (브라우저 꺼져있을 때)
 messaging.onBackgroundMessage(payload => {
-  const { title, body } = payload.notification || {}
-  self.registration.showNotification(title || '시약관리 알림', {
-    body: body || '',
+  const title = payload.notification?.title || payload.data?.title || '시약관리 알림'
+  const body = payload.notification?.body || payload.data?.body || ''
+
+  self.registration.showNotification(title, {
+    body,
     icon: '/favicon.ico',
     badge: '/favicon.ico',
   })
