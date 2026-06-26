@@ -361,7 +361,8 @@ useEffect(() => {
   supabase.from('item_locations').select('*').order('name').then(({ data }) => {
     if (data) setItemLocations(data)
   })
-}, [])
+}, []) }
+
 function ItemAddTab({ locations }) {
   const init = { name: '', category: '', item_location_id: '', notes: '' }
   const [form, setForm] = useState(init)
@@ -1826,4 +1827,4 @@ function SuperTab() {
       </Card>
     </div>
   )
-})
+}
