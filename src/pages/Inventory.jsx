@@ -266,6 +266,15 @@ export default function Inventory() {
       await supabase.from('inventory_assignments').update({ completed_at: new Date().toISOString() }).eq('id', a.id)
     }
     fetchAssignments(); fetchProgress()
+    // 재고 부족 항목 localStorage에 저장
+if (counts) {
+  const existing = JSON.parse(localStorage.getItem('low_stock_new') || '[]')
+  const lowIds = zoneCounts
+    .filter(c => c.actual_sealed === 0 && (c.actual_stock ?? c.book_stock) <= 20)
+    .map(c => c.lot_id)
+  const merged = [...new Set([...existing, ...lowIds])]
+  if (merged.length > 0) localStorage.setItem('low_stock_new', JSON.stringify(merged))
+}
     alert(`'${zone}' 구역 완료 처리되었습니다!`)
   }
 
@@ -278,6 +287,15 @@ export default function Inventory() {
       }
     }
     await supabase.from('inventory_sessions').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', activeSession.id)
+    // 재고 부족 항목 localStorage에 저장
+if (counts) {
+  const lowIds = counts
+    .filter(c => c.actual_sealed === 0 && (c.actual_stock ?? c.book_stock) <= 20)
+    .map(c => c.lot_id)
+  if (lowIds.length > 0) {
+    localStorage.setItem('low_stock_new', JSON.stringify(lowIds))
+  }
+}
     alert('실사가 완료되었습니다!')
     setActiveSession(null)
     fetchSessions()

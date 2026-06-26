@@ -4,6 +4,10 @@ import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
 import { exportReagents } from '../exportUtils'
 
+const [lowStockNew, setLowStockNew] = useState(() => 
+  JSON.parse(localStorage.getItem('low_stock_new') || '[]')
+)
+
 const GHS_MAP = [
   { keywords: ['인화', '발화', '가연', 'flammable', 'flame'],        emoji: '🔥', label: '인화성' },
   { keywords: ['독성', '독극', 'toxic', 'poison', '독'],              emoji: '💀', label: '독성' },
@@ -463,8 +467,23 @@ onClick={e => toggleCheck(r.id, e, data)}>
                         )}
                         <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px' }}>
                           {r.name}
-                          {isLow && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
-                            color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
+                          {isLow && (
+  <>
+    <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
+      color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>
+    {lowStockNew.includes(r.lots?.[0]?.id) && (
+      <span
+        onClick={e => {
+          e.stopPropagation()
+          const next = lowStockNew.filter(id => id !== r.lots?.[0]?.id)
+          setLowStockNew(next)
+          localStorage.setItem('low_stock_new', JSON.stringify(next))
+        }}
+        style={{ marginLeft: '4px', fontSize: '10px', background: '#E53E3E',
+          color: '#fff', padding: '1px 6px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}>NEW</span>
+    )}
+  </>
+)}
                         </td>
                         <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>{r.cas_no || '-'}</td>
                         <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>{r.company || '-'}</td>
