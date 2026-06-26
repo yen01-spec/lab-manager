@@ -6,6 +6,28 @@ import { supabase } from '../supabase'
 const VAPID_KEY = 'BJXclBksXWIr3BWqEE5RlTcVhn-ROmKFynWIG6ZuKsYVMsjdc2Lb4HxTKwYWkuUnKn4SOwy3z1wKoWnUQYvahnc'
 
 export function useFCM(isAdmin) {
+  // onMessage는 항상 등록 (로그인 여부 무관)
+  useEffect(() => {
+    const unsubscribe = onMessage(messaging, payload => {
+      const { title, body } = payload.notification || {}
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.ready.then(registration => {
+          registration.showNotification(title || '시약관리 알림', {
+            body: body || '',
+            icon: '/favicon.ico',
+          })
+        })
+      } else if (Notification.permission === 'granted') {
+        new Notification(title || '시약관리 알림', {
+          body: body || '',
+          icon: '/favicon.ico',
+        })
+      }
+    })
+    return () => unsubscribe()
+  }, [])
+
+  // 토큰 등록은 관리자만
   useEffect(() => {
     if (!isAdmin) return
 
@@ -17,7 +39,6 @@ export function useFCM(isAdmin) {
           return
         }
 
-        // Service Worker가 이미 등록되어 있으면 재사용, 없으면 새로 등록
         let registration = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js')
         if (!registration) {
           registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' })
@@ -44,25 +65,5 @@ export function useFCM(isAdmin) {
     }
 
     registerToken()
-
-    const unsubscribe = onMessage(messaging, payload => {
-      const { title, body } = payload.notification || {}
-  // Service Worker를 통해 알림 표시 (포그라운드에서도 동작)
-  if (navigator.serviceWorker.controller) {
-    navigator.serviceWorker.ready.then(registration => {
-      registration.showNotification(title || '시약관리 알림', {
-        body: body || '',
-        icon: '/favicon.ico',
-      })
-    })
-  } else if (Notification.permission === 'granted') {
-    new Notification(title || '시약관리 알림', {
-      body: body || '',
-      icon: '/favicon.ico',
-    })
-  }
-})
-
-    return () => unsubscribe()
   }, [isAdmin])
 }
