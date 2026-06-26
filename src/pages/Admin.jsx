@@ -1826,4 +1826,4 @@ function SuperTab() {
       </Card>
     </div>
   )
-}
+})
