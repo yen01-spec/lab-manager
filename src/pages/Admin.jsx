@@ -352,7 +352,18 @@ try {
 //  물품 추가
 // ══════════════════════════════════════════════
 function ItemAddTab({ locations }) {
-  const init = { name: '', category: '', location_id: '', notes: '' }
+  const init = { name: '', category: '', item_location_id: '', notes: '' }
+  const [form, setForm] = useState(init)
+  const [adminName, setAdminName] = useState('')
+  const [itemLocations, setItemLocations] = useState([])
+
+useEffect(() => {
+  supabase.from('item_locations').select('*').order('name').then(({ data }) => {
+    if (data) setItemLocations(data)
+  })
+}, [])
+function ItemAddTab({ locations }) {
+  const init = { name: '', category: '', item_location_id: '', notes: '' }
   const [form, setForm] = useState(init)
   const [adminName, setAdminName] = useState('')
 
@@ -361,7 +372,7 @@ function ItemAddTab({ locations }) {
     if (!adminName.trim()) { alert('작업자 이름을 입력해주세요'); return }
     const { data: item } = await supabase.from('items').insert({
       name: form.name, category: form.category,
-      location_id: form.location_id || null, notes: form.notes,
+      item_location_id: form.item_location_id || null, notes: form.notes,
     }).select().single()
     if (item) {
       await supabase.from('item_lots').insert({ item_id: item.id, sealed_count: 0, current_stock: 100 })
@@ -391,10 +402,10 @@ function ItemAddTab({ locations }) {
           </div>
         ))}
         <div><label style={labelStyle}>위치</label>
-          <select value={form.location_id} onChange={e => setForm({ ...form, location_id: e.target.value })} style={inputStyle}>
-            <option value="">선택하세요</option>
-            {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
-          </select></div>
+          <select value={form.item_location_id} onChange={e => setForm({ ...form, item_location_id: e.target.value })} style={inputStyle}>
+  <option value="">선택하세요</option>
+  {itemLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+</select></div>
       </div>
       <button onClick={addItem} style={{ ...btnPrimary, marginTop: '20px' }}>물품 추가</button>
     </Card>
