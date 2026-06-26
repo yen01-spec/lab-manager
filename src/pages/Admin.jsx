@@ -8,6 +8,7 @@ export default function Admin() {
   const { isAdmin, isSuper } = useOutletContext()
   const TABS = [
   { key: 'changereq', label: '변경 요청', icon: '📝', sub: 'Change Requests' },
+  ...
   { key: 'reagent',  label: '시약 추가',      icon: '🧪', sub: 'Add Reagent' },
   { key: 'item',     label: '물품 추가',       icon: '📦', sub: 'Add Item' },
   { key: 'disposal', label: '폐기 관리',       icon: '🗑️', sub: 'Disposal' },
@@ -17,7 +18,7 @@ export default function Admin() {
   { key: 'receipt',  label: '영수증 관리',     icon: '🧾', sub: 'Receipt' },
   { key: 'manage',   label: '관리',            icon: '⚠️', sub: 'Manage' },
   { key: 'log',      label: '변경 로그',       icon: '📋', sub: 'Logs' },
-  (isSuper ? [{ key: 'super', label: '슈퍼관리자', icon: '👑', sub: 'Super Admin' }] : []),
+  ...(isSuper ? [{ key: 'super', label: '슈퍼관리자', icon: '👑', sub: 'Super Admin' }] : []),
 ]
   const navigate = useNavigate()
   const [tab, setTab] = useState('reagent')
