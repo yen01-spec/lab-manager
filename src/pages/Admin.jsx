@@ -351,17 +351,6 @@ try {
 // ══════════════════════════════════════════════
 //  물품 추가
 // ══════════════════════════════════════════════
-function ItemAddTab({ locations }) {
-  const init = { name: '', category: '', item_location_id: '', notes: '' }
-  const [form, setForm] = useState(init)
-  const [adminName, setAdminName] = useState('')
-  const [itemLocations, setItemLocations] = useState([])
-
-useEffect(() => {
-  supabase.from('item_locations').select('*').order('name').then(({ data }) => {
-    if (data) setItemLocations(data)
-  })
-}, []) }
 
 function ItemAddTab({ locations }) {
   const init = { name: '', category: '', item_location_id: '', notes: '' }
