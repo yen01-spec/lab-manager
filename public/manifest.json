@@ -1,0 +1,17 @@
+{
+  "name": "연구실 시약관리 시스템",
+  "short_name": "시약관리",
+  "description": "강원대학교 과학교육학부 연구실 시약관리 시스템",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a2a5e",
+  "theme_color": "#1a2a5e",
+  "icons": [
+    {
+      "src": "/icons.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
