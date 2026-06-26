@@ -7,6 +7,8 @@ export default function Requests() {
   const { isAdmin } = useOutletContext()
   const [myName, setMyName] = useState(() => localStorage.getItem('req_user_name') || '')
   const [reagents, setReagents] = useState([])
+  const [reagentSearch, setReagentSearch] = useState('')
+const [showReagentDropdown, setShowReagentDropdown] = useState(false)
   const [items, setItems] = useState([])
   const [form, setForm] = useState({
     user_name: myName, target_type: 'reagent', target_id: '', target_name: '', quantity: '', reason: '',
@@ -59,10 +61,10 @@ export default function Requests() {
     setDuplicates(data || [])
   }
 
-  async function fetchReagents() {
-    const { data } = await supabase.from('reagents').select('id, name')
-    if (data) setReagents(data)
-  }
+ async function fetchReagents() {
+  const { data } = await supabase.from('reagents').select('id, name, cas_no')
+  if (data) setReagents(data)
+}
   async function fetchItems() {
     const { data } = await supabase.from('items').select('id, name')
     if (data) setItems(data)
@@ -170,30 +172,61 @@ supabase.functions.invoke('send-notification', {
             </div>
 
             {form.target_type === 'reagent' && (
-              <div>
-                <label style={lStyle}>시약 선택 *</label>
-                <select value={form.target_id} onChange={e => setForm({ ...form, target_id: e.target.value })} style={iStyle}>
-                  <option value="">선택하세요</option>
-                  {reagents.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </select>
-              </div>
-            )}
-            {form.target_type === 'item' && (
-              <div>
-                <label style={lStyle}>물품 선택 *</label>
-                <select value={form.target_id} onChange={e => setForm({ ...form, target_id: e.target.value })} style={iStyle}>
-                  <option value="">선택하세요</option>
-                  {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-                </select>
-              </div>
-            )}
-            {form.target_type === 'new' && (
-              <div>
-                <label style={lStyle}>항목 이름 *</label>
-                <input value={form.target_name} onChange={e => setForm({ ...form, target_name: e.target.value })}
-                  placeholder="새로 구매할 시약/물품 이름" style={iStyle} />
-              </div>
-            )}
+  <div style={{ position: 'relative' }}>
+    <label style={lStyle}>시약 선택 *</label>
+    <input
+      value={reagentSearch}
+      onChange={e => {
+        setReagentSearch(e.target.value)
+        setForm({ ...form, target_id: '', target_name: '' })
+        setShowReagentDropdown(true)
+      }}
+      onFocus={() => setShowReagentDropdown(true)}
+      onBlur={() => setTimeout(() => setShowReagentDropdown(false), 150)}
+      placeholder="시약명 또는 CAS번호 입력..."
+      style={iStyle}
+    />
+    {showReagentDropdown && reagentSearch && (
+      <div style={{
+        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+        background: '#fff', border: `1px solid ${C.border}`, borderRadius: '8px',
+        maxHeight: '200px', overflowY: 'auto',
+        boxShadow: '0 4px 16px rgba(26,42,94,0.12)', marginTop: '2px',
+      }}>
+        {reagents
+          .filter(r =>
+            r.name.toLowerCase().includes(reagentSearch.toLowerCase()) ||
+            (r.cas_no && r.cas_no.includes(reagentSearch))
+          )
+          .slice(0, 20)
+          .map(r => (
+            <div key={r.id}
+              onMouseDown={() => {
+                setForm({ ...form, target_id: r.id, target_name: r.name })
+                setReagentSearch(r.name)
+                setShowReagentDropdown(false)
+              }}
+              style={{
+                padding: '9px 14px', cursor: 'pointer', fontSize: '13px',
+                borderBottom: `1px solid ${C.border}`,
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = C.bg}
+              onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+            >
+              <span style={{ fontWeight: '600', color: C.navy }}>{r.name}</span>
+              {r.cas_no && <span style={{ color: C.muted, fontSize: '11px', marginLeft: '8px' }}>{r.cas_no}</span>}
+            </div>
+          ))}
+        {reagents.filter(r =>
+          r.name.toLowerCase().includes(reagentSearch.toLowerCase()) ||
+          (r.cas_no && r.cas_no.includes(reagentSearch))
+        ).length === 0 && (
+          <div style={{ padding: '12px 14px', color: C.muted, fontSize: '13px' }}>검색 결과 없음</div>
+        )}
+      </div>
+    )}
+  </div>
+)}
 
             <div>
               <label style={lStyle}>수량 *</label>

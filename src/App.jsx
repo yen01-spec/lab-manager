@@ -8,7 +8,6 @@ import ReagentList from './pages/ReagentList'
 import Items from './pages/Items'
 import Requests from './pages/Requests'
 import Admin from './pages/Admin'
-import Calendar from './pages/Calendar'
 import Inventory from './pages/Inventory'
 import NoticeDetail from './pages/NoticeDetail'
 
@@ -17,7 +16,6 @@ function App() {
     <Routes>
       <Route path="/" element={<Layout />}>
         <Route index element={<Home />} />
-        <Route path="calendar" element={<Calendar />} />
         <Route path="reagents/locations" element={<ReagentLocations />} />
         <Route path="reagents/list" element={<ReagentList />} />
         <Route path="items" element={<Items />} />
