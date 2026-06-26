@@ -45,15 +45,22 @@ export function useFCM(isAdmin) {
 
     registerToken()
 
-const unsubscribe = onMessage(messaging, payload => {
-  const title = payload.data?.title || '시약관리 알림'
-  const body = payload.data?.body || ''
-  navigator.serviceWorker.ready.then(registration => {
-    registration.showNotification(title, {
-      body,
+    const unsubscribe = onMessage(messaging, payload => {
+      const { title, body } = payload.notification || {}
+  // Service Worker를 통해 알림 표시 (포그라운드에서도 동작)
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.ready.then(registration => {
+      registration.showNotification(title || '시약관리 알림', {
+        body: body || '',
+        icon: '/favicon.ico',
+      })
+    })
+  } else if (Notification.permission === 'granted') {
+    new Notification(title || '시약관리 알림', {
+      body: body || '',
       icon: '/favicon.ico',
     })
-  })
+  }
 })
 
     return () => unsubscribe()
