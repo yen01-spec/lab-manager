@@ -8,7 +8,6 @@ export default function Admin() {
   const { isAdmin, isSuper } = useOutletContext()
   const TABS = [
   { key: 'changereq', label: '변경 요청', icon: '📝', sub: 'Change Requests' },
-  ...
   { key: 'reagent',  label: '시약 추가',      icon: '🧪', sub: 'Add Reagent' },
   { key: 'item',     label: '물품 추가',       icon: '📦', sub: 'Add Item' },
   { key: 'disposal', label: '폐기 관리',       icon: '🗑️', sub: 'Disposal' },
