@@ -4,7 +4,9 @@ import { supabase } from '../supabase'
 import { C, PageBanner, Card, StatusBadge, inputStyle, labelStyle, btnPrimary, btnGhost, thStyle, tdStyle } from '../design'
 import { exportPurchaseRequests } from '../exportUtils'
 
-const TABS = [
+export default function Admin() {
+  const { isAdmin, isSuper } = useOutletContext()
+  const TABS = [
   { key: 'changereq', label: '변경 요청', icon: '📝', sub: 'Change Requests' },
   { key: 'reagent',  label: '시약 추가',      icon: '🧪', sub: 'Add Reagent' },
   { key: 'item',     label: '물품 추가',       icon: '📦', sub: 'Add Item' },
@@ -17,9 +19,6 @@ const TABS = [
   { key: 'log',      label: '변경 로그',       icon: '📋', sub: 'Logs' },
   (isSuper ? [{ key: 'super', label: '슈퍼관리자', icon: '👑', sub: 'Super Admin' }] : []),
 ]
-
-export default function Admin() {
-  const { isAdmin, isSuper } = useOutletContext()
   const navigate = useNavigate()
   const [tab, setTab] = useState('reagent')
   const [locations, setLocations] = useState([])
