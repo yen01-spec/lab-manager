@@ -95,9 +95,9 @@ if (!tokens?.length) {
     const accessToken = await getAccessToken(serviceAccount)
 
     // 각 토큰에 알림 발송
-    const results = await Promise.all(
-      tokens.map(async ({ token }) => {
-        const res = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
+    const results = await Promise.allSettled(
+      tokens.map(({ token }) =>
+        fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${accessToken}`,
@@ -107,51 +107,15 @@ if (!tokens?.length) {
             message: {
               token,
               notification: { title, body },
-              data: { title, body },
-              webpush: {
-                notification: {
-                  title,
-                  body,
-                  icon: '/favicon.ico',
-                  badge: '/favicon.ico',
-                },
-              },
             }
           })
         })
-
-        const text = await res.text()
-        let detail: unknown = text
-        try { detail = JSON.parse(text) } catch {}
-
-        return { token, ok: res.ok, status: res.status, detail }
-      })
+      )
     )
 
-    const succeeded = results.filter(r => r.ok).length
-    const failures = results.filter(r => !r.ok).map(r => ({
-      token: `${r.token.slice(0, 12)}...`,
-      status: r.status,
-      detail: r.detail,
-    }))
+    const succeeded = results.filter(r => r.status === 'fulfilled').length
 
-    const invalidTokens = results
-      .filter(r => !r.ok && [400, 404].includes(r.status))
-      .map(r => r.token)
-
-    if (invalidTokens.length > 0) {
-      await supabase.from('fcm_tokens').delete().in('token', invalidTokens)
-    }
-
-    return new Response(JSON.stringify({
-      success: succeeded > 0,
-      sent: succeeded,
-      failed: failures.length,
-      total: tokens.length,
-      failures,
-      deletedInvalidTokens: invalidTokens.length,
-    }), {
-      status: succeeded > 0 ? 200 : 502,
+    return new Response(JSON.stringify({ success: true, sent: succeeded, total: tokens.length }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
