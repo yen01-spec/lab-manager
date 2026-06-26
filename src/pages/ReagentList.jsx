@@ -214,6 +214,14 @@ function toggleCheck(id, e, allData) {
       quantity: disposalForm.quantity, reason: disposalForm.reason,
       requested_by: disposalForm.requested_by, status: 'pending',
     })
+    supabase.functions.invoke('send-notification', {
+  body: {
+    title: '🗑️ 폐기 신청',
+    body: `${disposalForm.requested_by}님이 ${selectedReagent.name} 폐기를 신청했습니다.`,
+    role: 'admin',
+  }
+}).then(res => console.log('알림 발송:', res))
+  .catch(err => console.error('알림 실패:', err))
     alert('폐기 신청이 완료됐어요!')
     setShowDisposalModal(false)
     setDisposalForm({ quantity: '1', reason: '', requested_by: '' })
@@ -276,6 +284,14 @@ function toggleCheck(id, e, allData) {
         to_location_id: moveForm.to_location_id, to_location_name: toLocName,
         requested_by: moveForm.requested_by, notes: moveForm.notes, status: 'pending',
       })
+      supabase.functions.invoke('send-notification', {
+  body: {
+    title: '📍 위치 이동 신청',
+    body: `${moveForm.requested_by}님이 ${selectedReagent.name} 위치 이동을 신청했습니다.`,
+    role: 'admin',
+  }
+}).then(res => console.log('알림 발송:', res))
+  .catch(err => console.error('알림 실패:', err))
       alert('위치 이동 신청 완료! 관리자 승인 후 처리됩니다.')
       setShowMoveModal(false)
     }
