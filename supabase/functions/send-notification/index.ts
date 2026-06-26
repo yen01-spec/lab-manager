@@ -67,21 +67,27 @@ serve(async (req) => {
     }
 
     // Supabase에서 토큰 목록 가져오기
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SECRET_KEYS') ?? ''
 
-    const { data: tokens, error } = await supabase
-      .from('fcm_tokens')
-      .select('token')
-      .eq('role', role)
+const supabase = createClient(supabaseUrl, supabaseKey)
 
-    if (error || !tokens?.length) {
-      return new Response(JSON.stringify({ error: '등록된 토큰 없음', detail: error }), {
-        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
+const { data: tokens, error } = await supabase
+  .from('fcm_tokens')
+  .select('token')
+  .eq('role', role)
+
+if (error) {
+  return new Response(JSON.stringify({ error: '토큰 조회 실패', detail: String(error) }), {
+    status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+  })
+}
+
+if (!tokens?.length) {
+  return new Response(JSON.stringify({ error: '등록된 토큰 없음' }), {
+    status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+  })
+}
 
     // Firebase 서비스 계정으로 액세스 토큰 발급
     const serviceAccount = JSON.parse(Deno.env.get('FIREBASE_SERVICE_ACCOUNT')!)
