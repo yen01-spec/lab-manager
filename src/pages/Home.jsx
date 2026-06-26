@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card } from '../design'
 
@@ -12,14 +12,39 @@ const QUICK_LINKS = [
 
 export default function Home() {
   const navigate = useNavigate()
+  const { isSuper } = useOutletContext?.() || {}
   const [notices, setNotices] = useState([])
   const [safetyInfos, setSafetyInfos] = useState([])
   const [expandedId, setExpandedId] = useState(null)
 
+  const [labInfo, setLabInfo] = useState({ lab_professor: '', lab_assistant: '', lab_phone: '' })
+  const [editMode, setEditMode] = useState(false)
+  const [editForm, setEditForm] = useState({})
+
   useEffect(() => {
     fetchNotices()
     fetchSafetyInfos()
+    fetchLabInfo()
   }, [])
+
+  async function fetchLabInfo() {
+    const { data } = await supabase.from('app_settings')
+      .select('key, value')
+      .in('key', ['lab_professor', 'lab_assistant', 'lab_phone'])
+    if (data) {
+      const info = {}
+      data.forEach(d => { info[d.key] = d.value })
+      setLabInfo(info)
+    }
+  }
+
+  async function saveLabInfo() {
+    for (const [key, value] of Object.entries(editForm)) {
+      await supabase.from('app_settings').update({ value }).eq('key', key)
+    }
+    setLabInfo({ ...labInfo, ...editForm })
+    setEditMode(false)
+  }
 
   async function fetchNotices() {
     const { data } = await supabase.from('notices').select('*')
@@ -49,22 +74,65 @@ export default function Home() {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           boxShadow: '0 4px 16px rgba(26,42,94,0.18)',
         }}>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ color: C.gold, fontSize: '11px', fontWeight: '700',
               letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '6px' }}>
               연구실 책임자
             </div>
-            <div style={{ color: C.white, fontSize: '14px', lineHeight: 1.8 }}>
-              교수님: <strong>OOO</strong> 교수&nbsp;&nbsp;|&nbsp;&nbsp;
-              담당 조교: <strong>OOO</strong>&nbsp;&nbsp;|&nbsp;&nbsp;
-              연락처: <strong>000-0000-0000</strong>
-            </div>
+            {editMode ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                {[
+                  { key: 'lab_professor', label: '교수님' },
+                  { key: 'lab_assistant', label: '담당 조교' },
+                  { key: 'lab_phone', label: '연락처' },
+                ].map(({ key, label }) => (
+                  <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '12px', minWidth: '70px' }}>{label}</span>
+                    <input
+                      value={editForm[key] ?? labInfo[key] ?? ''}
+                      onChange={e => setEditForm({ ...editForm, [key]: e.target.value })}
+                      style={{
+                        background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)',
+                        borderRadius: '5px', padding: '4px 10px', color: C.white,
+                        fontSize: '13px', width: '200px',
+                      }}
+                    />
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                  <button onClick={saveLabInfo} style={{
+                    background: C.gold, color: C.navy, border: 'none',
+                    padding: '5px 14px', borderRadius: '5px', cursor: 'pointer',
+                    fontSize: '12px', fontWeight: '700',
+                  }}>저장</button>
+                  <button onClick={() => { setEditMode(false); setEditForm({}) }} style={{
+                    background: 'rgba(255,255,255,0.1)', color: C.white, border: '1px solid rgba(255,255,255,0.3)',
+                    padding: '5px 14px', borderRadius: '5px', cursor: 'pointer', fontSize: '12px',
+                  }}>취소</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ color: C.white, fontSize: '14px', lineHeight: 1.8 }}>
+                교수님: <strong>{labInfo.lab_professor || 'OOO'}</strong> 교수&nbsp;&nbsp;|&nbsp;&nbsp;
+                담당 조교: <strong>{labInfo.lab_assistant || 'OOO'}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;
+                연락처: <strong>{labInfo.lab_phone || '000-0000-0000'}</strong>
+              </div>
+            )}
           </div>
-          <div style={{
-            width: '48px', height: '48px', background: C.gold,
-            borderRadius: '10px', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', fontSize: '22px',
-          }}>🔬</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {isSuper && !editMode && (
+              <button onClick={() => { setEditMode(true); setEditForm({}) }} style={{
+                background: 'rgba(255,255,255,0.1)', color: C.white,
+                border: '1px solid rgba(255,255,255,0.3)',
+                padding: '5px 12px', borderRadius: '5px', cursor: 'pointer', fontSize: '12px',
+              }}>✏️ 편집</button>
+            )}
+            <div style={{
+              width: '48px', height: '48px', background: C.gold,
+              borderRadius: '10px', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: '22px',
+            }}>🔬</div>
+          </div>
         </div>
 
         {/* 빠른 바로가기 */}
@@ -106,14 +174,15 @@ export default function Home() {
           {/* 공지사항 */}
           <Card title="공지사항" sub="Notices"
             extra={
-<span onClick={() => navigate('/notices')} style={{ fontSize: '11px', color: C.muted, cursor: 'pointer' }}>전체보기 →</span>}>
+              <span onClick={() => navigate('/notices')} style={{ fontSize: '11px', color: C.muted, cursor: 'pointer' }}>전체보기 →</span>
+            }>
             {notices.length === 0
               ? <EmptyState text="등록된 공지사항이 없습니다." />
               : notices.map((n, i) => (
                 <NoticeRow key={n.id} item={n} index={i} total={notices.length}
                   expanded={expandedId === n.id}
-onToggle={() => navigate('/notices')} />     
-         ))}
+                  onToggle={() => navigate('/notices')} />
+              ))}
           </Card>
 
           {/* 연구실 안전관리 */}
@@ -121,11 +190,11 @@ onToggle={() => navigate('/notices')} />
             title="연구실 안전관리"
             sub="Safety Management"
             extra={
-  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-    <span onClick={() => navigate('/safety')} style={{ fontSize: '11px', color: C.muted, cursor: 'pointer' }}>전체보기 →</span>
-    <span style={{ background: '#FFF8E7', color: C.gold, fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '10px' }}>중요</span>
-  </div>
-}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span onClick={() => navigate('/safety')} style={{ fontSize: '11px', color: C.muted, cursor: 'pointer' }}>전체보기 →</span>
+                <span style={{ background: '#FFF8E7', color: C.gold, fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '10px' }}>중요</span>
+              </div>
+            }>
             {safetyInfos.length === 0
               ? <EmptyState text="등록된 안전 정보가 없습니다." />
               : safetyInfos.map((s, i) => (
@@ -142,7 +211,7 @@ onToggle={() => navigate('/notices')} />
   )
 }
 
-function NoticeRow({ item, index, total, isSafety, expanded, onToggle, onNavigate }) {
+function NoticeRow({ item, index, total, isSafety, expanded, onToggle }) {
   return (
     <div style={{
       borderBottom: index < total - 1 ? `1px solid ${C.border}` : 'none',
@@ -156,7 +225,7 @@ function NoticeRow({ item, index, total, isSafety, expanded, onToggle, onNavigat
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: 1 }}>
           {isSafety && (
             <span style={{
-              flexShrink: 0, marginTop: '1px',
+              flexShrink: 0,
               width: '6px', height: '6px', borderRadius: '50%',
               background: C.gold, display: 'inline-block', marginTop: '5px',
             }} />
