@@ -20,7 +20,6 @@ const TABS = [
 
 export default function Admin() {
   const { isAdmin, isSuper } = useOutletContext()
-  const { isAdmin } = useOutletContext()
   const navigate = useNavigate()
   const [tab, setTab] = useState('reagent')
   const [locations, setLocations] = useState([])
