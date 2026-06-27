@@ -165,13 +165,17 @@ export default function Home() {
             />
             <div style={{ padding: '12px 16px', display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px' }}>
               {statItems.map(s => (
-                <div key={s.label} style={{ textAlign: 'center', padding: '8px 4px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', margin: '0 auto 6px' }}>{s.icon}</div>
-                  <div style={{ fontSize: '10px', fontWeight: '600', color: C.muted, marginBottom: '4px' }}>{s.label}</div>
-                  <div style={{ fontSize: '22px', fontWeight: '800', color: s.color, lineHeight: 1 }}>{s.value.toLocaleString()}</div>
-                  <div style={{ fontSize: '9px', color: C.muted, marginTop: '3px' }}>{s.sub}</div>
-                </div>
-              ))}
+  <div key={s.label} style={{
+    background: '#fff', border: `1px solid ${C.border}`, borderRadius: '8px',
+    padding: '12px 8px', textAlign: 'center',
+    boxShadow: '0 1px 3px rgba(26,42,94,0.05)',
+  }}>
+    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', margin: '0 auto 6px' }}>{s.icon}</div>
+    <div style={{ fontSize: '10px', fontWeight: '600', color: C.muted, marginBottom: '4px' }}>{s.label}</div>
+    <div style={{ fontSize: '22px', fontWeight: '800', color: s.color, lineHeight: 1 }}>{s.value.toLocaleString()}</div>
+    <div style={{ fontSize: '9px', color: C.muted, marginTop: '3px' }}>{s.sub}</div>
+  </div>
+))}
             </div>
           </SectionCard>
 
