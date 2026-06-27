@@ -365,7 +365,7 @@ async function saveField(field, value, sourceField) {
     return (
   <div style={{ display: 'flex' }}>
     {/* 테이블 영역 */}
-    <div style={{ flex: 1, overflowX: 'auto' }}>
+    <div style={{ flex: 1, overflowX: 'auto', paddingRight: '36px' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
         <thead>
           <tr>
@@ -501,11 +501,12 @@ async function saveField(field, value, sourceField) {
     {/* 알파벳 인덱스 - 테이블 오른쪽 */}
     {!editMode && (
       <div style={{
-        width: '28px', flexShrink: 0,
-        display: 'flex', flexDirection: 'column', gap: '1px',
-        padding: '4px 2px', alignItems: 'center',
-        position: 'sticky', top: '104px', alignSelf: 'start',
-      }}>
+  width: '28px', flexShrink: 0,
+  position: 'fixed', right: '8px', top: '50%', transform: 'translateY(-50%)',
+  display: 'flex', flexDirection: 'column', gap: '1px',
+  padding: '4px 2px', alignItems: 'center',
+  zIndex: 50,
+}}>
         {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => (
           <button key={letter} onClick={() => scrollToLetter(letter)}
             disabled={!availableLetters.has(letter)} style={{
