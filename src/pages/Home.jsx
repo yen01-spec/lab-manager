@@ -138,7 +138,7 @@ export default function Home() {
         {/* 왼쪽 메인 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-          {/* 현황 카드 */}
+          {/* 현황 카드 - 아이콘 왼쪽, 텍스트 오른쪽 가로 배치 */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>오늘의 연구실 현황</div>
@@ -147,17 +147,19 @@ export default function Home() {
                 <button onClick={fetchAll} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: C.muted }}>↻</button>
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
               {statItems.map(s => (
                 <div key={s.label} style={{
                   background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px',
-                  padding: '14px 10px', boxShadow: '0 1px 3px rgba(26,42,94,0.05)',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', textAlign: 'center',
+                  padding: '12px 14px', boxShadow: '0 1px 3px rgba(26,42,94,0.05)',
+                  display: 'flex', alignItems: 'center', gap: '12px',
                 }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>{s.icon}</div>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: C.muted }}>{s.label}</div>
-                  <div style={{ fontSize: '24px', fontWeight: '800', color: s.color, lineHeight: 1 }}>{s.value.toLocaleString()}</div>
-                  <div style={{ fontSize: '10px', color: C.muted }}>{s.sub}</div>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', flexShrink: 0 }}>{s.icon}</div>
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: C.muted, marginBottom: '2px' }}>{s.label}</div>
+                    <div style={{ fontSize: '22px', fontWeight: '800', color: s.color, lineHeight: 1 }}>{s.value.toLocaleString()}</div>
+                    <div style={{ fontSize: '10px', color: C.muted, marginTop: '2px' }}>{s.sub}</div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -169,16 +171,16 @@ export default function Home() {
               <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>📢 오늘의 안전 브리핑</div>
               {briefings.length > 1 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <button onClick={() => setCurrentBriefing(i => (i - 1 + briefings.length) % briefings.length)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '14px' }}>‹</button>
+                  <button onClick={() => setCurrentBriefing(i => (i - 1 + briefings.length) % briefings.length)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '16px' }}>‹</button>
                   <span style={{ fontSize: '11px', color: C.muted }}>{currentBriefing + 1} / {briefings.length}</span>
-                  <button onClick={() => setCurrentBriefing(i => (i + 1) % briefings.length)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '14px' }}>›</button>
+                  <button onClick={() => setCurrentBriefing(i => (i + 1) % briefings.length)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '16px' }}>›</button>
                 </div>
               )}
             </div>
             <div style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: '1fr 160px', gap: '20px', alignItems: 'center' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ fontSize: '11px', fontWeight: '700', color: C.muted, letterSpacing: '0.05em' }}>
-                  {briefings.length === 0 ? '⚠ 산 취급 주의' : '📢 안전 브리핑'}
+                  ⚠ {briefings.length === 0 ? '산 취급 주의' : '안전 브리핑'}
                 </div>
                 <div style={{ fontSize: '20px', fontWeight: '800', color: C.navy, lineHeight: 1.4 }}>
                   {briefings.length === 0 ? '산은 항상 물에 넣어야 합니다.' : briefing?.content}
@@ -263,7 +265,7 @@ export default function Home() {
             <div style={{ padding: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
               {quickLinks.map(item => (
                 <button key={item.to} onClick={() => navigate(item.to)} style={{
-                  background: item.color || C.bg, border: `1px solid ${C.border}`, borderRadius: '10px',
+                  background: item.color || C.bg, border: 'none', borderRadius: '10px',
                   padding: '12px 6px', cursor: 'pointer', textAlign: 'center',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
                   transition: 'all 0.15s',
@@ -271,7 +273,7 @@ export default function Home() {
                   onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(26,42,94,0.1)' }}
                   onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none' }}
                 >
-                  <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: item.iconBg || C.navy, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>{item.icon}</div>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: item.iconBg || C.navy, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>{item.icon}</div>
                   <div style={{ fontSize: '11px', fontWeight: '700', color: C.navy, lineHeight: 1.2 }}>{item.label}</div>
                 </button>
               ))}
