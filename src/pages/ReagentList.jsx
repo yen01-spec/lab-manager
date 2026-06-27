@@ -502,7 +502,7 @@ async function saveField(field, value, sourceField) {
     {!editMode && (
       <div style={{
   width: '28px', flexShrink: 0,
-  position: 'fixed', right: '8px', top: '260%', transform: 'translateY(-50%)',
+  position: 'fixed', right: '8px', top: '160%', transform: 'translateY(-50%)',
   display: 'flex', flexDirection: 'column', gap: '1px',
   padding: '4px 2px', alignItems: 'center',
   zIndex: 50,
