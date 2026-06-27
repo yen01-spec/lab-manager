@@ -234,16 +234,21 @@ export default function Requests() {
                         {r.cas_no && <span style={{ color: C.muted, fontSize: '11px', marginLeft: '8px' }}>{r.cas_no}</span>}
                       </div>
                     ))}
-                    <div
-                      onMouseDown={() => {
-                        setReagentForm({ ...reagentForm, target_id: '', target_name: reagentSearch })
-                        setShowReagentDropdown(false)
-                      }}
-                      style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '13px', color: C.muted, borderTop: `1px solid ${C.border}` }}
-                      onMouseEnter={e => e.currentTarget.style.background = C.bg}
-                      onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                      ✏️ "{reagentSearch}" 신규 입력
-                    </div>
+                    {reagents.filter(r =>
+  r.name.toLowerCase().includes(reagentSearch.toLowerCase()) ||
+  (r.cas_no && r.cas_no.includes(reagentSearch))
+).length === 0 && (
+  <div
+    onMouseDown={() => {
+      setReagentForm({ ...reagentForm, target_id: '', target_name: reagentSearch })
+      setShowReagentDropdown(false)
+    }}
+    style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '13px', color: C.muted }}
+    onMouseEnter={e => e.currentTarget.style.background = C.bg}
+    onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+    ✏️ "{reagentSearch}" 신규 입력
+  </div>
+)}
                   </div>
                 )}
               </div>
@@ -412,16 +417,18 @@ export default function Requests() {
                           <span style={{ fontWeight: '600', color: C.navy }}>{i.name}</span>
                         </div>
                       ))}
-                    <div
-                      onMouseDown={() => {
-                        setItemForm({ ...itemForm, target_id: '', target_name: itemSearch })
-                        setShowItemDropdown(false)
-                      }}
-                      style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '13px', color: C.muted, borderTop: `1px solid ${C.border}` }}
-                      onMouseEnter={e => e.currentTarget.style.background = C.bg}
-                      onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                      ✏️ "{itemSearch}" 신규 입력
-                    </div>
+                    {items.filter(i => i.name.toLowerCase().includes(itemSearch.toLowerCase())).length === 0 && (
+  <div
+    onMouseDown={() => {
+      setItemForm({ ...itemForm, target_id: '', target_name: itemSearch })
+      setShowItemDropdown(false)
+    }}
+    style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '13px', color: C.muted }}
+    onMouseEnter={e => e.currentTarget.style.background = C.bg}
+    onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+    ✏️ "{itemSearch}" 신규 입력
+  </div>
+)}
                   </div>
                 )}
               </div>
