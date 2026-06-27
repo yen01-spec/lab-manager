@@ -365,7 +365,7 @@ async function saveField(field, value, sourceField) {
     return (
   <div style={{ display: 'flex' }}>
     {/* 테이블 영역 */}
-    <div style={{ flex: 1, overflowX: 'auto', paddingRight: '36px' }}>
+    <div style={{ flex: 1, overflowX: 'auto', paddingRight: '52px' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
         <thead>
           <tr>
@@ -502,7 +502,7 @@ async function saveField(field, value, sourceField) {
     {!editMode && (
       <div style={{
   width: '28px', flexShrink: 0,
-  position: 'fixed', right: '8px', top: '100%', transform: 'translateY(-50%)',
+  position: 'fixed', right: '8px', top: '50%', transform: 'translateY(-50%)',
   display: 'flex', flexDirection: 'column', gap: '1px',
   padding: '4px 2px', alignItems: 'center',
   zIndex: 50,
