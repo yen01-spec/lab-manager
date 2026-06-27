@@ -205,11 +205,11 @@ export default function Requests() {
                   onBlur={() => setTimeout(() => setShowReagentDropdown(false), 150)}
                   placeholder="시약명 또는 CAS번호 입력..."
                   style={inputStyle} />
-                {reagentForm.target_id && (
-                  <div style={{ marginTop: '4px', fontSize: '11px', color: '#276749', fontWeight: '600' }}>
-                    ✅ 기존 시약 선택됨
-                  </div>
-                )}
+                {reagentSearch && (
+  <div style={{ marginTop: '4px', fontSize: '11px', fontWeight: '600', color: reagentForm.target_id ? '#276749' : '#E8A020' }}>
+    {reagentForm.target_id ? '✅ 기존 시약 선택됨' : '✏️ 신규 시약 입력'}
+  </div>
+)}
                 {showReagentDropdown && reagentSearch && (
                   <div style={{
                     position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
@@ -386,11 +386,11 @@ export default function Requests() {
                   onBlur={() => setTimeout(() => setShowItemDropdown(false), 150)}
                   placeholder="물품명 입력..."
                   style={inputStyle} />
-                {itemForm.target_id && (
-                  <div style={{ marginTop: '4px', fontSize: '11px', color: '#276749', fontWeight: '600' }}>
-                    ✅ 기존 물품 선택됨
-                  </div>
-                )}
+                {itemSearch && (
+  <div style={{ marginTop: '4px', fontSize: '11px', fontWeight: '600', color: itemForm.target_id ? '#276749' : '#E8A020' }}>
+    {itemForm.target_id ? '✅ 기존 물품 선택됨' : '✏️ 신규 물품 입력'}
+  </div>
+)}
                 {showItemDropdown && itemSearch && (
                   <div style={{
                     position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
