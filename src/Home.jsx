@@ -116,7 +116,7 @@ export default function Home() {
     <div>
       <PageBanner title="연구실 대시보드" sub="Lab Dashboard" breadcrumb={['홈']} />
 
-      <div style={{ padding: '16px 32px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ padding: '12px 32px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
         {/* 현황 카드 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px' }}>
