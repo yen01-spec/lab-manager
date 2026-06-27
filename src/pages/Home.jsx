@@ -4,31 +4,48 @@ import { supabase } from '../supabase'
 import { C, PageBanner } from '../design'
 
 const ALL_MENU_OPTIONS = [
-  { to: '/reagents/list',      label: '시약 목록',   icon: '🧪', iconBg: '#667EEA', color: '#EEF2FF' },
-  { to: '/items',              label: '물품 목록',   icon: '📦', iconBg: '#38A169', color: '#F0FFF4' },
-  { to: '/reagents/locations', label: '시약장 위치', icon: '📍', iconBg: '#E53E3E', color: '#FFF5F5' },
-  { to: '/requests',           label: '구매 요청',   icon: '🛒', iconBg: '#E8A020', color: '#FFFBEB' },
-  { to: '/inventory',          label: '재고 실사',   icon: '📊', iconBg: '#667EEA', color: '#EEF2FF' },
-  { to: '/admin',              label: '폐기 관리',   icon: '🗑️', iconBg: '#E53E3E', color: '#FFF5F5' },
-  { to: '/notices',            label: '공지사항',    icon: '📢', iconBg: '#38A169', color: '#F0FFF4' },
-  { to: '/safety',             label: '안전관리',    icon: '🛡️', iconBg: '#E8A020', color: '#FFFBEB' },
+  { to: '/reagents/list',      label: '시약 목록',   icon: '🧪', bg: '#EEF2FF' },
+  { to: '/items',              label: '물품 목록',   icon: '📦', bg: '#F0FFF4' },
+  { to: '/reagents/locations', label: '시약장 위치', icon: '📍', bg: '#FFF5F5' },
+  { to: '/requests',           label: '구매 요청',   icon: '🛒', bg: '#FFFBEB' },
+  { to: '/inventory',          label: '재고 실사',   icon: '📊', bg: '#EEF2FF' },
+  { to: '/admin',              label: '폐기 관리',   icon: '🗑️', bg: '#FFF5F5' },
+  { to: '/notices',            label: '공지사항',    icon: '📢', bg: '#F0FFF4' },
+  { to: '/safety',             label: '안전관리',    icon: '🛡️', bg: '#FFFBEB' },
 ]
 
 const DEFAULT_QUICK = ['/reagents/list', '/items', '/reagents/locations', '/requests', '/inventory', '/admin']
 
 const ExampleBriefingSVG = () => (
-  <svg viewBox="0 0 180 120" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-    <rect width="180" height="120" fill="#EEF6FF" rx="10"/>
-    <rect x="65" y="48" width="50" height="52" rx="4" fill="#fff" stroke="#667EEA" strokeWidth="2"/>
-    <rect x="60" y="42" width="60" height="11" rx="3" fill="#667EEA"/>
-    <path d="M65 76 Q78 68 90 76 Q102 84 115 76 L115 100 Q102 100 90 100 Q78 100 65 100 Z" fill="#90CDF4" opacity="0.8"/>
-    <ellipse cx="90" cy="36" rx="7" ry="9" fill="#FC8181"/>
-    <path d="M90 45 L86 38 Q90 34 94 38 Z" fill="#FC8181"/>
-    <path d="M128 55 L142 55 L137 50 M142 55 L137 60" stroke="#E8A020" strokeWidth="2" fill="none" strokeLinecap="round"/>
-    <circle cx="155" cy="82" r="12" fill="#38A169"/>
-    <path d="M149 82 L153 86 L161 77" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-    <text x="90" y="18" textAnchor="middle" fontSize="9" fill="#2B4A8B" fontWeight="bold">산 취급 주의</text>
+  <svg viewBox="0 0 160 110" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+    <rect x="55" y="42" width="46" height="48" rx="4" fill="rgba(255,255,255,0.8)" stroke="#667EEA" strokeWidth="1.5"/>
+    <rect x="50" y="36" width="56" height="10" rx="3" fill="#667EEA" opacity="0.8"/>
+    <path d="M55 68 Q68 60 78 68 Q88 76 101 68 L101 90 Q88 90 78 90 Q68 90 55 90 Z" fill="#90CDF4" opacity="0.7"/>
+    <ellipse cx="78" cy="30" rx="6" ry="8" fill="#FC8181" opacity="0.9"/>
+    <path d="M78 38 L74 32 Q78 28 82 32 Z" fill="#FC8181" opacity="0.9"/>
+    <path d="M115 48 L128 48 L124 44 M128 48 L124 52" stroke="#E8A020" strokeWidth="2" fill="none" strokeLinecap="round"/>
+    <circle cx="140" cy="72" r="11" fill="#38A169" opacity="0.9"/>
+    <path d="M134 72 L138 76 L146 67" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
+)
+
+const SectionCard = ({ children, style }) => (
+  <div style={{
+    background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px',
+    overflow: 'hidden', boxShadow: '0 1px 4px rgba(26,42,94,0.06)', ...style
+  }}>
+    {children}
+  </div>
+)
+
+const SectionHeader = ({ title, icon, extra }) => (
+  <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      {icon && <span style={{ fontSize: '14px' }}>{icon}</span>}
+      <span style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>{title}</span>
+    </div>
+    {extra}
+  </div>
 )
 
 export default function Home() {
@@ -49,9 +66,7 @@ export default function Home() {
 
   useEffect(() => {
     if (briefings.length === 0) return
-    const interval = setInterval(() => {
-      setCurrentBriefing(i => (i + 1) % briefings.length)
-    }, 10000)
+    const interval = setInterval(() => setCurrentBriefing(i => (i + 1) % briefings.length), 10000)
     return () => clearInterval(interval)
   }, [briefings])
 
@@ -118,16 +133,15 @@ export default function Home() {
   const briefing = briefings[currentBriefing]
 
   const statItems = [
-    { icon: '🧪', label: '총 시약',      value: stats.reagents,        sub: '전체 시약 수', color: '#667EEA', bg: '#EEF2FF' },
-    { icon: '📦', label: '총 물품',      value: stats.items,           sub: '전체 물품 수', color: '#38A169', bg: '#F0FFF4' },
-    { icon: '⚠️', label: '유효기간 임박', value: stats.expiring,        sub: '30일 이내',   color: '#E8A020', bg: '#FFFBEB' },
-    { icon: '📉', label: '재고 부족',    value: stats.lowStock,        sub: '10% 미만',    color: '#E53E3E', bg: '#FFF5F5' },
-    { icon: '🛒', label: '구매 요청',    value: stats.pendingPurchase, sub: '승인 대기',   color: '#667EEA', bg: '#EEF2FF' },
-    { icon: '✅', label: '이번달 폐기예정', value: stats.donePurchase,  sub: '승인 완료',   color: '#38A169', bg: '#F0FFF4' },
+    { icon: '🧪', label: '총 시약',       value: stats.reagents,        sub: '전체 시약 수', color: '#667EEA', bg: '#EEF2FF' },
+    { icon: '📦', label: '총 물품',       value: stats.items,           sub: '전체 물품 수', color: '#38A169', bg: '#F0FFF4' },
+    { icon: '⚠️', label: '유효기간 임박',  value: stats.expiring,        sub: '30일 이내',   color: '#E8A020', bg: '#FFFBEB' },
+    { icon: '📉', label: '재고 부족',     value: stats.lowStock,        sub: '10% 미만',    color: '#E53E3E', bg: '#FFF5F5' },
+    { icon: '🛒', label: '구매 요청',     value: stats.pendingPurchase, sub: '승인 대기',   color: '#667EEA', bg: '#EEF2FF' },
+    { icon: '✅', label: '이번달 폐기예정', value: stats.donePurchase,   sub: '승인 완료',   color: '#38A169', bg: '#F0FFF4' },
   ]
 
   const msdsColors = ['#FFF5F5', '#FFF8EE', '#F0FFF4', '#EEF2FF', '#FFFBEB', '#F5F0FF']
-  const msdsIconColors = ['#E53E3E', '#E8A020', '#38A169', '#667EEA', '#D69E2E', '#805AD5']
 
   return (
     <div>
@@ -136,75 +150,78 @@ export default function Home() {
       <div style={{ padding: '14px 20px', display: 'grid', gridTemplateColumns: '1fr 260px', gap: '14px', alignItems: 'start' }}>
 
         {/* 왼쪽 메인 */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-          {/* 현황 카드 */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <div style={{ fontSize: '14px', fontWeight: '700', color: C.navy }}>오늘의 연구실 현황</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '11px', color: C.muted }}>업데이트: {lastUpdated}</span>
-                <button onClick={fetchAll} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', color: C.muted }}>↻</button>
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px' }}>
+          {/* 현황 카드 — 하나의 섹션 카드 안에 */}
+          <SectionCard>
+            <SectionHeader
+              title="오늘의 연구실 현황"
+              extra={
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', color: C.muted }}>업데이트: {lastUpdated}</span>
+                  <button onClick={fetchAll} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: C.muted }}>↻</button>
+                </div>
+              }
+            />
+            <div style={{ padding: '12px 16px', display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px' }}>
               {statItems.map(s => (
-                <div key={s.label} style={{
-                  background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px',
-                  padding: '14px 10px', textAlign: 'center',
-                  boxShadow: '0 1px 3px rgba(26,42,94,0.05)',
-                }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', margin: '0 auto 8px' }}>{s.icon}</div>
+                <div key={s.label} style={{ textAlign: 'center', padding: '8px 4px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', margin: '0 auto 6px' }}>{s.icon}</div>
                   <div style={{ fontSize: '10px', fontWeight: '600', color: C.muted, marginBottom: '4px' }}>{s.label}</div>
                   <div style={{ fontSize: '22px', fontWeight: '800', color: s.color, lineHeight: 1 }}>{s.value.toLocaleString()}</div>
-                  <div style={{ fontSize: '9px', color: C.muted, marginTop: '4px' }}>{s.sub}</div>
+                  <div style={{ fontSize: '9px', color: C.muted, marginTop: '3px' }}>{s.sub}</div>
                 </div>
               ))}
             </div>
-          </div>
+          </SectionCard>
 
-          {/* 안전 브리핑 */}
-          <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(26,42,94,0.05)' }}>
-            <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <span style={{ fontSize: '20px' }}>📢</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: C.muted, letterSpacing: '0.05em', marginBottom: '4px' }}>
-                  ⚠ {briefings.length === 0 ? '산 취급 주의' : '안전 브리핑'}
-                </div>
-                <div style={{ fontSize: '18px', fontWeight: '800', color: C.navy, lineHeight: 1.3, marginBottom: '6px' }}>
-                  {briefings.length === 0 ? '산은 항상 물에 넣어야 합니다.' : briefing?.content}
-                </div>
-                {briefings.length === 0 && (
-                  <div style={{ fontSize: '12px', color: C.muted, lineHeight: 1.6 }}>
-                    산을 물에 넣으면 열이 발생할 수 있습니다. 반드시 산을 물에 천천히 넣어주세요.
-                  </div>
-                )}
+          {/* 안전 브리핑 — 하늘색 반투명 배경 */}
+          <div style={{
+            background: 'rgba(144, 205, 244, 0.15)', border: '1px solid rgba(144, 205, 244, 0.4)',
+            borderRadius: '10px', padding: '14px 18px',
+            display: 'flex', alignItems: 'center', gap: '16px',
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '16px' }}>📢</span>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>오늘의 안전 브리핑</span>
               </div>
-              <div style={{ width: '140px', height: '100px', flexShrink: 0 }}>
-                <ExampleBriefingSVG />
+              <div style={{ fontSize: '11px', color: '#4A7C9F', fontWeight: '600', marginBottom: '4px' }}>
+                ⚠ {briefings.length === 0 ? '산 취급 주의' : '안전 브리핑'}
               </div>
-              {briefings.length > 1 && (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                  <button onClick={() => setCurrentBriefing(i => (i - 1 + briefings.length) % briefings.length)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '18px', lineHeight: 1 }}>‹</button>
-                  <span style={{ fontSize: '10px', color: C.muted, whiteSpace: 'nowrap' }}>{currentBriefing + 1} / {briefings.length}</span>
-                  <button onClick={() => setCurrentBriefing(i => (i + 1) % briefings.length)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '18px', lineHeight: 1 }}>›</button>
+              <div style={{ fontSize: '17px', fontWeight: '800', color: C.navy, lineHeight: 1.3, marginBottom: '6px' }}>
+                {briefings.length === 0 ? '산은 항상 물에 넣어야 합니다.' : briefing?.content}
+              </div>
+              {briefings.length === 0 && (
+                <div style={{ fontSize: '12px', color: '#4A7C9F', lineHeight: 1.6 }}>
+                  산을 물에 넣으면 열이 발생할 수 있습니다. 반드시 산을 물에 천천히 넣어주세요.
                 </div>
               )}
             </div>
+            <div style={{ width: '130px', height: '90px', flexShrink: 0 }}>
+              <ExampleBriefingSVG />
+            </div>
+            {briefings.length > 1 && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                <button onClick={() => setCurrentBriefing(i => (i - 1 + briefings.length) % briefings.length)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '18px' }}>‹</button>
+                <span style={{ fontSize: '10px', color: C.muted }}>{currentBriefing + 1} / {briefings.length}</span>
+                <button onClick={() => setCurrentBriefing(i => (i + 1) % briefings.length)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '18px' }}>›</button>
+              </div>
+            )}
           </div>
 
           {/* 최근 활동 */}
-          <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(26,42,94,0.05)' }}>
-            <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, background: C.bg, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>최근 활동</div>
-              <span onClick={() => navigate('/admin')} style={{ fontSize: '11px', color: C.muted, cursor: 'pointer' }}>더보기 ›</span>
-            </div>
-            <div style={{ padding: '8px 16px', display: 'flex', flexDirection: 'column' }}>
+          <SectionCard>
+            <SectionHeader
+              title="최근 활동"
+              extra={<span onClick={() => navigate('/admin')} style={{ fontSize: '11px', color: C.muted, cursor: 'pointer' }}>더보기 ›</span>}
+            />
+            <div style={{ padding: '4px 16px' }}>
               {recentLogs.length === 0
                 ? <div style={{ color: C.muted, fontSize: '12px', textAlign: 'center', padding: '16px 0' }}>최근 활동이 없습니다.</div>
                 : recentLogs.map((log, i) => (
-                  <div key={log.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: i < recentLogs.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-                    <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', flexShrink: 0 }}>{actionIcon(log.action)}</div>
+                  <div key={log.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0', borderBottom: i < recentLogs.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                    <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', flexShrink: 0 }}>{actionIcon(log.action)}</div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '13px', color: C.text }}>{log.description}</div>
                       <div style={{ fontSize: '11px', color: C.muted, marginTop: '1px' }}>{log.admin_name}</div>
@@ -215,13 +232,11 @@ export default function Home() {
                   </div>
                 ))}
             </div>
-          </div>
+          </SectionCard>
 
           {/* 안전자료 바로가기 */}
-          <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(26,42,94,0.05)' }}>
-            <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}` }}>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>안전자료 바로가기</div>
-            </div>
+          <SectionCard>
+            <SectionHeader title="안전자료 바로가기" />
             <div style={{ padding: '12px 16px' }}>
               {msdsFiles.length === 0
                 ? <div style={{ color: C.muted, fontSize: '12px', textAlign: 'center', padding: '16px 0' }}>등록된 자료가 없습니다.</div>
@@ -231,17 +246,17 @@ export default function Home() {
                         background: msdsColors[idx % msdsColors.length],
                         border: `1px solid ${C.border}`, borderRadius: '8px',
                         padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px',
-                        textDecoration: 'none', transition: 'all 0.15s', cursor: 'pointer',
+                        textDecoration: 'none', transition: 'all 0.15s',
                       }}
                         onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)' }}
                         onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none' }}
                       >
-                        <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: msdsIconColors[idx % msdsIconColors.length] + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>📄</div>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>📄</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: '12px', fontWeight: '700', color: C.navy, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title}</div>
                           <div style={{ fontSize: '10px', color: C.muted, marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.content || n.notice_files[0]?.file_name}</div>
                         </div>
-                        <span style={{ color: C.muted, fontSize: '14px', flexShrink: 0 }}>›</span>
+                        <span style={{ color: C.muted, fontSize: '14px' }}>›</span>
                       </a>
                     ))}
                   </div>
@@ -252,22 +267,20 @@ export default function Home() {
                 전체 안전자료실 바로가기 ›
               </button>
             </div>
-          </div>
+          </SectionCard>
 
         </div>
 
         {/* 오른쪽 사이드 */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
           {/* 빠른 메뉴 */}
-          <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(26,42,94,0.05)' }}>
-            <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, background: C.bg }}>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>빠른 메뉴</div>
-            </div>
+          <SectionCard>
+            <SectionHeader title="빠른 메뉴" />
             <div style={{ padding: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
               {quickLinks.map(item => (
                 <button key={item.to} onClick={() => navigate(item.to)} style={{
-                  background: item.color || C.bg, border: 'none', borderRadius: '10px',
+                  background: item.bg || C.bg, border: `1px solid ${C.border}`, borderRadius: '10px',
                   padding: '12px 6px', cursor: 'pointer', textAlign: 'center',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
                   transition: 'all 0.15s',
@@ -275,24 +288,28 @@ export default function Home() {
                   onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(26,42,94,0.1)' }}
                   onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none' }}
                 >
-                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: item.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>{item.icon}</div>
+                  <span style={{ fontSize: '22px' }}>{item.icon}</span>
                   <div style={{ fontSize: '11px', fontWeight: '700', color: C.navy, lineHeight: 1.2 }}>{item.label}</div>
                 </button>
               ))}
             </div>
-          </div>
+          </SectionCard>
 
           {/* 실험실 규칙 */}
-          <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(26,42,94,0.05)' }}>
-            <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, background: C.bg }}>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>🛡️ 실험실 규칙</div>
-            </div>
+          <SectionCard>
+            <SectionHeader title="실험실 규칙" icon="🛡️" />
             <div style={{ padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {rules.length === 0
                 ? <div style={{ color: C.muted, fontSize: '12px', textAlign: 'center', padding: '10px 0' }}>등록된 규칙이 없습니다.</div>
                 : rules.map((r, i) => (
                   <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                    <span style={{ minWidth: '22px', height: '22px', background: C.navy + '15', color: C.navy, border: `1.5px solid ${C.navy}40`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', flexShrink: 0, marginTop: '1px' }}>{String(i+1).padStart(2,'0')}</span>
+                    <span style={{
+                      minWidth: '22px', height: '22px',
+                      background: 'rgba(26,42,94,0.08)', color: C.navy,
+                      border: `1.5px solid rgba(26,42,94,0.2)`, borderRadius: '50%',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '11px', fontWeight: '700', flexShrink: 0, marginTop: '1px'
+                    }}>{String(i+1).padStart(2,'0')}</span>
                     <span style={{ fontSize: '12px', color: C.text, lineHeight: 1.5 }}>{r.content}</span>
                   </div>
                 ))}
@@ -302,22 +319,22 @@ export default function Home() {
                 <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: C.navy, fontWeight: '600' }}>전체 규칙 보기 ›</button>
               </div>
             )}
-          </div>
+          </SectionCard>
 
           {/* 공지사항 */}
-          <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(26,42,94,0.05)' }}>
-            <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, background: C.bg, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>📣 공지사항</div>
-              <span onClick={() => navigate('/notices')} style={{ fontSize: '11px', color: C.muted, cursor: 'pointer' }}>더보기 ›</span>
-            </div>
-            <div style={{ padding: '8px 16px', display: 'flex', flexDirection: 'column' }}>
+          <SectionCard>
+            <SectionHeader
+              title="공지사항"
+              icon="📣"
+              extra={<span onClick={() => navigate('/notices')} style={{ fontSize: '11px', color: C.muted, cursor: 'pointer' }}>더보기 ›</span>}
+            />
+            <div style={{ padding: '4px 16px' }}>
               {notices.length === 0
                 ? <div style={{ color: C.muted, fontSize: '12px', textAlign: 'center', padding: '16px 0' }}>등록된 공지사항이 없습니다.</div>
                 : notices.map((n, i) => (
                   <div key={n.id} onClick={() => navigate(`/notices/${n.id}`)} style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '8px 0',
-                    borderBottom: i < notices.length - 1 ? `1px solid ${C.border}` : 'none',
+                    padding: '9px 0', borderBottom: i < notices.length - 1 ? `1px solid ${C.border}` : 'none',
                     cursor: 'pointer',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
@@ -330,7 +347,7 @@ export default function Home() {
                   </div>
                 ))}
             </div>
-          </div>
+          </SectionCard>
 
         </div>
       </div>
