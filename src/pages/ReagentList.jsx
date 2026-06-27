@@ -854,24 +854,16 @@ onClick={e => toggleCheck(r.id, e, data)}>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>단위</label>
-                    <select
-                      value={['mL', 'g'].includes(stockForm.unit) ? stockForm.unit : 'other'}
-                      onChange={e => {
-                        if (e.target.value !== 'other') setStockForm({ ...stockForm, unit: e.target.value })
-                        else setStockForm({ ...stockForm, unit: '' })
-                      }}
-                      style={inputStyle}>
-                      <option value="mL">mL</option>
-                      <option value="g">g</option>
-                      <option value="other">직접 입력</option>
-                    </select>
-                    {!['mL', 'g'].includes(stockForm.unit) && (
-                      <input
-                        value={stockForm.unit}
-                        onChange={e => setStockForm({ ...stockForm, unit: e.target.value })}
-                        placeholder="단위 입력"
-                        style={{ ...inputStyle, marginTop: '6px' }} />
-                    )}
+                    <input
+                      list="unit-options"
+                      value={stockForm.unit}
+                      onChange={e => setStockForm({ ...stockForm, unit: e.target.value })}
+                      placeholder="mL, g ..."
+                      style={inputStyle} />
+                    <datalist id="unit-options">
+                      <option value="mL" />
+                      <option value="g" />
+                    </datalist>
                   </div>
                 </div>
               )}
@@ -909,6 +901,7 @@ onClick={e => toggleCheck(r.id, e, data)}>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button onClick={() => setShowStockModal(true)} style={{ background: '#EBF8FF', color: '#2B6CB0', border: '1px solid #90CDF4', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔵 입출고</button>
           <button onClick={() => setShowMoveModal(true)} style={{ background: '#EEF2FB', color: '#667EEA', border: '1px solid #C3D0F5', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔵 위치 이동</button>
+          <button onClick={() => setShowDisposalModal(true)} style={{ background: '#FFF5F5', color: C.danger, border: '1px solid #FC8181', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🗑️ 폐기 신청</button>
           {isAdmin && (
             <div style={{ display: 'flex', gap: '6px' }}>
               <button onClick={() => setShowEditModal(!showEditModal)} style={{
