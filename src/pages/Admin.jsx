@@ -7,6 +7,7 @@ import { exportPurchaseRequests } from '../exportUtils'
 export default function Admin() {
   const { isAdmin, isSuper } = useOutletContext()
   const TABS = [
+    { key: 'notice', label: '공지/안전관리', icon: '📢', sub: 'Notice' },
   { key: 'changereq', label: '변경 요청', icon: '📝', sub: 'Change Requests' },
   { key: 'reagent',  label: '시약 추가',      icon: '🧪', sub: 'Add Reagent' },
   { key: 'item',     label: '물품 추가',       icon: '📦', sub: 'Add Item' },
@@ -89,6 +90,7 @@ export default function Admin() {
           ))}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
+          {tab === 'notice' && <NoticeTab />}
           {tab === 'changereq' && <ChangeRequestTab />}
           {tab === 'reagent'  && <ReagentAddTab locations={locations} />}
           {tab === 'item'     && <ItemAddTab locations={locations} />}
