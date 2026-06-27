@@ -366,7 +366,7 @@ async function saveField(field, value, sourceField) {
       <div style={{ position: 'relative' }}>
         {!editMode && (
           <div style={{
-            position: 'fixed', right: '16px', top: '50%', transform: 'translateY(-50%)',
+            position: 'fixed', right: '4px', top: '50%', transform: 'translateY(-50%)',
             display: 'flex', flexDirection: 'column', gap: '2px', zIndex: 50,
             background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(6px)',
             borderRadius: '8px', padding: '6px 4px',
@@ -385,7 +385,7 @@ async function saveField(field, value, sourceField) {
           </div>
         )}
 
-        <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', paddingRight: '32px' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
             <thead>
               <tr>
@@ -530,11 +530,11 @@ onClick={e => toggleCheck(r.id, e, data)}>
   return (
     <div>
       <PageBanner title="시약 목록" sub="Reagent List" breadcrumb={['홈', '시약 관리', '시약 목록']} />
-      <div style={{ padding: '28px 40px' }}>
+      <div style={{ padding: '8px 16px' }}>
 
-        {/* 검색 + 버튼 영역 */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: '8px', maxWidth: '480px', flex: 1 }}>
+       {/* 검색 + 위치 + 버튼 한 줄 */}
+<div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+  <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '200px' }}>
             <input value={search}
               onChange={e => { setSearch(e.target.value); if (!e.target.value) setSearchResults([]) }}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
