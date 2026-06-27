@@ -126,8 +126,8 @@ async function lookupCAS() {
   setCasLoading(true)
   setCasResult(null)
 
-  const GHS_KEY = 'e9bf2e5bc508d370a9660687c34a6730eae5237e78bad04e08f66705be15d597'
-  const MSDS_KEY = 'e9bf2e5bc508d370a9660687c34a6730eae5237e78bad04e08f66705be15d597'
+const GHS_KEY = import.meta.env.VITE_GHS_API_KEY
+const MSDS_KEY = import.meta.env.VITE_MSDS_API_KEY
 
   try {
     let result = { iupacName: '', formula: '', hazard: '', cid: null, korName: '', msdsUrl: '', isYudok: '' }
@@ -1407,9 +1407,9 @@ function BulkUpdateTab() {
   const [results, setResults] = useState([])
   const [filter, setFilter] = useState('all') // all, empty
 
-  const GHS_KEY = 'e9bf2e5bc508d370a9660687c34a6730eae5237e78bad04e08f66705be15d597'
+const GHS_KEY = import.meta.env.VITE_GHS_API_KEY
 
-  useEffect(() => { fetchReagents() }, [filter])
+useEffect(() => { fetchReagents() }, [filter])
 
   async function fetchReagents() {
   let query = supabase.from('reagents')

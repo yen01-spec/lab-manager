@@ -3,7 +3,12 @@ import { getToken, onMessage } from 'firebase/messaging'
 import { messaging } from '../firebase'
 import { supabase } from '../supabase'
 
-const VAPID_KEY = 'BJXclBksXWIr3BWqEE5RlTcVhn-ROmKFynWIG6ZuKsYVMsjdc2Lb4HxTKwYWkuUnKn4SOwy3z1wKoWnUQYvahnc'
+import { useEffect } from 'react'
+import { getToken, onMessage } from 'firebase/messaging'
+import { messaging } from '../firebase'
+import { supabase } from '../supabase'
+
+const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY
 
 export function useFCM(isAdmin) {
   // onMessage는 항상 등록 (로그인 여부 무관)

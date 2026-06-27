@@ -2,12 +2,12 @@ import { initializeApp } from 'firebase/app'
 import { getMessaging } from 'firebase/messaging'
 
 const firebaseConfig = {
-  apiKey: "AIzaSyChnR0Y3JJS5xAbyr9LQJQwoC2PIJOEbHs",
-  authDomain: "lab-manager-alarm.firebaseapp.com",
-  projectId: "lab-manager-alarm",
-  storageBucket: "lab-manager-alarm.firebasestorage.app",
-  messagingSenderId: "702210218847",
-  appId: "1:702210218847:web:0e05249d3781405d61b4ea"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 }
 
 const app = initializeApp(firebaseConfig)
