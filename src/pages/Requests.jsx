@@ -8,30 +8,30 @@ export default function Requests() {
   const [myName, setMyName] = useState(() => localStorage.getItem('req_user_name') || '')
   const [reagents, setReagents] = useState([])
   const [items, setItems] = useState([])
-  const [requestType, setRequestType] = useState('reagent') // 'reagent' | 'item'
+  const [requestType, setRequestType] = useState('reagent')
 
   // 시약 폼
   const initReagentForm = {
     user_name: myName,
-    target_name: '', cas_no: '', quantity: '', usage_place: '', purpose: '',
+    target_id: '', target_name: '', cas_no: '', quantity: '', usage_place: '', purpose: '',
     company: '', product_name: '', product_volume: '', unit_price: '',
     shipping_cost: '', total_price: '', product_link: '', notes: '',
   }
   const [reagentForm, setReagentForm] = useState(initReagentForm)
   const [showOptional, setShowOptional] = useState(false)
+  const [reagentSearch, setReagentSearch] = useState('')
+  const [showReagentDropdown, setShowReagentDropdown] = useState(false)
 
   // 물품 폼
   const initItemForm = {
     user_name: myName,
-    target_name: '', spec: '', quantity: '', unit_price: '',
+    target_id: '', target_name: '', spec: '', quantity: '', unit_price: '',
     shipping_cost: '', total_price: '', product_link: '',
     usage_place: '', purpose: '', notes: '',
   }
   const [itemForm, setItemForm] = useState(initItemForm)
-
-  // 시약 타이핑 검색
-  const [reagentSearch, setReagentSearch] = useState('')
-  const [showReagentDropdown, setShowReagentDropdown] = useState(false)
+  const [itemSearch, setItemSearch] = useState('')
+  const [showItemDropdown, setShowItemDropdown] = useState(false)
 
   const [myRequests, setMyRequests] = useState([])
   const [myRequestsLoaded, setMyRequestsLoaded] = useState(false)
@@ -95,6 +95,7 @@ export default function Requests() {
 
     await supabase.from('purchase_requests').insert({
       user_name: f.user_name, target_type: 'reagent',
+      target_id: f.target_id || null,
       target_name: f.target_name, quantity: f.quantity,
       cas_no: f.cas_no, company: f.company,
       product_name: f.product_name, product_volume: f.product_volume,
@@ -132,6 +133,7 @@ export default function Requests() {
 
     await supabase.from('purchase_requests').insert({
       user_name: f.user_name, target_type: 'item',
+      target_id: f.target_id || null,
       target_name: f.target_name, quantity: f.quantity,
       spec: f.spec, unit_price: f.unit_price,
       shipping_cost: f.shipping_cost, total_price: f.total_price,
@@ -150,12 +152,12 @@ export default function Requests() {
     alert('구매 요청이 접수되었습니다!')
     const name = f.user_name
     setItemForm({ ...initItemForm, user_name: name })
+    setItemSearch('')
     setDuplicates([])
     fetchMyRequests(name)
   }
 
   const statusKo = { pending: '대기중', approved: '승인됨', ordered: '발주완료', delivered: '배송완료', rejected: '반려' }
-
   const currentName = requestType === 'reagent' ? reagentForm.user_name : itemForm.user_name
 
   return (
@@ -182,7 +184,6 @@ export default function Requests() {
           <Card title="🧪 시약 구매 요청" sub="Reagent Purchase Request">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
 
-              {/* 신청자 */}
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={labelStyle}>신청자 이름 *</label>
                 <input value={reagentForm.user_name}
@@ -190,20 +191,25 @@ export default function Requests() {
                   placeholder="본인 이름" style={{ ...inputStyle, maxWidth: '240px' }} />
               </div>
 
-              {/* 시약명 - 타이핑 검색 */}
+              {/* 시약명 타이핑 검색 */}
               <div style={{ position: 'relative' }}>
                 <label style={labelStyle}>시약명 *</label>
                 <input
                   value={reagentSearch}
                   onChange={e => {
                     setReagentSearch(e.target.value)
-                    setReagentForm({ ...reagentForm, target_name: e.target.value, cas_no: '' })
+                    setReagentForm({ ...reagentForm, target_id: '', target_name: e.target.value, cas_no: '' })
                     setShowReagentDropdown(true)
                   }}
                   onFocus={() => setShowReagentDropdown(true)}
                   onBlur={() => setTimeout(() => setShowReagentDropdown(false), 150)}
                   placeholder="시약명 또는 CAS번호 입력..."
                   style={inputStyle} />
+                {reagentForm.target_id && (
+                  <div style={{ marginTop: '4px', fontSize: '11px', color: '#276749', fontWeight: '600' }}>
+                    ✅ 기존 시약 선택됨
+                  </div>
+                )}
                 {showReagentDropdown && reagentSearch && (
                   <div style={{
                     position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
@@ -218,7 +224,7 @@ export default function Requests() {
                       <div key={r.id}
                         onMouseDown={() => {
                           setReagentSearch(r.name)
-                          setReagentForm({ ...reagentForm, target_name: r.name, cas_no: r.cas_no || '' })
+                          setReagentForm({ ...reagentForm, target_id: r.id, target_name: r.name, cas_no: r.cas_no || '' })
                           setShowReagentDropdown(false)
                         }}
                         style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '13px', borderBottom: `1px solid ${C.border}` }}
@@ -228,26 +234,20 @@ export default function Requests() {
                         {r.cas_no && <span style={{ color: C.muted, fontSize: '11px', marginLeft: '8px' }}>{r.cas_no}</span>}
                       </div>
                     ))}
-                    {reagents.filter(r =>
-                      r.name.toLowerCase().includes(reagentSearch.toLowerCase()) ||
-                      (r.cas_no && r.cas_no.includes(reagentSearch))
-                    ).length === 0 && (
-                      <div
-                        onMouseDown={() => {
-                          setReagentForm({ ...reagentForm, target_name: reagentSearch })
-                          setShowReagentDropdown(false)
-                        }}
-                        style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '13px', color: C.muted }}
-                        onMouseEnter={e => e.currentTarget.style.background = C.bg}
-                        onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                        "{reagentSearch}" 신규 입력
-                      </div>
-                    )}
+                    <div
+                      onMouseDown={() => {
+                        setReagentForm({ ...reagentForm, target_id: '', target_name: reagentSearch })
+                        setShowReagentDropdown(false)
+                      }}
+                      style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '13px', color: C.muted, borderTop: `1px solid ${C.border}` }}
+                      onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                      onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                      ✏️ "{reagentSearch}" 신규 입력
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* CAS번호 */}
               <div>
                 <label style={labelStyle}>CAS번호 *</label>
                 <input value={reagentForm.cas_no}
@@ -255,7 +255,6 @@ export default function Requests() {
                   placeholder="예: 64-17-5" style={inputStyle} />
               </div>
 
-              {/* 필요 용량/수량 */}
               <div>
                 <label style={labelStyle}>필요 용량/수량 *</label>
                 <input value={reagentForm.quantity}
@@ -263,7 +262,6 @@ export default function Requests() {
                   placeholder="예: 500mL 2개" style={inputStyle} />
               </div>
 
-              {/* 사용처 */}
               <div>
                 <label style={labelStyle}>사용처 *</label>
                 <input value={reagentForm.usage_place}
@@ -271,7 +269,6 @@ export default function Requests() {
                   placeholder="예: 유기합성실험" style={inputStyle} />
               </div>
 
-              {/* 구매목적 */}
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={labelStyle}>구매목적 *</label>
                 <input value={reagentForm.purpose}
@@ -280,7 +277,6 @@ export default function Requests() {
               </div>
             </div>
 
-            {/* 중복 감지 배너 */}
             {duplicates.length > 0 && reagentForm.target_name && (
               <div style={{ marginTop: '16px', padding: '12px 16px', background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{ fontSize: '18px' }}>⚠️</span>
@@ -295,7 +291,6 @@ export default function Requests() {
               </div>
             )}
 
-            {/* 선택 입력 토글 */}
             <div style={{ marginTop: '20px' }}>
               <button onClick={() => setShowOptional(!showOptional)} style={{
                 background: 'none', border: `1px solid ${C.border}`, borderRadius: '6px',
@@ -353,7 +348,6 @@ export default function Requests() {
               </div>
             )}
 
-            {/* 비고 */}
             <div style={{ marginTop: '16px' }}>
               <label style={labelStyle}>비고</label>
               <textarea value={reagentForm.notes}
@@ -378,11 +372,58 @@ export default function Requests() {
                   placeholder="본인 이름" style={{ ...inputStyle, maxWidth: '240px' }} />
               </div>
 
-              <div>
+              {/* 물품명 타이핑 검색 */}
+              <div style={{ position: 'relative' }}>
                 <label style={labelStyle}>제품명 *</label>
-                <input value={itemForm.target_name}
-                  onChange={e => setItemForm({ ...itemForm, target_name: e.target.value })}
-                  placeholder="예: 라텍스 장갑" style={inputStyle} />
+                <input
+                  value={itemSearch}
+                  onChange={e => {
+                    setItemSearch(e.target.value)
+                    setItemForm({ ...itemForm, target_id: '', target_name: e.target.value })
+                    setShowItemDropdown(true)
+                  }}
+                  onFocus={() => setShowItemDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowItemDropdown(false), 150)}
+                  placeholder="물품명 입력..."
+                  style={inputStyle} />
+                {itemForm.target_id && (
+                  <div style={{ marginTop: '4px', fontSize: '11px', color: '#276749', fontWeight: '600' }}>
+                    ✅ 기존 물품 선택됨
+                  </div>
+                )}
+                {showItemDropdown && itemSearch && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+                    background: '#fff', border: `1px solid ${C.border}`, borderRadius: '8px',
+                    maxHeight: '200px', overflowY: 'auto',
+                    boxShadow: '0 4px 16px rgba(26,42,94,0.12)', marginTop: '2px',
+                  }}>
+                    {items.filter(i => i.name.toLowerCase().includes(itemSearch.toLowerCase()))
+                      .slice(0, 20).map(i => (
+                        <div key={i.id}
+                          onMouseDown={() => {
+                            setItemSearch(i.name)
+                            setItemForm({ ...itemForm, target_id: i.id, target_name: i.name })
+                            setShowItemDropdown(false)
+                          }}
+                          style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '13px', borderBottom: `1px solid ${C.border}` }}
+                          onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                          onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                          <span style={{ fontWeight: '600', color: C.navy }}>{i.name}</span>
+                        </div>
+                      ))}
+                    <div
+                      onMouseDown={() => {
+                        setItemForm({ ...itemForm, target_id: '', target_name: itemSearch })
+                        setShowItemDropdown(false)
+                      }}
+                      style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '13px', color: C.muted, borderTop: `1px solid ${C.border}` }}
+                      onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                      onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                      ✏️ "{itemSearch}" 신규 입력
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -450,7 +491,6 @@ export default function Requests() {
               </div>
             </div>
 
-            {/* 중복 감지 배너 */}
             {duplicates.length > 0 && itemForm.target_name && (
               <div style={{ marginTop: '16px', padding: '12px 16px', background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{ fontSize: '18px' }}>⚠️</span>
@@ -551,7 +591,7 @@ export default function Requests() {
               ))}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <button onClick={() => { requestType === 'reagent' ? submitReagentRequest() : submitItemRequest(); setShowDuplicateModal(false) }} style={{ padding: '12px', borderRadius: '8px', border: 'none', background: C.navy, color: C.white, cursor: 'pointer', fontSize: '14px', fontWeight: '700', textAlign: 'left' }}>
+              <button onClick={() => { setShowDuplicateModal(false); requestType === 'reagent' ? submitReagentRequest() : submitItemRequest() }} style={{ padding: '12px', borderRadius: '8px', border: 'none', background: C.navy, color: C.white, cursor: 'pointer', fontSize: '14px', fontWeight: '700', textAlign: 'left' }}>
                 📋 별도 요청으로 진행
                 <div style={{ fontSize: '11px', fontWeight: '400', opacity: 0.8, marginTop: '2px' }}>기존 요청과 별개로 새 요청을 제출합니다</div>
               </button>
