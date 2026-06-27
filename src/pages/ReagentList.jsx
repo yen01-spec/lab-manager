@@ -23,9 +23,6 @@ function getGhsEmojis(hazard) {
 }
 
 export default function ReagentList() {
-  const [lowStockNew, setLowStockNew] = useState(() => 
-  JSON.parse(localStorage.getItem('low_stock_new') || '[]')
-)
   const { isAdmin } = useOutletContext?.() || {}
   const [locations, setLocations] = useState([])
   const [selectedLocation, setSelectedLocation] = useState(null)
@@ -217,62 +214,40 @@ function toggleCheck(id, e, allData) {
       quantity: disposalForm.quantity, reason: disposalForm.reason,
       requested_by: disposalForm.requested_by, status: 'pending',
     })
-    supabase.functions.invoke('send-notification', {
-  body: {
-    title: '🗑️ 폐기 신청',
-    body: `${disposalForm.requested_by}님이 ${selectedReagent.name} 폐기를 신청했습니다.`,
-    role: 'admin',
-  }
-}).then(res => console.log('알림 발송:', res))
-  .catch(err => console.error('알림 실패:', err))
     alert('폐기 신청이 완료됐어요!')
     setShowDisposalModal(false)
     setDisposalForm({ quantity: '1', reason: '', requested_by: '' })
   }
 
   async function submitStock() {
-  if (!stockForm.user_name.trim()) { alert('이름을 입력해주세요'); return }
-  if (!stockForm.quantity) { alert('수량을 입력해주세요'); return }
-  const firstLot = lots[0]
-  if (!firstLot) { alert('Lot 정보가 없습니다'); return }
-  const qty = Number(stockForm.quantity)
-  let newSealed = firstLot.sealed_count
-  let newStock = firstLot.current_stock
-
-  if (stockForm.action === 'in') {
-    newSealed = firstLot.sealed_count + qty
-  } else if (stockForm.action === 'out') {
-    const hasVolume = selectedReagent.volume && Number(selectedReagent.volume) > 0
-    if (hasVolume) {
-      // mL/g 입력 → % 계산
-      const totalVol = Number(selectedReagent.volume)
-      const currentMl = (firstLot.current_stock / 100) * totalVol
-      const remainMl = Math.max(0, currentMl - qty)
-      newStock = Math.round((remainMl / totalVol) * 100)
-    } else {
-      // % 직접 입력
-      newStock = Math.max(0, firstLot.current_stock - qty)
+    if (!stockForm.user_name.trim()) { alert('이름을 입력해주세요'); return }
+    if (!stockForm.quantity) { alert('수량을 입력해주세요'); return }
+    const firstLot = lots[0]
+    if (!firstLot) { alert('Lot 정보가 없습니다'); return }
+    const qty = Number(stockForm.quantity)
+    let newSealed = firstLot.sealed_count
+    let newStock = firstLot.current_stock
+    if (stockForm.action === 'in') newSealed = firstLot.sealed_count + qty
+    else if (stockForm.action === 'out') newStock = Math.max(0, firstLot.current_stock - qty)
+    else if (stockForm.action === 'open') {
+      newSealed = Math.max(0, firstLot.sealed_count - 1)
+      newStock = 100
+      await supabase.from('reagent_lots').update({ opened_date: new Date().toISOString().split('T')[0] }).eq('id', firstLot.id)
     }
-  } else if (stockForm.action === 'open') {
-    newSealed = Math.max(0, firstLot.sealed_count - 1)
-    newStock = 100
-    await supabase.from('reagent_lots').update({ opened_date: new Date().toISOString().split('T')[0] }).eq('id', firstLot.id)
+    await supabase.from('reagent_lots').update({ sealed_count: newSealed, current_stock: newStock }).eq('id', firstLot.id)
+    await supabase.from('stock_history').insert({
+      reagent_id: selectedReagent.id, lot_id: firstLot.id,
+      reagent_name: selectedReagent.name, action: stockForm.action,
+      quantity: qty, unit: stockForm.unit || selectedReagent.unit || '',
+      before_stock: firstLot.current_stock, after_stock: newStock,
+      user_name: stockForm.user_name, notes: stockForm.notes,
+    })
+    alert('기록되었습니다!')
+    setShowStockModal(false)
+    setStockForm({ action: 'out', quantity: '', unit: '', user_name: '', notes: '' })
+    openReagent(selectedReagent)
+    refetchReagents()
   }
-
-  await supabase.from('reagent_lots').update({ sealed_count: newSealed, current_stock: newStock }).eq('id', firstLot.id)
-  await supabase.from('stock_history').insert({
-    reagent_id: selectedReagent.id, lot_id: firstLot.id,
-    reagent_name: selectedReagent.name, action: stockForm.action,
-    quantity: qty, unit: stockForm.unit || selectedReagent.unit || '',
-    before_stock: firstLot.current_stock, after_stock: newStock,
-    user_name: stockForm.user_name, notes: stockForm.notes,
-  })
-  alert('기록되었습니다!')
-  setShowStockModal(false)
-  setStockForm({ action: 'out', quantity: '', unit: '', user_name: '', notes: '' })
-  openReagent(selectedReagent)
-  refetchReagents()
-}
 
   async function submitMove() {
     if (!moveForm.requested_by.trim()) { alert('이름을 입력해주세요'); return }
@@ -301,14 +276,6 @@ function toggleCheck(id, e, allData) {
         to_location_id: moveForm.to_location_id, to_location_name: toLocName,
         requested_by: moveForm.requested_by, notes: moveForm.notes, status: 'pending',
       })
-      supabase.functions.invoke('send-notification', {
-  body: {
-    title: '📍 위치 이동 신청',
-    body: `${moveForm.requested_by}님이 ${selectedReagent.name} 위치 이동을 신청했습니다.`,
-    role: 'admin',
-  }
-}).then(res => console.log('알림 발송:', res))
-  .catch(err => console.error('알림 실패:', err))
       alert('위치 이동 신청 완료! 관리자 승인 후 처리됩니다.')
       setShowMoveModal(false)
     }
@@ -480,23 +447,8 @@ onClick={e => toggleCheck(r.id, e, data)}>
                         )}
                         <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px' }}>
                           {r.name}
-                          {isLow && (
-  <>
-    <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
-      color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>
-    {lowStockNew.includes(lotList[0]?.id) && (
-      <span
-        onClick={e => {
-          e.stopPropagation()
-          const next = lowStockNew.filter(id => id !== r.lots?.[0]?.id)
-          setLowStockNew(next)
-          localStorage.setItem('low_stock_new', JSON.stringify(next))
-        }}
-        style={{ marginLeft: '4px', fontSize: '10px', background: '#E53E3E',
-          color: '#fff', padding: '1px 6px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}>NEW</span>
-    )}
-  </>
-)}
+                          {isLow && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
+                            color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
                         </td>
                         <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>{r.cas_no || '-'}</td>
                         <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>{r.company || '-'}</td>
@@ -866,51 +818,55 @@ onClick={e => toggleCheck(r.id, e, data)}>
               <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>구분 *</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  {stockForm.action !== 'open' && (
-  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
-    <div>
-      <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>
-        {stockForm.action === 'in' ? '입고 수량' : 
-          (stockForm.action === 'out' && selectedReagent.volume) ? `사용량 (${selectedReagent.unit || 'mL'})` : '사용량 (%)'}
-      </label>
-      <input type="number" value={stockForm.quantity}
-        onChange={e => setStockForm({ ...stockForm, quantity: e.target.value })}
-        placeholder={stockForm.action === 'in' ? '예: 3' : stockForm.action === 'out' && selectedReagent.volume ? '예: 50' : '예: 10'}
-        style={inputStyle} />
-      {stockForm.action === 'out' && selectedReagent.volume && stockForm.quantity && (
-        <div style={{ marginTop: '6px', fontSize: '12px', color: C.muted }}>
-          {(() => {
-            const totalVol = Number(selectedReagent.volume)
-            const currentMl = (lots[0]?.current_stock / 100) * totalVol
-            const remainMl = Math.max(0, currentMl - Number(stockForm.quantity))
-            const remainPct = Math.round((remainMl / totalVol) * 100)
-            return `잔량: ${remainMl.toFixed(1)}${selectedReagent.unit || 'mL'} (${remainPct}%)`
-          })()}
-        </div>
-      )}
-    </div>
-    <div>
-      <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>단위</label>
-      <input value={stockForm.unit} onChange={e => setStockForm({ ...stockForm, unit: e.target.value })}
-        placeholder={selectedReagent.unit || 'mL'} style={inputStyle} />
-    </div>
-  </div>
-)}
+                  {[['out','📤 사용/출고'],['in','📥 입고'],['open','🔓 개봉']].map(([val, label]) => (
+                    <button key={val} onClick={() => setStockForm({ ...stockForm, action: val })} style={{
+                      flex: 1, padding: '8px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+                      background: stockForm.action === val ? C.navy : C.bg,
+                      color: stockForm.action === val ? '#fff' : C.text,
+                      border: `1px solid ${stockForm.action === val ? C.navy : C.border}`,
+                    }}>{label}</button>
+                  ))}
                 </div>
               </div>
               {stockForm.action !== 'open' && (
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>
-                      {stockForm.action === 'in' ? '입고 수량' : '사용량 (%)'}
+                      {stockForm.action === 'in' ? '입고 수량' : selectedReagent.volume ? `사용량` : '사용량 (%)'}
                     </label>
-                    <input type="number" value={stockForm.quantity} onChange={e => setStockForm({ ...stockForm, quantity: e.target.value })}
-                      placeholder={stockForm.action === 'in' ? '예: 3' : '예: 10'} style={inputStyle} />
+                    <input type="number" value={stockForm.quantity}
+                      onChange={e => setStockForm({ ...stockForm, quantity: e.target.value })}
+                      placeholder={stockForm.action === 'in' ? '예: 3' : selectedReagent.volume ? '예: 50' : '예: 10'}
+                      style={inputStyle} />
+                    {stockForm.action === 'out' && selectedReagent.volume && stockForm.quantity && (
+                      <div style={{ marginTop: '6px', fontSize: '12px', color: C.muted }}>
+                        {(() => {
+                          const totalVol = Number(selectedReagent.volume)
+                          const currentMl = (lots[0]?.current_stock / 100) * totalVol
+                          const remainMl = Math.max(0, currentMl - Number(stockForm.quantity))
+                          const remainPct = Math.round((remainMl / totalVol) * 100)
+                          return `잔량: ${remainMl.toFixed(1)}${selectedReagent.unit || 'mL'} (${remainPct}%)`
+                        })()}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>단위</label>
-                    <input value={stockForm.unit} onChange={e => setStockForm({ ...stockForm, unit: e.target.value })}
-                      placeholder={selectedReagent.unit || 'mL'} style={inputStyle} />
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                      {['mL', 'g'].map(u => (
+                        <button key={u} onClick={() => setStockForm({ ...stockForm, unit: u })} style={{
+                          padding: '8px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+                          background: stockForm.unit === u ? C.navy : C.bg,
+                          color: stockForm.unit === u ? '#fff' : C.text,
+                          border: `1px solid ${stockForm.unit === u ? C.navy : C.border}`,
+                        }}>{u}</button>
+                      ))}
+                      <input
+                        value={['mL', 'g'].includes(stockForm.unit) ? '' : stockForm.unit}
+                        onChange={e => setStockForm({ ...stockForm, unit: e.target.value })}
+                        placeholder="기타"
+                        style={{ ...inputStyle, flex: 1, minWidth: '40px', padding: '8px 8px' }} />
+                    </div>
                   </div>
                 </div>
               )}
@@ -948,7 +904,6 @@ onClick={e => toggleCheck(r.id, e, data)}>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button onClick={() => setShowStockModal(true)} style={{ background: '#EBF8FF', color: '#2B6CB0', border: '1px solid #90CDF4', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔵 입출고</button>
           <button onClick={() => setShowMoveModal(true)} style={{ background: '#EEF2FB', color: '#667EEA', border: '1px solid #C3D0F5', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔵 위치 이동</button>
-          <button onClick={() => setShowDisposalModal(true)} style={{ background: '#FFF5F5', color: C.danger, border: '1px solid #FC8181', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🗑️ 폐기 신청</button>
           {isAdmin && (
             <div style={{ display: 'flex', gap: '6px' }}>
               <button onClick={() => setShowEditModal(!showEditModal)} style={{
