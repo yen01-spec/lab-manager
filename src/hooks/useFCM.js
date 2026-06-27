@@ -3,10 +3,6 @@ import { getToken, onMessage } from 'firebase/messaging'
 import { messaging } from '../firebase'
 import { supabase } from '../supabase'
 
-import { useEffect } from 'react'
-import { getToken, onMessage } from 'firebase/messaging'
-import { messaging } from '../firebase'
-
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY
 
 export function useFCM(isAdmin) {
