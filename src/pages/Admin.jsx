@@ -353,6 +353,13 @@ try {
 // ══════════════════════════════════════════════
 
 function ItemAddTab({ locations }) {
+  const [itemLocations, setItemLocations] = useState([])
+
+useEffect(() => {
+  supabase.from('item_locations').select('*').order('name').then(({ data }) => {
+    if (data) setItemLocations(data)
+  })
+}, [])
   const init = { name: '', category: '', item_location_id: '', notes: '' }
   const [form, setForm] = useState(init)
   const [adminName, setAdminName] = useState('')
