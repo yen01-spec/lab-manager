@@ -21,6 +21,7 @@ export default function Requests() {
   const [showOptional, setShowOptional] = useState(false)
   const [reagentSearch, setReagentSearch] = useState('')
   const [showReagentDropdown, setShowReagentDropdown] = useState(false)
+  const [showDuplicateDetail, setShowDuplicateDetail] = useState(false)
 
   // 물품 폼
   const initItemForm = {
@@ -283,18 +284,28 @@ export default function Requests() {
             </div>
 
             {duplicates.length > 0 && reagentForm.target_name && (
-              <div style={{ marginTop: '16px', padding: '12px 16px', background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '18px' }}>⚠️</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400E', marginBottom: '2px' }}>진행 중인 요청이 있습니다</div>
-                  {duplicates.slice(0, 2).map(d => (
-                    <div key={d.id} style={{ fontSize: '12px', color: '#B45309' }}>
-                      {d.target_name} — 요청자: {d.user_name}, 수량: {d.quantity}, 상태: {statusKo[d.status] || d.status}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+  <div style={{ marginTop: '16px', padding: '12px 16px', background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+      onClick={() => setShowDuplicateDetail(!showDuplicateDetail)}>
+      <span style={{ fontSize: '18px' }}>⚠️</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400E' }}>
+          진행 중인 요청이 {duplicates.length}건 있습니다
+        </div>
+      </div>
+      <span style={{ color: '#92400E', fontSize: '12px' }}>{showDuplicateDetail ? '▲' : '▼'}</span>
+    </div>
+    {showDuplicateDetail && (
+      <div style={{ marginTop: '8px' }}>
+        {duplicates.map(d => (
+          <div key={d.id} style={{ fontSize: '12px', color: '#B45309', padding: '4px 0', borderTop: '1px solid #F6C343' }}>
+            {d.target_name} — 요청자: {d.user_name}, 수량: {d.quantity}, 상태: {statusKo[d.status] || d.status}
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+)}
 
             <div style={{ marginTop: '20px' }}>
               <button onClick={() => setShowOptional(!showOptional)} style={{
@@ -499,18 +510,28 @@ export default function Requests() {
             </div>
 
             {duplicates.length > 0 && itemForm.target_name && (
-              <div style={{ marginTop: '16px', padding: '12px 16px', background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '18px' }}>⚠️</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400E', marginBottom: '2px' }}>진행 중인 요청이 있습니다</div>
-                  {duplicates.slice(0, 2).map(d => (
-                    <div key={d.id} style={{ fontSize: '12px', color: '#B45309' }}>
-                      {d.target_name} — 요청자: {d.user_name}, 수량: {d.quantity}, 상태: {statusKo[d.status] || d.status}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+  <div style={{ marginTop: '16px', padding: '12px 16px', background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+      onClick={() => setShowDuplicateDetail(!showDuplicateDetail)}>
+      <span style={{ fontSize: '18px' }}>⚠️</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400E' }}>
+          진행 중인 요청이 {duplicates.length}건 있습니다
+        </div>
+      </div>
+      <span style={{ color: '#92400E', fontSize: '12px' }}>{showDuplicateDetail ? '▲' : '▼'}</span>
+    </div>
+    {showDuplicateDetail && (
+      <div style={{ marginTop: '8px' }}>
+        {duplicates.map(d => (
+          <div key={d.id} style={{ fontSize: '12px', color: '#B45309', padding: '4px 0', borderTop: '1px solid #F6C343' }}>
+            {d.target_name} — 요청자: {d.user_name}, 수량: {d.quantity}, 상태: {statusKo[d.status] || d.status}
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+)}
 
             <button onClick={submitItemRequest} style={{ ...btnPrimary, marginTop: '16px' }}>요청 제출</button>
           </Card>
