@@ -70,7 +70,7 @@ export function PageBanner({ title, sub, breadcrumb = [] }) {
     <div style={{
       background: '#fff',
       borderBottom: `1px solid ${C.border}`,
-      padding: '12px 40px',
+      padding: '12px 16px',
       display: 'flex', alignItems: 'center', gap: '16px',
     }}>
       {breadcrumb.length > 0 && (
