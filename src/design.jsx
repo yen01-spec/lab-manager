@@ -68,11 +68,33 @@ export const tdStyle = {
 export function PageBanner({ title, sub, breadcrumb = [] }) {
   return (
     <div style={{
-      background: '#fff', borderBottom: `1px solid ${C.border}`,
-      padding: '0 32px', height: '52px',
-      display: 'flex', alignItems: 'center',
+      background: `linear-gradient(135deg, ${C.steelBlue} 0%, ${C.navy} 100%)`,
+      padding: '12px 40px',
+      display: 'flex', alignItems: 'center', gap: '16px',
+      position: 'relative', overflow: 'hidden',
     }}>
-      <div style={{ fontSize: '16px', fontWeight: '700', color: C.navy }}>{title}</div>
+      <div style={{
+        position: 'absolute', right: '-20px', top: '-20px',
+        width: '100px', height: '100px', borderRadius: '50%',
+        background: 'rgba(255,255,255,0.04)',
+      }} />
+      {breadcrumb.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px',
+          fontSize: '11px', color: 'rgba(255,255,255,0.55)' }}>
+          <span>🏠</span>
+          {breadcrumb.map((b, i) => (
+            <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ opacity: 0.4 }}>›</span>
+              <span style={{ color: i === breadcrumb.length - 1 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.55)' }}>{b}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.2)' }} />
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+        <h1 style={{ margin: 0, color: C.white, fontSize: '16px', fontWeight: '800', letterSpacing: '-0.01em' }}>{title}</h1>
+        <span style={{ fontSize: '11px', color: C.gold, fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{sub}</span>
+      </div>
     </div>
   )
 }
