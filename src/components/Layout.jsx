@@ -95,64 +95,80 @@ export default function Layout() {
       background: C.bg,
     }}>
       <header style={{
-        height: '52px', background: C.navy,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: isMobile ? '0 16px' : '0 24px',
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200,
-        boxShadow: '0 2px 12px rgba(26,42,94,0.3)',
-      }}>
-        {isMobile && (
-          <button onClick={() => setDrawerOpen(true)} style={{
-            background: 'none', border: 'none', color: C.white,
-            fontSize: '22px', cursor: 'pointer', padding: '4px',
-          }}>☰</button>
-        )}
+  height: '52px', background: C.white,
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  padding: isMobile ? '0 16px' : '0 24px',
+  position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200,
+  borderBottom: `1px solid ${C.border}`,
+  boxShadow: '0 1px 4px rgba(26,42,94,0.06)',
+}}>
+  {isMobile && (
+    <button onClick={() => setDrawerOpen(true)} style={{
+      background: 'none', border: 'none', color: C.navy,
+      fontSize: '22px', cursor: 'pointer', padding: '4px',
+    }}>☰</button>
+  )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{
-            width: '30px', height: '30px', background: C.gold,
-            borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: '900', fontSize: '15px', color: C.navy,
-          }}>K</div>
-          {(!isMobile || drawerOpen) && (
-            <div>
-              <div style={{ color: C.white, fontWeight: '700', fontSize: isMobile ? '12px' : '14px', lineHeight: 1.2 }}>
-                {isMobile ? '시약관리 시스템' : '연구실 시약관리 시스템'}
-              </div>
-              {!isMobile && (
-                <div style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.06em', opacity: 0.9 }}>
-                  LAB CHEMICAL MANAGEMENT
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+  {/* 왼쪽: 로고 + 타이틀 */}
+  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+    <div style={{
+      width: '32px', height: '32px', background: C.navy,
+      borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontWeight: '900', fontSize: '16px', color: C.white,
+    }}>🧪</div>
+    {!isMobile && (
+      <span style={{ color: C.navy, fontWeight: '700', fontSize: '15px' }}>
+        연구실 시약관리 시스템
+      </span>
+    )}
+  </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {isAdmin ? (
-            <>
-              {!isMobile && (
-                <NavLink to="/admin" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span style={{ color: C.goldLight, fontSize: '13px', fontWeight: '600' }}>
-                    {isSuper ? '👑 슈퍼관리자' : '⚙️ 관리자'}
-                  </span>
-                </NavLink>
-              )}
-              <button onClick={handleLogout} style={{
-                background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.25)',
-                color: C.white, padding: '4px 10px', borderRadius: '5px',
-                cursor: 'pointer', fontSize: '12px',
-              }}>로그아웃</button>
-            </>
-          ) : (
-            <button onClick={handleAdminLogin} style={{
-              background: 'transparent', border: `1px solid ${C.gold}`,
-              color: C.gold, padding: '4px 10px', borderRadius: '5px',
-              cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-            }}>🔐 {isMobile ? '' : '관리자 로그인'}</button>
-          )}
+  {/* 가운데: 현재 페이지명 */}
+  {!isMobile && (
+    <div style={{ fontSize: '15px', fontWeight: '700', color: C.navy, position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
+      {location.pathname === '/' ? '연구실 대시보드'
+        : location.pathname.startsWith('/reagents/list') ? '시약 목록'
+        : location.pathname.startsWith('/reagents/locations') ? '시약장 위치'
+        : location.pathname.startsWith('/items') ? '물품 관리'
+        : location.pathname.startsWith('/requests') ? '구매 요청'
+        : location.pathname.startsWith('/inventory') ? '재고 실사'
+        : location.pathname.startsWith('/admin') ? '관리자 메뉴'
+        : location.pathname.startsWith('/notices') ? '공지사항'
+        : location.pathname.startsWith('/safety') ? '안전관리'
+        : ''}
+    </div>
+  )}
+
+  {/* 오른쪽: 알림 + 유저 */}
+  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+    {isAdmin && (
+      <div style={{ position: 'relative', cursor: 'pointer' }}>
+        <span style={{ fontSize: '20px' }}>🔔</span>
+      </div>
+    )}
+    {isAdmin ? (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} onClick={handleLogout}>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>
+            {isSuper ? '슈퍼관리자' : '관리자'}
+          </div>
+          <div style={{ fontSize: '10px', color: C.muted }}>{isSuper ? '슈퍼관리자' : '일반관리자'}</div>
         </div>
-      </header>
+        <div style={{
+          width: '32px', height: '32px', borderRadius: '50%',
+          background: C.bg, border: `1px solid ${C.border}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px',
+        }}>👤</div>
+      </div>
+    ) : (
+      <button onClick={handleAdminLogin} style={{
+        background: C.navy, border: 'none',
+        color: C.white, padding: '6px 14px', borderRadius: '6px',
+        cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+      }}>🔐 관리자 로그인</button>
+    )}
+  </div>
+</header>
 
       <div style={{ display: 'flex', marginTop: '52px', minHeight: 'calc(100vh - 52px)' }}>
 
