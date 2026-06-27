@@ -363,26 +363,33 @@ async function saveField(field, value, sourceField) {
     const allChecked = data.length > 0 && checkedIds.size === data.length
 
     return (
-      <div style={{ position: 'relative' }}>
-        {!editMode && (
-          <div style={{
-            position: 'fixed', right: '4px', top: '50%', transform: 'translateY(-50%)',
-            display: 'flex', flexDirection: 'column', gap: '2px', zIndex: 50,
-            background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(6px)',
-            borderRadius: '8px', padding: '6px 4px',
-            boxShadow: '0 2px 12px rgba(26,42,94,0.12)', border: `1px solid ${C.border}`,
-          }}>
-            {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => (
-              <button key={letter} onClick={() => scrollToLetter(letter)}
-                disabled={!availableLetters.has(letter)} style={{
-                  width: '20px', height: '20px', borderRadius: '4px', border: 'none',
-                  cursor: availableLetters.has(letter) ? 'pointer' : 'default',
-                  background: availableLetters.has(letter) ? C.navy : 'transparent',
-                  color: availableLetters.has(letter) ? C.white : '#ccc',
-                  fontSize: '10px', fontWeight: '700', padding: 0,
-                }}>{letter}</button>
-            ))}
-          </div>
+  <div style={{ position: 'relative', display: 'flex', gap: '0' }}>
+    {/* 테이블 영역 */}
+    <div style={{ flex: 1, overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+        ...기존 테이블 내용...
+      </table>
+    </div>
+
+    {/* 알파벳 인덱스 - 테이블 오른쪽에 고정 */}
+    {!editMode && (
+      <div style={{
+        width: '28px', flexShrink: 0,
+        display: 'flex', flexDirection: 'column', gap: '2px',
+        padding: '6px 4px', alignItems: 'center',
+        position: 'sticky', top: '60px', alignSelf: 'start',
+      }}>
+        {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => (
+          <button key={letter} onClick={() => scrollToLetter(letter)}
+            disabled={!availableLetters.has(letter)} style={{
+              width: '20px', height: '20px', borderRadius: '4px', border: 'none',
+              cursor: availableLetters.has(letter) ? 'pointer' : 'default',
+              background: availableLetters.has(letter) ? C.navy : 'transparent',
+              color: availableLetters.has(letter) ? C.white : '#ccc',
+              fontSize: '10px', fontWeight: '700', padding: 0,
+            }}>{letter}</button>
+        ))}
+      </div>
         )}
 
       <div style={{ overflowX: 'auto', paddingRight: '32px' }}>
