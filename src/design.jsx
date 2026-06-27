@@ -69,50 +69,31 @@ export function PageBanner({ title, sub, breadcrumb = [] }) {
   return (
     <div style={{
       background: `linear-gradient(135deg, ${C.steelBlue} 0%, ${C.navy} 100%)`,
-      padding: '32px 40px 28px',
+      padding: '12px 40px',
+      display: 'flex', alignItems: 'center', gap: '16px',
       position: 'relative', overflow: 'hidden',
     }}>
-      {/* 배경 장식 */}
       <div style={{
-        position: 'absolute', right: '-40px', top: '-40px',
-        width: '200px', height: '200px', borderRadius: '50%',
+        position: 'absolute', right: '-20px', top: '-20px',
+        width: '100px', height: '100px', borderRadius: '50%',
         background: 'rgba(255,255,255,0.04)',
       }} />
-      <div style={{
-        position: 'absolute', right: '60px', bottom: '-60px',
-        width: '140px', height: '140px', borderRadius: '50%',
-        background: 'rgba(232,160,32,0.08)',
-      }} />
-
-      {/* breadcrumb */}
       {breadcrumb.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px',
-          marginBottom: '12px', fontSize: '12px', color: 'rgba(255,255,255,0.55)' }}>
+          fontSize: '11px', color: 'rgba(255,255,255,0.55)' }}>
           <span>🏠</span>
           {breadcrumb.map((b, i) => (
             <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ opacity: 0.4 }}>›</span>
-              <span style={{ color: i === breadcrumb.length - 1 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.55)' }}>
-                {b}
-              </span>
+              <span style={{ color: i === breadcrumb.length - 1 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.55)' }}>{b}</span>
             </span>
           ))}
         </div>
       )}
-
-      {/* 제목 */}
-      <div style={{ position: 'relative' }}>
-        <div style={{ fontSize: '11px', color: C.gold, fontWeight: '700',
-          letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '6px' }}>
-          {sub}
-        </div>
-        <h1 style={{
-          margin: 0, color: C.white, fontSize: '26px', fontWeight: '800',
-          letterSpacing: '-0.02em', lineHeight: 1.2,
-        }}>{title}</h1>
-        {/* 골드 언더라인 — 시그니처 요소 */}
-        <div style={{ width: '40px', height: '3px', background: C.gold,
-          borderRadius: '2px', marginTop: '10px' }} />
+      <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.2)' }} />
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+        <h1 style={{ margin: 0, color: C.white, fontSize: '16px', fontWeight: '800', letterSpacing: '-0.01em' }}>{title}</h1>
+        <span style={{ fontSize: '11px', color: C.gold, fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{sub}</span>
       </div>
     </div>
   )
