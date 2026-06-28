@@ -1,9 +1,122 @@
 import { useState, useEffect } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
-import { C, PageBanner } from '../design'
+import { C, PageBanner, Icon, SearchInput, Modal, inputStyle, btnPrimary, btnGhost, EmptyState } from '../design'
 
 const PAGE_SIZE = 10
+
+function BulletinTable({ rows, total, page, isAdmin, onRowClick, onEdit, onDelete, emptyMsg }) {
+  return (
+    <div style={{ background: C.white, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 1px 3px rgba(16,24,40,.06)' }}>
+      {/* 헤더 */}
+      <div style={{ display: 'grid', gridTemplateColumns: `60px 1fr 80px 100px 60px 40px${isAdmin ? ' 90px' : ''}`, padding: '10px 20px', background: C.bg, borderBottom: `1px solid ${C.border}` }}>
+        {['번호', '제목', '작성자', '작성일', '조회', '파일', ...(isAdmin ? ['관리'] : [])].map(h => (
+          <div key={h} style={{ fontSize: 11.5, fontWeight: 600, color: C.muted, textAlign: h === '제목' ? 'left' : 'center' }}>{h}</div>
+        ))}
+      </div>
+      {rows.length === 0
+        ? <EmptyState icon="article" message={emptyMsg} />
+        : rows.map((row, i) => (
+          <div key={row.id} onClick={() => onRowClick(row)}
+            style={{ display: 'grid', gridTemplateColumns: `60px 1fr 80px 100px 60px 40px${isAdmin ? ' 90px' : ''}`, padding: '13px 20px', cursor: 'pointer', borderBottom: `1px solid ${C.borderRow}`, transition: 'background 0.1s' }}
+            onMouseEnter={e => e.currentTarget.style.background = '#FAFBFC'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
+            <div style={{ fontSize: 13, color: C.muted, textAlign: 'center' }}>{total - (page - 1) * PAGE_SIZE - i}</div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 12 }}>{row.title}</div>
+            <div style={{ fontSize: 12, color: C.muted, textAlign: 'center' }}>{row.author || '-'}</div>
+            <div style={{ fontSize: 12, color: C.muted, textAlign: 'center' }}>{new Date(row.created_at).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' })}</div>
+            <div style={{ fontSize: 12, color: C.muted, textAlign: 'center' }}>{row.views || 0}</div>
+            <div style={{ textAlign: 'center' }}>
+              {row.notice_files?.length > 0 && <Icon name="attach_file" size={15} color={C.muted} />}
+            </div>
+            {isAdmin && (
+              <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
+                <button onClick={() => onEdit(row)} style={{ padding: '3px 8px', borderRadius: 5, border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: 11, fontFamily: 'inherit', color: C.textSub }}>수정</button>
+                <button onClick={() => onDelete(row.id)} style={{ padding: '3px 8px', borderRadius: 5, border: `1px solid #F3D6D6`, background: C.dangerTint, color: C.dangerDark, cursor: 'pointer', fontSize: 11, fontFamily: 'inherit' }}>삭제</button>
+              </div>
+            )}
+          </div>
+        ))
+      }
+    </div>
+  )
+}
+
+function Pagination({ page, totalPages, setPage }) {
+  if (totalPages <= 1) return null
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', gap: 4, marginTop: 20 }}>
+      {[{ label: '«', to: 1 }, { label: '‹', to: page - 1 }].map(b => (
+        <button key={b.label} onClick={() => setPage(Math.max(1, b.to))} disabled={page === 1}
+          style={{ padding: '6px 10px', borderRadius: 7, border: `1px solid ${C.border}`, background: C.white, cursor: page === 1 ? 'default' : 'pointer', fontSize: 13, opacity: page === 1 ? 0.4 : 1, fontFamily: 'inherit' }}>{b.label}</button>
+      ))}
+      {Array.from({ length: Math.min(10, totalPages) }, (_, i) => {
+        const p = Math.max(1, Math.min(page - 4, totalPages - 9)) + i
+        return p <= totalPages ? (
+          <button key={p} onClick={() => setPage(p)} style={{ padding: '6px 12px', borderRadius: 7, border: `1px solid ${page === p ? C.blue : C.border}`, background: page === p ? C.blue : C.white, color: page === p ? C.white : C.text, cursor: 'pointer', fontSize: 13, fontWeight: page === p ? 700 : 400, fontFamily: 'inherit' }}>{p}</button>
+        ) : null
+      })}
+      {[{ label: '›', to: page + 1 }, { label: '»', to: totalPages }].map(b => (
+        <button key={b.label} onClick={() => setPage(Math.min(totalPages, b.to))} disabled={page === totalPages}
+          style={{ padding: '6px 10px', borderRadius: 7, border: `1px solid ${C.border}`, background: C.white, cursor: page === totalPages ? 'default' : 'pointer', fontSize: 13, opacity: page === totalPages ? 0.4 : 1, fontFamily: 'inherit' }}>{b.label}</button>
+      ))}
+    </div>
+  )
+}
+
+function WriteModal({ open, onClose, form, setForm, files, setFiles, onSubmit, uploading, editing }) {
+  function handleFileAdd(e) {
+    const newFiles = Array.from(e.target.files).filter(f => {
+      if (f.size > 50 * 1024 * 1024) { alert(`${f.name}: 50MB 초과`); return false }
+      return true
+    })
+    setFiles(prev => [...prev, ...newFiles])
+    e.target.value = ''
+  }
+  return (
+    <Modal open={open} onClose={onClose} title={editing ? '공지 수정' : '새 공지 작성'} width={600}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <input value={form.author} onChange={e => setForm(f => ({ ...f, author: e.target.value }))}
+            placeholder="작성자" style={{ ...inputStyle, width: 160 }} />
+          <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+            placeholder="제목" style={{ ...inputStyle, flex: 1 }} />
+        </div>
+        <textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+          placeholder="내용" rows={8}
+          style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} />
+        {/* 파일 첨부 */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Icon name="attach_file" size={15} color={C.muted} />
+            <span style={{ fontSize: 12.5, color: C.muted, fontWeight: 600 }}>파일 첨부</span>
+            <label style={{ padding: '4px 12px', borderRadius: 6, border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: 12, color: C.blue, fontWeight: 600, fontFamily: 'inherit' }}>
+              + 파일 추가 <input type="file" multiple onChange={handleFileAdd} style={{ display: 'none' }} />
+            </label>
+          </div>
+          {files.map((f, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 6, background: C.bg, border: `1px solid ${C.border}`, marginBottom: 4 }}>
+              <Icon name="description" size={14} color={C.muted} />
+              <span style={{ fontSize: 12.5, flex: 1 }}>{f.name}</span>
+              <span style={{ fontSize: 11, color: C.muted }}>({(f.size / 1024 / 1024).toFixed(1)}MB)</span>
+              <button onClick={() => setFiles(p => p.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+                <Icon name="close" size={15} color={C.muted} />
+              </button>
+            </div>
+          ))}
+          <div style={{ fontSize: 11.5, color: C.muted }}>최대 50MB까지 첨부 가능합니다.</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 4 }}>
+          <button onClick={onClose} style={{ ...btnGhost, padding: '8px 18px' }}>취소</button>
+          <button onClick={onSubmit} disabled={uploading} style={{ ...btnPrimary, padding: '8px 18px', opacity: uploading ? 0.6 : 1 }}>
+            {uploading ? '저장 중…' : '저장'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
 
 export default function Notices() {
   const { isAdmin } = useOutletContext()
@@ -13,7 +126,7 @@ export default function Notices() {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
-  const [showForm, setShowForm] = useState(false)
+  const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({ title: '', content: '', author: '' })
   const [editingId, setEditingId] = useState(null)
   const [files, setFiles] = useState([])
@@ -22,26 +135,12 @@ export default function Notices() {
   useEffect(() => { fetchNotices() }, [page, search])
 
   async function fetchNotices() {
-    let query = supabase.from('notices').select('*, notice_files(*)', { count: 'exact' })
-      .eq('type', 'notice')
-      .order('created_at', { ascending: false })
+    let q = supabase.from('notices').select('*, notice_files(*)', { count: 'exact' })
+      .eq('type', 'notice').order('created_at', { ascending: false })
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
-    if (search) query = query.ilike('title', `%${search}%`)
-    const { data, count } = await query
-    setNotices(data || [])
-    setTotal(count || 0)
-  }
-
-  function handleFileAdd(e) {
-    const newFiles = Array.from(e.target.files)
-    const oversized = newFiles.filter(f => f.size > 50 * 1024 * 1024)
-    if (oversized.length > 0) {
-      alert(`파일 크기가 너무 큽니다.\n최대 50MB까지 업로드할 수 있어요.\n\n초과 파일: ${oversized.map(f => f.name).join(', ')}`)
-      e.target.value = ''
-      return
-    }
-    setFiles(prev => [...prev, ...newFiles])
-    e.target.value = ''
+    if (search) q = q.ilike('title', `%${search}%`)
+    const { data, count } = await q
+    setNotices(data || []); setTotal(count || 0)
   }
 
   async function handleSubmit() {
@@ -63,12 +162,13 @@ export default function Notices() {
         await supabase.from('notice_files').insert({ notice_id: noticeId, file_url: urlData.publicUrl, file_name: file.name, file_size: file.size })
       }
     }
-    setForm({ title: '', content: '', author: '' })
-    setFiles([])
-    setShowForm(false)
-    setEditingId(null)
-    setUploading(false)
+    setForm({ title: '', content: '', author: '' }); setFiles([]); setShowModal(false); setEditingId(null); setUploading(false)
     fetchNotices()
+  }
+
+  function handleEdit(notice) {
+    setForm({ title: notice.title, content: notice.content || '', author: notice.author || '' })
+    setEditingId(notice.id); setFiles([]); setShowModal(true)
   }
 
   async function handleDelete(id) {
@@ -77,162 +177,37 @@ export default function Notices() {
     fetchNotices()
   }
 
-  function handleEdit(notice, e) {
-    e.stopPropagation()
-    setForm({ title: notice.title, content: notice.content || '', author: notice.author || '' })
-    setEditingId(notice.id)
-    setShowForm(true)
-    setFiles([])
-    window.scrollTo(0, 0)
-  }
-
-  const totalPages = Math.ceil(total / PAGE_SIZE)
-
   return (
     <div>
-      <PageBanner title="공지사항" sub="Notices" breadcrumb={['홈', '공지사항']} />
-
-      <div style={{ padding: '32px 40px', maxWidth: '960px', margin: '0 auto' }}>
-
-        {/* 글쓰기 폼 */}
-        {isAdmin && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-            <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({ title: '', content: '', author: '' }); setFiles([]) }} style={{
-              background: C.navy, color: C.white, border: 'none',
-              padding: '9px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
-            }}>✏️ 글쓰기</button>
-          </div>
+      <PageBanner title="공지사항" sub="Notices" breadcrumb={['공지사항']}
+        extra={isAdmin && (
+          <button onClick={() => { setShowModal(true); setEditingId(null); setForm({ title: '', content: '', author: '' }); setFiles([]) }}
+            style={{ ...btnPrimary, padding: '7px 16px' }}>
+            <Icon name="edit" size={15} color={C.white} /> 글쓰기
+          </button>
         )}
-
-        {showForm && isAdmin && (
-          <div style={{ background: C.white, borderRadius: '10px', padding: '24px', marginBottom: '20px', border: `1px solid ${C.border}`, boxShadow: '0 2px 8px rgba(26,42,94,0.08)' }}>
-            <div style={{ fontSize: '15px', fontWeight: '700', color: C.navy, marginBottom: '16px' }}>
-              {editingId ? '✏️ 공지 수정' : '✏️ 새 공지 작성'}
-            </div>
-            <input
-              value={form.author} onChange={e => setForm(f => ({ ...f, author: e.target.value }))}
-              placeholder="작성자 이름"
-              style={{ width: '200px', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, fontSize: '14px', marginBottom: '12px', boxSizing: 'border-box' }}
-            />
-            <input
-              value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-              placeholder="제목을 입력하세요"
-              style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, fontSize: '14px', marginBottom: '12px', boxSizing: 'border-box' }}
-            />
-            <textarea
-              value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-              placeholder="내용을 입력하세요"
-              rows={8}
-              style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, fontSize: '14px', resize: 'vertical', boxSizing: 'border-box', marginBottom: '12px' }}
-            />
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <span style={{ fontSize: '13px', color: C.muted, fontWeight: '600' }}>📎 파일 첨부</span>
-                <label style={{ padding: '5px 12px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '12px', color: C.navy, fontWeight: '600' }}>
-                  + 파일 추가
-                  <input type="file" multiple onChange={handleFileAdd} style={{ display: 'none' }} />
-                </label>
-              </div>
-              {files.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
-                  {files.map((f, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '6px', background: C.bg, border: `1px solid ${C.border}` }}>
-                      <span style={{ fontSize: '13px', flex: 1 }}>📎 {f.name}</span>
-                      <span style={{ fontSize: '12px', color: C.muted }}>({(f.size / 1024 / 1024).toFixed(1)}MB)</span>
-                      <button onClick={() => setFiles(prev => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '18px' }}>×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div style={{ fontSize: '12px', color: C.muted }}>📌 최대 50MB까지 첨부 가능합니다.</div>
-            </div>
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button onClick={() => { setShowForm(false); setEditingId(null); setFiles([]) }} style={{ padding: '8px 18px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
-              <button onClick={handleSubmit} disabled={uploading} style={{ padding: '8px 18px', borderRadius: '8px', border: 'none', background: C.navy, color: C.white, cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>{uploading ? '저장 중...' : '저장'}</button>
-            </div>
-          </div>
-        )}
-
+      />
+      <div style={{ padding: '20px 24px', maxWidth: 960, margin: '0 auto' }}>
         {/* 검색 */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
-          <input
-            value={searchInput} onChange={e => setSearchInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') { setSearch(searchInput); setPage(1) } }}
-            placeholder="검색어를 입력해 주세요"
-            style={{ padding: '9px 14px', borderRadius: '6px', border: `1px solid ${C.border}`, fontSize: '14px', width: '300px' }}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
+          <SearchInput value={searchInput} onChange={setSearchInput}
+            placeholder="제목으로 검색…"
+            style={{ width: 300 }}
           />
-          <button onClick={() => { setSearch(searchInput); setPage(1) }} style={{
-            padding: '9px 20px', borderRadius: '6px', border: 'none',
-            background: C.navy, color: C.white, cursor: 'pointer', fontSize: '14px', fontWeight: '600',
-          }}>검색</button>
-          {search && <button onClick={() => { setSearch(''); setSearchInput(''); setPage(1) }} style={{
-            padding: '9px 14px', borderRadius: '6px', border: `1px solid ${C.border}`,
-            background: C.white, cursor: 'pointer', fontSize: '13px',
-          }}>초기화</button>}
+          <button onClick={() => { setSearch(searchInput); setPage(1) }} style={{ ...btnPrimary, padding: '8px 18px' }}>검색</button>
+          {search && <button onClick={() => { setSearch(''); setSearchInput(''); setPage(1) }} style={{ ...btnGhost, padding: '8px 14px' }}>초기화</button>}
         </div>
 
-        {/* 테이블 */}
-        <div style={{ background: C.white, borderRadius: '10px', border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 1px 4px rgba(26,42,94,0.06)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 80px 90px 60px 40px' + (isAdmin ? ' 80px' : ''), background: C.bg, borderBottom: `2px solid ${C.border}`, padding: '12px 20px' }}>
-            {['번호', '제목', '작성자', '작성일', '조회', '파일', ...(isAdmin ? ['관리'] : [])].map(h => (
-              <div key={h} style={{ fontSize: '11px', fontWeight: '700', color: C.muted, textTransform: 'uppercase', textAlign: h === '제목' ? 'left' : 'center' }}>{h}</div>
-            ))}
-          </div>
-
-          {notices.length === 0 ? (
-            <div style={{ padding: '60px', textAlign: 'center', color: C.muted, fontSize: '14px' }}>
-              {search ? '검색 결과가 없습니다.' : '등록된 공지사항이 없습니다.'}
-            </div>
-          ) : (
-            notices.map((notice, i) => (
-              <div key={notice.id}
-                onClick={() => navigate(`/notices/${notice.id}`)}
-                style={{
-                  display: 'grid', gridTemplateColumns: '60px 1fr 80px 90px 60px 40px' + (isAdmin ? ' 80px' : ''),
-                  padding: '14px 20px', cursor: 'pointer',
-                  borderBottom: `1px solid ${C.border}`,
-                  transition: 'background 0.1s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = '#F5F7FC'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >
-                <div style={{ fontSize: '13px', color: C.muted, textAlign: 'center' }}>{total - (page - 1) * PAGE_SIZE - i}</div>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: C.text }}>{notice.title}</div>
-                <div style={{ fontSize: '12px', color: C.muted, textAlign: 'center' }}>{notice.author || '-'}</div>
-                <div style={{ fontSize: '12px', color: C.muted, textAlign: 'center' }}>{new Date(notice.created_at).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' })}</div>
-                <div style={{ fontSize: '12px', color: C.muted, textAlign: 'center' }}>{notice.views || 0}</div>
-                <div style={{ textAlign: 'center' }}>{notice.notice_files?.length > 0 && <span style={{ fontSize: '13px' }}>📎</span>}</div>
-                {isAdmin && (
-                  <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
-                    <button onClick={e => handleEdit(notice, e)} style={{ padding: '3px 8px', borderRadius: '4px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '11px' }}>수정</button>
-                    <button onClick={e => { e.stopPropagation(); handleDelete(notice.id) }} style={{ padding: '3px 8px', borderRadius: '4px', border: '1px solid #FC8181', background: '#FFF5F5', color: C.danger, cursor: 'pointer', fontSize: '11px' }}>삭제</button>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* 페이지네이션 */}
-        {totalPages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '4px', marginTop: '24px' }}>
-            <button onClick={() => setPage(1)} disabled={page === 1} style={{ padding: '6px 10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: page === 1 ? 'default' : 'pointer', fontSize: '13px', opacity: page === 1 ? 0.4 : 1 }}>«</button>
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ padding: '6px 10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: page === 1 ? 'default' : 'pointer', fontSize: '13px', opacity: page === 1 ? 0.4 : 1 }}>‹</button>
-            {Array.from({ length: Math.min(10, totalPages) }, (_, i) => {
-              const p = Math.max(1, Math.min(page - 4, totalPages - 9)) + i
-              return p <= totalPages ? (
-                <button key={p} onClick={() => setPage(p)} style={{
-                  padding: '6px 12px', borderRadius: '6px', border: `1px solid ${page === p ? C.navy : C.border}`,
-                  background: page === p ? C.navy : C.white, color: page === p ? C.white : C.text,
-                  cursor: 'pointer', fontSize: '13px', fontWeight: page === p ? '700' : '400',
-                }}>{p}</button>
-              ) : null
-            })}
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={{ padding: '6px 10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: page === totalPages ? 'default' : 'pointer', fontSize: '13px', opacity: page === totalPages ? 0.4 : 1 }}>›</button>
-            <button onClick={() => setPage(totalPages)} disabled={page === totalPages} style={{ padding: '6px 10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: page === totalPages ? 'default' : 'pointer', fontSize: '13px', opacity: page === totalPages ? 0.4 : 1 }}>»</button>
-          </div>
-        )}
+        <BulletinTable rows={notices} total={total} page={page} isAdmin={isAdmin}
+          onRowClick={n => navigate(`/notices/${n.id}`)}
+          onEdit={handleEdit} onDelete={handleDelete}
+          emptyMsg={search ? '검색 결과가 없습니다.' : '등록된 공지사항이 없습니다.'} />
+        <Pagination page={page} totalPages={Math.ceil(total / PAGE_SIZE)} setPage={setPage} />
       </div>
+
+      <WriteModal open={showModal} onClose={() => setShowModal(false)}
+        form={form} setForm={setForm} files={files} setFiles={setFiles}
+        onSubmit={handleSubmit} uploading={uploading} editing={!!editingId} />
     </div>
   )
 }
