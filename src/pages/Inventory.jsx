@@ -560,7 +560,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
   async function fetchLots() {
     setLoading(true)
     const { data: lotData } = await supabase.from('reagent_lots')
-      .select('*, reagents(id, name, cas_no, category, hazard, volume, unit, locations(room, detail))')
+      .select('*, reagents(id, name, cas_no, company, category, hazard, volume, unit, locations(room, detail))')
       .order('reagents(name)')
     const { data: countData } = await supabase.from('inventory_counts').select('*').eq('session_id', session.id)
     if (lotData) {
@@ -658,7 +658,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
 
   const doneCnt = lots.filter(l => counts[l.id]?.actual_sealed != null).length
   const pct = lots.length > 0 ? Math.round(doneCnt / lots.length * 100) : 0
-  const fieldLabels = { name: '시약명', volume: '용량', unit: '단위', category: '성상/유별', hazard: '유해위험성', cas_no: 'CAS No.' }
+  const fieldLabels = { name: '시약명', volume: '용량', unit: '단위', category: '성상/유별', hazard: '유해위험성', cas_no: 'CAS No.', company: '회사' }
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: C.muted }}>불러오는 중...</div>
 
@@ -767,7 +767,9 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                         style={{ background: hasDiff ? '#FFF8F8' : isDone ? '#F0FFF4' : C.white }}>
                         <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px' }}>
                           {lot.reagents?.name || '-'}
-                          <div style={{ fontSize: '11px', color: C.muted, fontWeight: '400' }}>{lot.reagents?.cas_no || ''}</div>
+                          <div style={{ fontSize: '11px', color: C.muted, fontWeight: '400' }}>
+                            {[lot.reagents?.cas_no, lot.reagents?.company].filter(Boolean).join(' · ') || '기준정보 없음'}
+                          </div>
                         </td>
                         <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>
                           {lot.reagents?.locations?.room || '-'}

@@ -5,10 +5,11 @@ import { C, PageBanner, Card, StatusBadge, inputStyle, labelStyle, btnPrimary, b
 import { exportPurchaseRequests } from '../exportUtils'
 
 export default function Admin() {
-  const { isAdmin, isSuper } = useOutletContext()
+  const { isAdmin, isSuper, student } = useOutletContext()
   const TABS = [
     { key: 'notice', label: '공지/안전관리', icon: '📢', sub: 'Notice' },
   { key: 'changereq', label: '변경 요청', icon: '📝', sub: 'Change Requests' },
+  { key: 'bulkedit', label: '시약 일괄정리', icon: '🧹', sub: 'Bulk Edit' },
   { key: 'reagent',  label: '시약 추가',      icon: '🧪', sub: 'Add Reagent' },
   { key: 'item',     label: '물품 추가',       icon: '📦', sub: 'Add Item' },
   { key: 'disposal', label: '폐기 관리',       icon: '🗑️', sub: 'Disposal' },
@@ -91,10 +92,11 @@ export default function Admin() {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           {tab === 'notice' && <NoticeTab />}
-          {tab === 'changereq' && <ChangeRequestTab />}
+          {tab === 'changereq' && <ChangeRequestTab student={student} />}
+          {tab === 'bulkedit' && <BulkEditTab locations={locations} student={student} />}
           {tab === 'reagent'  && <ReagentAddTab locations={locations} />}
           {tab === 'item'     && <ItemAddTab locations={locations} />}
-          {tab === 'disposal' && <DisposalTab onCountChange={fetchDisposalCount} />}
+          {tab === 'disposal' && <DisposalTab onCountChange={fetchDisposalCount} student={student} />}
           {tab === 'move'     && <MoveTab locations={locations} />}
           {tab === 'update' && <BulkUpdateTab />}
           {tab === 'purchase' && <PurchaseTab onCountChange={fetchPendingCount} />}
@@ -414,10 +416,10 @@ useEffect(() => {
 // ══════════════════════════════════════════════
 //  폐기 관리
 // ══════════════════════════════════════════════
-function DisposalTab({ onCountChange }) {
+function DisposalTab({ onCountChange, student }) {
   const [requests, setRequests] = useState([])
   const [filter, setFilter] = useState('pending')
-  const [adminName, setAdminName] = useState('')
+  const [adminName, setAdminName] = useState(() => student?.name || '')
 
   useEffect(() => { fetchRequests() }, [])
 
@@ -431,7 +433,8 @@ function DisposalTab({ onCountChange }) {
     if (!adminName.trim()) { alert('승인자 이름을 입력해주세요'); return }
     if (!window.confirm(`"${req.reagent_name}" 폐기를 승인하시겠습니까?`)) return
     await supabase.from('disposal_requests').update({
-      status: 'approved', approved_by: adminName, approved_at: new Date().toISOString(),
+      status: 'approved', approved_by: adminName, approved_by_student_id: student?.student_id ?? null,
+      approved_at: new Date().toISOString(),
     }).eq('id', req.id)
     await supabase.from('admin_logs').insert({
       admin_name: adminName, action: '폐기 승인',
@@ -448,6 +451,12 @@ function DisposalTab({ onCountChange }) {
       const { data: lot } = await supabase.from('reagent_lots').select('*').eq('id', req.lot_id).single()
       if (lot) await supabase.from('reagent_lots').update({ sealed_count: Math.max(0, lot.sealed_count - 1) }).eq('id', req.lot_id)
     }
+    // 남은 lot이 전부 소진됐으면 목록에서 보관(archived) 처리 — 데이터는 지우지 않음
+    if (req.reagent_id) {
+      const { data: remainingLots } = await supabase.from('reagent_lots').select('sealed_count, current_stock').eq('reagent_id', req.reagent_id)
+      const allGone = (remainingLots || []).every(l => l.sealed_count <= 0 && l.current_stock <= 0)
+      if (allGone) await supabase.from('reagents').update({ status: 'archived' }).eq('id', req.reagent_id)
+    }
     await supabase.from('disposal_requests').update({ status: 'disposed', disposed_at: new Date().toISOString() }).eq('id', req.id)
     await supabase.from('admin_logs').insert({
       admin_name: adminName, action: '폐기 완료',
@@ -460,7 +469,9 @@ function DisposalTab({ onCountChange }) {
   async function reject(req) {
     if (!adminName.trim()) { alert('처리자 이름을 입력해주세요'); return }
     if (!window.confirm(`"${req.reagent_name}" 폐기 신청을 반려하시겠습니까?`)) return
-    await supabase.from('disposal_requests').update({ status: 'rejected' }).eq('id', req.id)
+    await supabase.from('disposal_requests').update({
+      status: 'rejected', approved_by: adminName, approved_by_student_id: student?.student_id ?? null,
+    }).eq('id', req.id)
     fetchRequests()
   }
 
@@ -1614,12 +1625,202 @@ if (data) setReagents(data)
 }
 
 // ══════════════════════════════════════════════
+//  시약 일괄정리 탭
+// ══════════════════════════════════════════════
+function BulkEditTab({ locations, student }) {
+  const [reagents, setReagents] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [roomFilter, setRoomFilter] = useState('')
+  const [companyFilter, setCompanyFilter] = useState('')
+  const [checkedIds, setCheckedIds] = useState(new Set())
+  const [cols, setCols] = useState({ location: true, stock: true, company: true, expiry: false })
+  const [edits, setEdits] = useState({}) // { [reagentId]: { location_id?, company?, current_stock? } }
+  const [saving, setSaving] = useState(false)
+
+  const rooms = [...new Set(locations.map(l => l.room))]
+
+  useEffect(() => { fetchReagents() }, [])
+
+  async function fetchReagents() {
+    setLoading(true)
+    let query = supabase.from('reagents')
+      .select('*, reagent_lots(*), locations(*)')
+      .neq('status', 'archived')
+      .order('name')
+      .range(0, 2999)
+    if (companyFilter.trim()) query = query.ilike('company', `%${companyFilter.trim()}%`)
+    const { data } = await query
+    let filtered = data || []
+    if (roomFilter) filtered = filtered.filter(r => r.locations?.room === roomFilter)
+    setReagents(filtered)
+    setLoading(false)
+  }
+
+  function toggleCheck(id) {
+    const next = new Set(checkedIds)
+    next.has(id) ? next.delete(id) : next.add(id)
+    setCheckedIds(next)
+  }
+  function toggleAll() {
+    if (checkedIds.size === reagents.length) setCheckedIds(new Set())
+    else setCheckedIds(new Set(reagents.map(r => r.id)))
+  }
+
+  function setEdit(reagentId, field, value) {
+    setEdits(prev => ({ ...prev, [reagentId]: { ...prev[reagentId], [field]: value } }))
+  }
+  function clearEditIfSame(reagentId, field, value, original) {
+    if (String(value) === String(original ?? '')) {
+      setEdits(prev => {
+        const next = { ...prev }
+        if (next[reagentId]) {
+          const { [field]: _, ...rest } = next[reagentId]
+          if (Object.keys(rest).length === 0) delete next[reagentId]
+          else next[reagentId] = rest
+        }
+        return next
+      })
+    } else {
+      setEdit(reagentId, field, value)
+    }
+  }
+
+  const changedReagentCount = Object.keys(edits).length
+  const changedCellCount = Object.values(edits).reduce((s, e) => s + Object.keys(e).length, 0)
+
+  async function saveAll() {
+    if (changedReagentCount === 0) return
+    if (!window.confirm(`${changedReagentCount}개 시약 · ${changedCellCount}개 항목을 저장하시겠습니까?`)) return
+    setSaving(true)
+    for (const [reagentId, fields] of Object.entries(edits)) {
+      const reagentFields = {}
+      if (fields.location_id !== undefined) reagentFields.location_id = fields.location_id
+      if (fields.company !== undefined) reagentFields.company = fields.company
+      if (Object.keys(reagentFields).length > 0) {
+        await supabase.from('reagents').update(reagentFields).eq('id', reagentId)
+      }
+      if (fields.current_stock !== undefined) {
+        const r = reagents.find(x => x.id === reagentId)
+        const firstLot = r?.reagent_lots?.[0]
+        if (firstLot) await supabase.from('reagent_lots').update({ current_stock: Number(fields.current_stock) }).eq('id', firstLot.id)
+      }
+    }
+    await supabase.from('admin_logs').insert({
+      admin_name: student?.name || '', action: '시약 일괄정리',
+      target_type: 'reagent', target_id: null,
+      description: `${changedReagentCount}개 시약 · ${changedCellCount}개 항목 일괄 저장`,
+    })
+    setEdits({})
+    setSaving(false)
+    fetchReagents()
+    alert('저장되었습니다!')
+  }
+
+  const changedStyle = { background: C.blueTint, borderRadius: '4px' }
+
+  return (
+    <Card title="🧹 시약 일괄정리" sub="Bulk Edit">
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <select value={roomFilter} onChange={e => setRoomFilter(e.target.value)} style={{ ...inputStyle, maxWidth: '160px' }}>
+          <option value="">전체 실험실</option>
+          {rooms.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <input value={companyFilter} onChange={e => setCompanyFilter(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchReagents()}
+          placeholder="제조사 검색" style={{ ...inputStyle, maxWidth: '160px' }} />
+        <button onClick={fetchReagents} style={{ ...btnGhost, padding: '8px 16px' }}>필터 적용</button>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: '11.5px', color: C.muted }}>표시 열</span>
+        {[['location', '위치'], ['stock', '잔량'], ['company', '회사'], ['expiry', '유효기간']].map(([key, label]) => (
+          <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.textSub }}>
+            <input type="checkbox" checked={cols[key]} onChange={() => setCols(c => ({ ...c, [key]: !c[key] }))} />{label}
+          </label>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        background: C.bg, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px 14px', marginBottom: '12px' }}>
+        <span style={{ fontSize: '12.5px', color: C.text }}>
+          <b>{reagents.length}개</b> 필터결과 · <b>{checkedIds.size}개</b> 선택됨
+          {changedReagentCount > 0 && (
+            <span style={{ marginLeft: '10px', color: C.blueDark, fontWeight: '700', background: C.blueTint, padding: '3px 10px', borderRadius: '999px', fontSize: '12px' }}>
+              변경된 시약 {changedReagentCount}개 · 변경된 셀 {changedCellCount}개
+            </span>
+          )}
+        </span>
+        <button onClick={saveAll} disabled={changedReagentCount === 0 || saving} style={{
+          ...btnPrimary, padding: '8px 18px', opacity: changedReagentCount === 0 || saving ? 0.5 : 1,
+          cursor: changedReagentCount === 0 || saving ? 'default' : 'pointer',
+        }}>{saving ? '저장 중...' : '전체 저장'}</button>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: '40px', textAlign: 'center', color: C.muted }}>불러오는 중...</div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={thStyle}><input type="checkbox" checked={reagents.length > 0 && checkedIds.size === reagents.length} onChange={toggleAll} /></th>
+                <th style={thStyle}>시약명</th>
+                {cols.location && <th style={thStyle}>위치</th>}
+                {cols.stock && <th style={thStyle}>잔량</th>}
+                {cols.company && <th style={thStyle}>회사</th>}
+                {cols.expiry && <th style={thStyle}>유효기간</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {reagents.length === 0 ? (
+                <tr><td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: C.muted }}>조건에 맞는 시약이 없습니다.</td></tr>
+              ) : reagents.map(r => {
+                const firstLot = r.reagent_lots?.[0]
+                const edit = edits[r.id] || {}
+                return (
+                  <tr key={r.id}>
+                    <td style={tdStyle}><input type="checkbox" checked={checkedIds.has(r.id)} onChange={() => toggleCheck(r.id)} /></td>
+                    <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>{r.name}</td>
+                    {cols.location && (
+                      <td style={{ ...tdStyle, ...(edit.location_id !== undefined ? changedStyle : {}) }}>
+                        <select value={edit.location_id ?? r.location_id ?? ''} onChange={e => clearEditIfSame(r.id, 'location_id', e.target.value, r.location_id)}
+                          style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px' }}>
+                          {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+                        </select>
+                      </td>
+                    )}
+                    {cols.stock && (
+                      <td style={{ ...tdStyle, ...(edit.current_stock !== undefined ? changedStyle : {}) }}>
+                        {firstLot ? (
+                          <select value={edit.current_stock ?? firstLot.current_stock} onChange={e => clearEditIfSame(r.id, 'current_stock', e.target.value, firstLot.current_stock)}
+                            style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px', width: '80px' }}>
+                            {[100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 0].map(v => <option key={v} value={v}>{v}%</option>)}
+                          </select>
+                        ) : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
+                      </td>
+                    )}
+                    {cols.company && (
+                      <td style={{ ...tdStyle, ...(edit.company !== undefined ? changedStyle : {}) }}>
+                        <input value={edit.company ?? r.company ?? ''} onChange={e => clearEditIfSame(r.id, 'company', e.target.value, r.company)}
+                          style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px', width: '110px' }} />
+                      </td>
+                    )}
+                    {cols.expiry && <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{firstLot?.expiry_date || '-'}</td>}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+// ══════════════════════════════════════════════
 //  변경 요청 탭
 // ══════════════════════════════════════════════
-function ChangeRequestTab() {
+function ChangeRequestTab({ student }) {
   const [requests, setRequests] = useState([])
   const [filter, setFilter] = useState('pending')
-  const [adminName, setAdminName] = useState('')
+  const [adminName, setAdminName] = useState(() => student?.name || '')
 
   useEffect(() => { fetchRequests() }, [])
 
@@ -1634,9 +1835,10 @@ function ChangeRequestTab() {
     if (!adminName.trim()) { alert('승인자 이름을 입력해주세요'); return }
     if (!window.confirm(`"${req.reagents?.name}"의 ${req.field_name}을 "${req.new_value}"로 변경하시겠습니까?`)) return
 
-    await supabase.from('reagents').update({ [req.field_name]: req.new_value }).eq('id', req.reagent_id)
+    const now = new Date().toISOString()
+    await supabase.from('reagents').update({ [req.field_name]: req.new_value, last_confirmed_at: now, confirmed_by: student?.student_id ?? null }).eq('id', req.reagent_id)
     await supabase.from('reagent_change_requests').update({
-      status: 'approved', approved_by: adminName, approved_at: new Date().toISOString()
+      status: 'approved', approved_by: adminName, approved_by_student_id: student?.student_id ?? null, approved_at: now,
     }).eq('id', req.id)
     await supabase.from('admin_logs').insert({
       admin_name: adminName, action: '변경 요청 승인',
@@ -1649,11 +1851,11 @@ function ChangeRequestTab() {
   async function reject(req) {
     if (!adminName.trim()) { alert('처리자 이름을 입력해주세요'); return }
     if (!window.confirm('변경 요청을 반려하시겠습니까?')) return
-    await supabase.from('reagent_change_requests').update({ status: 'rejected', approved_by: adminName }).eq('id', req.id)
+    await supabase.from('reagent_change_requests').update({ status: 'rejected', approved_by: adminName, approved_by_student_id: student?.student_id ?? null }).eq('id', req.id)
     fetchRequests()
   }
 
-  const fieldLabels = { name: '시약명', volume: '용량', unit: '단위', category: '성상/유별', hazard: '유해위험성', cas_no: 'CAS No.' }
+  const fieldLabels = { name: '시약명', volume: '용량', unit: '단위', category: '성상/유별', hazard: '유해위험성', cas_no: 'CAS No.', company: '회사', manager: '담당자', msds_url: 'MSDS URL', notes: '비고' }
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter)
   const counts = { all: requests.length, pending: 0, approved: 0, rejected: 0 }
   requests.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++ })

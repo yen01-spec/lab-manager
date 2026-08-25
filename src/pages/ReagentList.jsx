@@ -57,6 +57,12 @@ export default function ReagentList() {
   // 인라인 편집
   const [inlineEdit, setInlineEdit] = useState(null)
 
+  // 학생 수정 대기중 / 확인 / 직접제조시약
+  const [pendingChanges, setPendingChanges] = useState([])
+  const [confirmedByName, setConfirmedByName] = useState('')
+  const [showMadeModal, setShowMadeModal] = useState(false)
+  const [madeForm, setMadeForm] = useState({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
+
   useEffect(() => { fetchLocations() }, [])
 
   async function fetchLocations() {
@@ -68,6 +74,7 @@ export default function ReagentList() {
   const { data, count } = await supabase.from('reagents')
     .select('*, reagent_lots(*), locations(*)', { count: 'exact' })
     .eq('location_id', locationId)
+    .neq('status', 'archived')
     .range(0, 4999)
   if (count > 4999) {
     alert(`⚠️ 시약이 ${count}개로 많아 일부만 표시됩니다. 관리자에게 문의하세요.`)
@@ -84,6 +91,7 @@ export default function ReagentList() {
   const { data, count } = await supabase.from('reagents')
     .select('*, reagent_lots(*), locations(*)', { count: 'exact' })
     .ilike('name', `%${search}%`)
+    .neq('status', 'archived')
     .range(0, 4999)
   if (count > 4999) {
     alert(`⚠️ 검색 결과가 ${count}개로 많아 일부만 표시됩니다.`)
@@ -104,6 +112,13 @@ export default function ReagentList() {
       .select('*').eq('reagent_id', reagent.id)
       .order('created_at', { ascending: false }).limit(20)
     if (history) setStockHistory(history)
+    fetchPendingChanges(reagent.id)
+    if (data.confirmed_by) {
+      const { data: cs } = await supabase.from('students').select('name').eq('student_id', data.confirmed_by).maybeSingle()
+      setConfirmedByName(cs?.name || data.confirmed_by)
+    } else {
+      setConfirmedByName('')
+    }
 
     // CAS 번호로 GHS 자동 조회
     if (data.cas_no) {
@@ -209,7 +224,8 @@ function toggleCheck(id, e, allData) {
       reagent_id: selectedReagent.id, lot_id: firstLot?.id || null,
       reagent_name: selectedReagent.name, lot_no: firstLot?.lot_no || null,
       quantity: disposalForm.quantity, reason: disposalForm.reason,
-      requested_by: disposalForm.requested_by, status: 'pending',
+      requested_by: disposalForm.requested_by, requested_by_student_id: student?.student_id ?? null,
+      status: 'pending',
     })
     alert('폐기 신청이 완료됐어요!')
     setShowDisposalModal(false)
@@ -244,6 +260,25 @@ function toggleCheck(id, e, allData) {
     setStockForm({ action: 'out', quantity: '', unit: '', user_name: '', notes: '' })
     openReagent(selectedReagent)
     refetchReagents()
+  }
+
+  async function submitMade() {
+    if (!madeForm.name.trim()) { alert('시약명을 입력해주세요'); return }
+    if (!madeForm.location_id) { alert('보관 위치를 선택해주세요'); return }
+    if (!student) { alert('로그인 후 이용해주세요'); return }
+    const { data: reagent, error } = await supabase.from('reagents').insert({
+      name: madeForm.name, volume: madeForm.volume || null, unit: madeForm.unit || null,
+      location_id: madeForm.location_id, reagent_type: 'self_made',
+      made_date: madeForm.made_date, made_purpose: madeForm.made_purpose,
+    }).select().single()
+    if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
+    await supabase.from('reagent_lots').insert({
+      reagent_id: reagent.id, sealed_count: 0, current_stock: 100, received_date: madeForm.made_date,
+    })
+    alert('직접 제조 시약이 등록되었어요!')
+    setShowMadeModal(false)
+    setMadeForm({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
+    if (selectedLocation?.id === madeForm.location_id) refetchReagents()
   }
 
   async function submitMove() {
@@ -293,11 +328,37 @@ function toggleCheck(id, e, allData) {
   alert('저장되었습니다!')
 }
 async function saveField(field, value, sourceField) {
-  const updateData = { [field]: value }
-  if (sourceField) updateData[sourceField] = 'manual'
-  await supabase.from('reagents').update(updateData).eq('id', selectedReagent.id)
-  setSelectedReagent(prev => ({ ...prev, [field]: value, ...(sourceField ? { [sourceField]: 'manual' } : {}) }))
+  if (isAdmin) {
+    const updateData = { [field]: value }
+    if (sourceField) updateData[sourceField] = 'manual'
+    await supabase.from('reagents').update(updateData).eq('id', selectedReagent.id)
+    setSelectedReagent(prev => ({ ...prev, [field]: value, ...(sourceField ? { [sourceField]: 'manual' } : {}) }))
+  } else {
+    await supabase.from('reagent_change_requests').insert({
+      reagent_id: selectedReagent.id, field_name: field,
+      old_value: String(selectedReagent[field] ?? ''), new_value: String(value),
+      requested_by: student?.name || '', requested_by_student_id: student?.student_id ?? null,
+      status: 'pending',
+    })
+    alert('수정 신청 완료! 관리자 승인 후 반영됩니다.')
+    fetchPendingChanges(selectedReagent.id)
+  }
   setEditingField(null)
+}
+
+async function fetchPendingChanges(reagentId) {
+  const { data } = await supabase.from('reagent_change_requests')
+    .select('*').eq('reagent_id', reagentId).eq('status', 'pending')
+  setPendingChanges(data || [])
+}
+
+async function confirmReagent() {
+  if (!student) { alert('로그인 후 이용해주세요'); return }
+  const now = new Date().toISOString()
+  await supabase.from('reagents').update({ last_confirmed_at: now, confirmed_by: student.student_id }).eq('id', selectedReagent.id)
+  setSelectedReagent(prev => ({ ...prev, last_confirmed_at: now, confirmed_by: student.student_id }))
+  setConfirmedByName(student.name)
+  refetchReagents()
 }
 
   function startInlineEdit(lotId, reagentId, field, currentValue, e) {
@@ -346,7 +407,7 @@ async function saveField(field, value, sourceField) {
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' })
   }
 
-  const COLS = editMode ? 10 : 9
+  const COLS = editMode ? 11 : 10
 
   const ReagentTable = ({ data }) => {
     const groups = getGroupedReagents(data)
@@ -368,7 +429,7 @@ async function saveField(field, value, sourceField) {
                   style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
               </th>
             )}
-            {['시약명', 'CAS No.', '회사', '용량', '성상', '위치', 'GHS', '재고', '상태'].map(h => (
+            {['시약명', 'CAS No.', '회사', '용량', '성상', '위치', 'GHS', '재고', '최근확인', '상태'].map(h => (
               <th key={h} style={thStyle}>{h}</th>
             ))}
           </tr>
@@ -415,6 +476,8 @@ async function saveField(field, value, sourceField) {
                     )}
                     <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px' }}>
                       {r.name}
+                      {r.reagent_type === 'self_made' && <span style={{ marginLeft: '6px', fontSize: '9.5px', background: '#EAF1FB',
+                        color: '#1F4E96', padding: '1px 7px', borderRadius: '999px', fontWeight: '700' }}>직접제조</span>}
                       {isLow && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
                         color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
                     </td>
@@ -470,6 +533,9 @@ async function saveField(field, value, sourceField) {
                           )}
                         </div>
                       ) : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
+                    </td>
+                    <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted, whiteSpace: 'nowrap' }}>
+                      {r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString() : '-'}
                     </td>
                     <td style={tdStyle}>
                       {isLow
@@ -533,6 +599,13 @@ async function saveField(field, value, sourceField) {
             <button onClick={handleSearch} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>검색</button>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {student && (
+              <button onClick={() => setShowMadeModal(true)} style={{
+                background: '#F9FBFF', color: '#1F4E96', border: `1px dashed #C9DAF5`,
+                padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
+                fontSize: '13px', fontWeight: '600', flexShrink: 0,
+              }}>🧪 직접 제조 시약 등록</button>
+            )}
             {isAdmin && currentData.length > 0 && (
               <button onClick={() => exportReagents(currentData)} style={{
                 background: '#1D6F42', color: 'white', border: 'none',
@@ -757,6 +830,60 @@ async function saveField(field, value, sourceField) {
         </div>
       )}
 
+      {/* 직접 제조 시약 등록 모달 */}
+      {showMadeModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(26,42,94,0.55)', zIndex: 400,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setShowMadeModal(false)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: C.white, borderRadius: '14px', padding: '28px',
+            width: '420px', maxWidth: '92vw', boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+              <h3 style={{ margin: 0, color: C.navy }}>🧪 직접 제조 시약 등록</h3>
+              <span style={{ background: '#EAF1FB', color: '#1F4E96', fontSize: '10.5px', fontWeight: '700', padding: '2px 8px', borderRadius: '999px' }}>직접제조</span>
+            </div>
+            <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '12px' }}>구매 시약과 달리 CAS·회사 정보가 없어요. 필요한 정보만 입력하세요.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={labelStyle}>제조한 시약명 *</label>
+                <input value={madeForm.name} onChange={e => setMadeForm({ ...madeForm, name: e.target.value })} placeholder="예) pH 7.0 인산완충용액" style={inputStyle} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
+                <div>
+                  <label style={labelStyle}>용량</label>
+                  <input value={madeForm.volume} onChange={e => setMadeForm({ ...madeForm, volume: e.target.value })} placeholder="예: 500" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>단위</label>
+                  <input value={madeForm.unit} onChange={e => setMadeForm({ ...madeForm, unit: e.target.value })} placeholder="mL" style={inputStyle} />
+                </div>
+              </div>
+              <div>
+                <label style={labelStyle}>제조일</label>
+                <input type="date" value={madeForm.made_date} onChange={e => setMadeForm({ ...madeForm, made_date: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>용도</label>
+                <input value={madeForm.made_purpose} onChange={e => setMadeForm({ ...madeForm, made_purpose: e.target.value })} placeholder="예: 분광광도계 실험용 완충용액" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>보관 위치 *</label>
+                <select value={madeForm.location_id} onChange={e => setMadeForm({ ...madeForm, location_id: e.target.value })} style={inputStyle}>
+                  <option value="">선택하세요</option>
+                  {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+              <button onClick={() => setShowMadeModal(false)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
+              <button onClick={submitMade} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.navy, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>등록하기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 폐기 신청 모달 */}
       {showDisposalModal && selectedReagent && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -889,17 +1016,20 @@ async function saveField(field, value, sourceField) {
           <button onClick={() => setSelectedReagent(null)} style={{ background: 'transparent', border: 'none', borderRadius: '6px', width: '32px', height: '32px', cursor: 'pointer', fontSize: '18px', color: '#CBD5E0' }}>×</button>
         </div>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {student && (
+            <button onClick={confirmReagent} style={{ background: '#E6F5EE', color: '#1A8757', border: '1px solid #A9DDC4', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>✅ 정보 맞음 · 확인만 하기</button>
+          )}
           <button onClick={() => setShowStockModal(true)} style={{ background: '#EBF8FF', color: '#2B6CB0', border: '1px solid #90CDF4', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔵 입출고</button>
           <button onClick={() => setShowMoveModal(true)} style={{ background: '#EEF2FB', color: '#667EEA', border: '1px solid #C3D0F5', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔵 위치 이동</button>
           <button onClick={() => setShowDisposalModal(true)} style={{ background: '#FFF5F5', color: C.danger, border: '1px solid #FC8181', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🗑️ 폐기 신청</button>
-          {isAdmin && (
+          {student && (
             <div style={{ display: 'flex', gap: '6px' }}>
               <button onClick={() => setShowEditModal(!showEditModal)} style={{
                 background: showEditModal ? C.navy : '#F0FFF4',
                 color: showEditModal ? '#fff' : '#276749',
                 border: `1px solid ${showEditModal ? C.navy : '#9AE6B4'}`,
                 padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-              }}>✏️ {showEditModal ? '수정 완료' : '수정'}</button>
+              }}>✏️ {showEditModal ? '수정 완료' : isAdmin ? '수정' : '수정 신청'}</button>
               {showEditModal && (
                 <button onClick={() => { setShowEditModal(false); setEditingField(null) }} style={{
                   background: '#FFF5F5', color: C.danger, border: '1px solid #FC8181',
@@ -938,12 +1068,20 @@ async function saveField(field, value, sourceField) {
   ['Lot No.', null, lots[0]?.lot_no, lots[0]?.lot_source, null],
   ['MSDS URL', 'msds_url', selectedReagent.msds_url, selectedReagent.msds_source, 'msds_source'],
   ['비고', 'notes', selectedReagent.notes, selectedReagent.notes_source, 'notes_source'],
-].map(([label, field, value, source, sourceField]) => (
+].map(([label, field, value, source, sourceField]) => {
+  const pending = field ? pendingChanges.find(p => p.field_name === field) : null
+  return (
   <tr key={label}>
     <td style={{ padding: '9px 14px', background: C.bg, fontWeight: '700',
       fontSize: '11px', color: C.muted, width: '35%', borderBottom: `1px solid ${C.border}`,
       textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</td>
-    <td style={{ padding: '9px 14px', fontSize: '13px', borderBottom: `1px solid ${C.border}`, color: C.text }}>
+    <td style={{ padding: '9px 14px', fontSize: '13px', borderBottom: `1px solid ${C.border}`, color: C.text,
+      background: pending ? C.warningTint : 'transparent' }}>
+      {pending && (
+        <div style={{ fontSize: '10.5px', color: '#8A5A16', marginBottom: '3px' }}>
+          ⏳ {pending.requested_by} 제안: "{pending.new_value}" · 관리자 승인 대기중
+        </div>
+      )}
       {showEditModal && field && editingField === field ? (
         <input
           autoFocus
@@ -986,9 +1124,24 @@ async function saveField(field, value, sourceField) {
       )}
     </td>
   </tr>
-))}
+  )})}
             </tbody>
           </table>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', padding: '10px 14px', background: C.bg, borderRadius: '8px', fontSize: '12px' }}>
+            <span style={{ color: C.muted }}>최종 확인</span>
+            <span style={{ color: C.text, fontWeight: '600' }}>
+              {selectedReagent.last_confirmed_at
+                ? `${new Date(selectedReagent.last_confirmed_at).toLocaleDateString()} · ${confirmedByName || selectedReagent.confirmed_by}`
+                : '확인 기록 없음'}
+            </span>
+          </div>
+
+          {showEditModal && !isAdmin && (
+            <div style={{ marginBottom: '16px', padding: '10px 14px', background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px', fontSize: '12px', color: '#92400E' }}>
+              ⚠️ 학생 수정은 관리자 승인 후 반영됩니다. 값을 입력하고 Enter/포커스 이동하면 신청이 접수돼요.
+            </div>
+          )}
 
           <div style={{ fontSize: '12px', fontWeight: '700', color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '12px' }}>재고 현황 (Lot별)</div>
           {lots.map(lot => {

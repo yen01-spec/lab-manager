@@ -20,19 +20,18 @@ const NAV_ITEMS = [
   { to: '/',                   label: '홈',         icon: 'home',          end: true },
   { to: '/reagents/locations', label: '시약장 위치', icon: 'location_on'            },
   { to: '/reagents/list',      label: '시약 목록',  icon: 'science'                },
-  { to: '/items',              label: '물품 관리',  icon: 'inventory_2'            },
-  { to: '/requests',           label: '구매 요청',  icon: 'shopping_cart'          },
+  { to: '/purchase-request',   label: '구매요청서', icon: 'shopping_cart'          },
   { to: '/inventory',          label: '재고 실사',  icon: 'checklist'              },
   { to: '/notices',            label: '공지사항',   icon: 'campaign'               },
   { to: '/safety',             label: '안전관리',   icon: 'health_and_safety'      },
 ]
 
 const BOTTOM_NAV = [
-  { to: '/',              label: '홈',    icon: 'home',         end: true },
-  { to: '/reagents/list', label: '시약',  icon: 'science'               },
-  { to: '/items',         label: '물품',  icon: 'inventory_2'           },
-  { to: '/requests',      label: '구매',  icon: 'shopping_cart'         },
-  { to: '/inventory',     label: '실사',  icon: 'checklist'             },
+  { to: '/',                 label: '홈',    icon: 'home',         end: true },
+  { to: '/reagents/list',    label: '시약',  icon: 'science'               },
+  { to: '/purchase-request', label: '구매',  icon: 'shopping_cart'         },
+  { to: '/inventory',        label: '실사',  icon: 'checklist'             },
+  { to: '/notices',          label: '자료',  icon: 'campaign'              },
 ]
 
 export default function Layout() {

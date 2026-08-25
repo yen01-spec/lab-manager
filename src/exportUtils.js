@@ -141,3 +141,35 @@ export function exportPurchaseRequests(requests) {
   ]
   downloadExcel(rows, columns, '구매요청목록')
 }
+
+// ── 구매요청서(시약+물품) 내보내기 — 시트 2개 ─────────────
+export function exportPurchaseRequestForm(reagentItems, goodsItems, requesterName) {
+  const wb = XLSX.utils.book_new()
+
+  if (reagentItems.length > 0) {
+    const header = ['No.', '시약명', '회사', 'CAS No.', 'Cat No.', '성상', '규격', '수량', '용도', '비고']
+    const rows = reagentItems.map((it, i) => [
+      i + 1, it.name, it.company, it.cas_no, it.cat_no, it.state, it.spec, it.quantity, it.purpose, it.note,
+    ])
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+    ws['!cols'] = header.map((h, i) => ({ wch: Math.max(h.length + 2, ...rows.map(r => String(r[i] ?? '').length + 2)) }))
+    XLSX.utils.book_append_sheet(wb, ws, '시약')
+  }
+
+  if (goodsItems.length > 0) {
+    const header = ['No.', '제품명', '규격', '수량', '단가', '배송비', '총가격', '비고', '링크', '용도']
+    const rows = goodsItems.map((it, i) => [
+      i + 1, it.name, it.spec, it.quantity, it.unit_price, it.shipping_fee, it.total_price, it.note, it.link, it.purpose,
+    ])
+    const totalPrice = goodsItems.reduce((s, it) => s + (Number(it.total_price) || 0), 0)
+    const totalShipping = goodsItems.reduce((s, it) => s + (Number(it.shipping_fee) || 0), 0)
+    rows.push(['', '', '', '', '합계', totalShipping, totalPrice, '', '', ''])
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+    ws['!cols'] = header.map((h, i) => ({ wch: Math.max(h.length + 2, ...rows.map(r => String(r[i] ?? '').length + 2)) }))
+    XLSX.utils.book_append_sheet(wb, ws, '물품')
+  }
+
+  if (wb.SheetNames.length === 0) { alert('내보낼 항목이 없습니다.'); return }
+  const dateStr = new Date().toLocaleDateString('ko-KR').replace(/\. /g, '-').replace('.', '')
+  XLSX.writeFile(wb, `구매요청서_${requesterName || ''}_${dateStr}.xlsx`)
+}

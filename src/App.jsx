@@ -10,6 +10,7 @@ import Requests from './pages/Requests'
 import Admin from './pages/Admin'
 import Inventory from './pages/Inventory'
 import NoticeDetail from './pages/NoticeDetail'
+import PurchaseRequest from './pages/PurchaseRequest'
 
 // isAdmin이 확정되기 전엔 관리자 화면을 렌더링하지 않는다 (한 프레임도 노출 안 함).
 function RequireAdmin({ children }) {
@@ -33,6 +34,7 @@ function App() {
         <Route path="reagents/list" element={<ReagentList />} />
         <Route path="items" element={<Items />} />
         <Route path="requests" element={<Requests />} />
+        <Route path="purchase-request" element={<PurchaseRequest />} />
         <Route path="admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
         <Route path="inventory" element={<Inventory />} />
         <Route path="notices" element={<Notices />} />

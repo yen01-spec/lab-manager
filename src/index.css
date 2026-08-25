@@ -46,6 +46,13 @@ input, select, textarea { font-family: inherit; }
   text-overflow: ellipsis;
 }
 
+/* ── 인쇄(PDF로 저장) ─────────────────────────────────── */
+@media print {
+  header, aside, nav, .no-print { display: none !important; }
+  main { margin-left: 0 !important; padding: 0 !important; }
+  body { background: #fff !important; }
+}
+
 /* ── 스크롤바 ─────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
