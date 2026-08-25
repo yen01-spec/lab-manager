@@ -26,16 +26,17 @@ export default function ReagentList() {
   const { isAdmin, student } = useOutletContext?.() || {}
   const [searchParams] = useSearchParams()
   const [locations, setLocations] = useState([])
-  const [selectedLocation, setSelectedLocation] = useState(null)
-  const [reagents, setReagents] = useState([])
-  const [allReagents, setAllReagents] = useState([])
+  const [companies, setCompanies] = useState([])
   const [selectedReagent, setSelectedReagent] = useState(null)
   const [lots, setLots] = useState([])
-  const [openRooms, setOpenRooms] = useState({})
-  const [showLocationBrowse, setShowLocationBrowse] = useState(false)
   const [expandedNames, setExpandedNames] = useState(new Set())
   const [search, setSearch] = useState(() => searchParams.get('q') || '')
-  const [searchResults, setSearchResults] = useState([])
+  const [locationFilter, setLocationFilter] = useState('')
+  const [companyFilter, setCompanyFilter] = useState('')
+  const [showColMenu, setShowColMenu] = useState(false)
+  const [visibleCols, setVisibleCols] = useState({ lot: false, expiry: false })
+  const [results, setResults] = useState([])
+  const [totalCount, setTotalCount] = useState(0)
   const [stockHistory, setStockHistory] = useState([])
   const alphabetRefs = useRef({})
 
@@ -71,60 +72,47 @@ export default function ReagentList() {
   const [showMadeModal, setShowMadeModal] = useState(false)
   const [madeForm, setMadeForm] = useState({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
 
-  useEffect(() => { fetchLocations(); fetchAllReagents() }, [])
+  useEffect(() => { fetchLocations(); fetchCompanies(); fetchTotalCount() }, [])
 
-  // 홈 화면의 통합검색에서 ?q= 로 넘어온 경우 자동으로 검색 실행 (초기값은 위 useState에서 이미 반영)
+  // 검색어(홈 화면 ?q= 포함) 또는 필터가 바뀔 때마다 결과를 다시 불러온다
   useEffect(() => {
-    const q = searchParams.get('q')
-    if (q) handleSearch(q)
+    fetchResults()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [locationFilter, companyFilter])
 
   async function fetchLocations() {
     const { data } = await supabase.from('locations').select('*').order('room')
     if (data) setLocations(data)
   }
 
-  async function fetchAllReagents() {
-    const { data, count } = await supabase.from('reagents')
+  async function fetchCompanies() {
+    const { data } = await supabase.from('reagents').select('company').neq('status', 'archived')
+    const uniq = [...new Set((data || []).map(r => r.company).filter(Boolean))].sort()
+    setCompanies(uniq)
+  }
+
+  async function fetchTotalCount() {
+    const { count } = await supabase.from('reagents').select('*', { count: 'exact', head: true }).neq('status', 'archived')
+    setTotalCount(count || 0)
+  }
+
+  async function fetchResults() {
+    let query = supabase.from('reagents')
       .select('*, reagent_lots(*), locations(*)', { count: 'exact' })
       .neq('status', 'archived')
-      .range(0, 4999)
+    if (search.trim()) query = query.ilike('name', `%${search.trim()}%`)
+    if (locationFilter) query = query.eq('location_id', locationFilter)
+    if (companyFilter) query = query.eq('company', companyFilter)
+    const { data, count } = await query.range(0, 4999)
     if (count > 4999) {
       alert(`⚠️ 시약이 ${count}개로 많아 일부만 표시됩니다. 관리자에게 문의하세요.`)
     }
-    if (data) setAllReagents(data.sort((a, b) => a.name.localeCompare(b.name)))
+    if (data) setResults(data.sort((a, b) => a.name.localeCompare(b.name)))
   }
 
-  async function fetchReagentsByLocation(locationId) {
-  const { data, count } = await supabase.from('reagents')
-    .select('*, reagent_lots(*), locations(*)', { count: 'exact' })
-    .eq('location_id', locationId)
-    .neq('status', 'archived')
-    .range(0, 4999)
-  if (count > 4999) {
-    alert(`⚠️ 시약이 ${count}개로 많아 일부만 표시됩니다. 관리자에게 문의하세요.`)
+  function resetFilters() {
+    setSearch(''); setLocationFilter(''); setCompanyFilter('')
   }
-  if (data) setReagents(data.sort((a, b) => a.name.localeCompare(b.name)))
-}
-
-  async function refetchReagents() {
-    if (selectedLocation) await fetchReagentsByLocation(selectedLocation.id)
-  }
-
-  async function handleSearch(term) {
-  const q = term ?? search
-  if (!q.trim()) return
-  const { data, count } = await supabase.from('reagents')
-    .select('*, reagent_lots(*), locations(*)', { count: 'exact' })
-    .ilike('name', `%${q}%`)
-    .neq('status', 'archived')
-    .range(0, 4999)
-  if (count > 4999) {
-    alert(`⚠️ 검색 결과가 ${count}개로 많아 일부만 표시됩니다.`)
-  }
-  if (data) setSearchResults(data.sort((a, b) => a.name.localeCompare(b.name)))
-}
 
   async function openReagent(reagent) {
   if (editMode) return
@@ -234,7 +222,7 @@ function toggleCheck(id, e, allData) {
     if (!bulkMovedBy.trim()) { alert('이름을 입력해주세요'); return }
     const toLoc = locations.find(l => l.id === bulkMoveLocation)
     const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
-    const selected = (searchResults.length > 0 ? searchResults : reagents).filter(r => checkedIds.has(r.id))
+    const selected = results.filter(r => checkedIds.has(r.id))
 
     for (const r of selected) {
       const fromLocName = r.locations
@@ -258,7 +246,7 @@ function toggleCheck(id, e, allData) {
     setBulkMovedBy('')
     setCheckedIds(new Set())
     setEditMode(false)
-    refetchReagents()
+    fetchResults()
   }
 
   async function submitDisposal() {
@@ -304,7 +292,7 @@ function toggleCheck(id, e, allData) {
     setShowStockModal(false)
     setStockForm({ action: 'out', quantity: '', unit: '', user_name: '', notes: '' })
     openReagent(selectedReagent)
-    refetchReagents()
+    fetchResults()
   }
 
   async function submitMade() {
@@ -323,7 +311,7 @@ function toggleCheck(id, e, allData) {
     alert('직접 제조 시약이 등록되었어요!')
     setShowMadeModal(false)
     setMadeForm({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
-    if (selectedLocation?.id === madeForm.location_id) refetchReagents()
+    fetchResults()
   }
 
   async function submitMove() {
@@ -345,7 +333,7 @@ function toggleCheck(id, e, allData) {
       alert(`✅ 위치 이동 완료!\n${fromLocName} → ${toLocName}`)
       setShowMoveModal(false)
       openReagent(selectedReagent)
-      refetchReagents()
+      fetchResults()
     } else {
       await supabase.from('location_requests').insert({
         reagent_id: selectedReagent.id, reagent_name: selectedReagent.name,
@@ -403,7 +391,7 @@ async function confirmReagent() {
   await supabase.from('reagents').update({ last_confirmed_at: now, confirmed_by: student.student_id }).eq('id', selectedReagent.id)
   setSelectedReagent(prev => ({ ...prev, last_confirmed_at: now, confirmed_by: student.student_id }))
   setConfirmedByName(student.name)
-  refetchReagents()
+  fetchResults()
 }
 
   function startInlineEdit(lotId, reagentId, field, currentValue, e) {
@@ -426,16 +414,13 @@ async function confirmReagent() {
       after_stock: field === 'current_stock' ? numVal : lot.current_stock,
     })
     setInlineEdit(null)
-    refetchReagents()
+    fetchResults()
     if (selectedReagent) {
       const { data } = await supabase.from('reagents')
         .select('*, locations(*), reagent_lots(*)').eq('id', selectedReagent.id).single()
       if (data) { setSelectedReagent(data); setLots(data.reagent_lots || []) }
     }
   }
-
-  const rooms = [...new Set(locations.map(l => l.room))]
-  const toggleRoom = (room) => setOpenRooms(prev => prev[room] ? {} : { [room]: true })
 
   const getGroupedReagents = (data) => {
     const groups = {}
@@ -497,7 +482,7 @@ async function confirmReagent() {
     )
   }
 
-  const COLS = 11
+  const COLS = 11 + (visibleCols.lot ? 1 : 0) + (visibleCols.expiry ? 1 : 0)
 
   const ReagentTable = ({ data }) => {
     const groups = getGroupedReagents(data)
@@ -562,6 +547,9 @@ async function confirmReagent() {
           <td style={{ ...tdStyle, whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
             {firstLot ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ width: '36px', height: '6px', borderRadius: '3px', background: '#F0F2F6', overflow: 'hidden', flexShrink: 0 }}>
+                  <div style={{ width: `${avgStock}%`, height: '100%', background: (firstLot.sealed_count === 0 && avgStock <= 20) ? '#E5484D' : '#1E9E6A' }} />
+                </div>
                 {editingThisSealed ? (
                   <input autoFocus type="number" min="0" value={inlineEdit.value}
                     onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
@@ -594,6 +582,12 @@ async function confirmReagent() {
               </div>
             ) : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
           </td>
+          {visibleCols.lot && (
+            <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap' }}>{firstLot?.lot_no || '-'}</td>
+          )}
+          {visibleCols.expiry && (
+            <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap' }}>{firstLot?.expiry_date || '-'}</td>
+          )}
           <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted, whiteSpace: 'nowrap' }}>
             {r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString() : '-'}
           </td>
@@ -616,7 +610,12 @@ async function confirmReagent() {
                 onChange={() => editMode ? toggleAll(data) : togglePickAll(data)}
                 style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
             </th>
-            {['시약명', 'CAS No.', '회사', '용량', '성상', '위치', 'GHS', '재고', '최근확인', '상태'].map(h => (
+            {[
+              '시약명', 'CAS No.', '회사', '용량', '성상', '위치', 'GHS', '재고',
+              ...(visibleCols.lot ? ['Lot No.'] : []),
+              ...(visibleCols.expiry ? ['유효기간'] : []),
+              '최근확인', '상태',
+            ].map(h => (
               <th key={h} style={thStyle}>{h}</th>
             ))}
           </tr>
@@ -676,48 +675,89 @@ async function confirmReagent() {
 )
   }
 
-  const currentData = searchResults.length > 0 ? searchResults : showLocationBrowse ? reagents : allReagents
+  const rooms = [...new Set(locations.map(l => l.room))]
 
   return (
     <div>
-      <PageBanner title="시약 목록" sub="Reagent List" breadcrumb={['홈', '시약 관리', '시약 목록']} />
+      <PageBanner title="시약 목록" sub="Reagent List" breadcrumb={['홈', '시약 관리', '시약 목록']}
+        extra={<span style={{ fontSize: '12px', color: C.muted }}>전체 {totalCount.toLocaleString()}개 · 검색결과 {results.length.toLocaleString()}개</span>} />
       <div style={{ padding: '8px 16px' }}>
 
-       {/* 검색 + 위치 + 버튼 한 줄 */}
-<div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-  <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '200px' }}>
+        {/* 검색 + 필터 바 */}
+        <div style={{
+          background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px',
+          padding: '12px 16px', boxShadow: '0 1px 3px rgba(16,24,40,.06)',
+          display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '16px',
+        }}>
+          <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '200px' }}>
             <input value={search}
-              onChange={e => { setSearch(e.target.value); if (!e.target.value) setSearchResults([]) }}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && fetchResults()}
               placeholder="시약 이름으로 검색..."
               style={{ ...inputStyle, flex: 1 }} />
-            <button onClick={() => handleSearch()} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>검색</button>
+            <button onClick={() => fetchResults()} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>검색</button>
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {student && (
-              <button onClick={() => setShowMadeModal(true)} style={{
-                background: '#F9FBFF', color: '#1F4E96', border: `1px dashed #C9DAF5`,
-                padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
-                fontSize: '13px', fontWeight: '600', flexShrink: 0,
-              }}>🧪 직접 제조 시약 등록</button>
-            )}
-            {isAdmin && currentData.length > 0 && (
-              <button onClick={() => exportReagents(currentData)} style={{
-                background: '#1D6F42', color: 'white', border: 'none',
-                padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
-                fontSize: '13px', fontWeight: '600', flexShrink: 0,
-              }}>📥 엑셀</button>
-            )}
-            {isAdmin && currentData.length > 0 && (
-  <button onClick={toggleEditMode} style={{
-                background: editMode ? C.navy : C.white,
-                color: editMode ? C.white : C.text,
-                border: `1px solid ${editMode ? C.navy : C.border}`,
-                padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
-                fontSize: '13px', fontWeight: '600', flexShrink: 0,
-              }}>✏️ {editMode ? '편집 종료' : '편집'}</button>
+          <select value={locationFilter} onChange={e => setLocationFilter(e.target.value)} style={{ ...inputStyle, width: 'auto', maxWidth: '160px' }}>
+            <option value="">전체 위치</option>
+            {rooms.map(room => (
+              <optgroup key={room} label={room}>
+                {locations.filter(l => l.room === room).map(loc => (
+                  <option key={loc.id} value={loc.id}>{loc.detail || loc.room}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <select value={companyFilter} onChange={e => setCompanyFilter(e.target.value)} style={{ ...inputStyle, width: 'auto', maxWidth: '160px' }}>
+            <option value="">전체 제조사</option>
+            {companies.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <button onClick={resetFilters} style={{
+            background: 'none', border: `1px solid ${C.border}`, borderRadius: '6px',
+            padding: '9px 14px', cursor: 'pointer', fontSize: '13px', color: C.muted, flexShrink: 0,
+          }}>필터 초기화</button>
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setShowColMenu(v => !v)} style={{
+              background: C.white, border: `1px solid ${C.border}`, borderRadius: '6px',
+              padding: '9px 14px', cursor: 'pointer', fontSize: '13px', color: C.text, flexShrink: 0,
+            }}>표시 열 ▾</button>
+            {showColMenu && (
+              <div style={{
+                position: 'absolute', top: '100%', right: 0, marginTop: '4px', zIndex: 100,
+                background: C.white, border: `1px solid ${C.border}`, borderRadius: '8px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '10px 14px', minWidth: '140px',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: C.text, marginBottom: '8px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={visibleCols.lot} onChange={() => setVisibleCols(v => ({ ...v, lot: !v.lot }))} />Lot No.
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: C.text, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={visibleCols.expiry} onChange={() => setVisibleCols(v => ({ ...v, expiry: !v.expiry }))} />유효기간
+                </label>
+              </div>
             )}
           </div>
+          {student && (
+            <button onClick={() => setShowMadeModal(true)} style={{
+              background: '#F9FBFF', color: '#1F4E96', border: `1px dashed #C9DAF5`,
+              padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
+              fontSize: '13px', fontWeight: '600', flexShrink: 0,
+            }}>🧪 직접 제조 시약 등록</button>
+          )}
+          {isAdmin && results.length > 0 && (
+            <button onClick={() => exportReagents(results)} style={{
+              background: '#1D6F42', color: 'white', border: 'none',
+              padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
+              fontSize: '13px', fontWeight: '600', flexShrink: 0,
+            }}>📥 엑셀</button>
+          )}
+          {isAdmin && results.length > 0 && (
+            <button onClick={toggleEditMode} style={{
+              background: editMode ? C.navy : C.white,
+              color: editMode ? C.white : C.text,
+              border: `1px solid ${editMode ? C.navy : C.border}`,
+              padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
+              fontSize: '13px', fontWeight: '600', flexShrink: 0,
+            }}>✏️ {editMode ? '편집 종료' : '편집'}</button>
+          )}
         </div>
 
         {/* 편집 모드 액션 바 */}
@@ -769,122 +809,17 @@ async function confirmReagent() {
           </div>
         )}
 
-        {/* 검색 결과 */}
-        {searchResults.length > 0 && (
-          <div style={{ marginBottom: '32px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div style={{ fontSize: '14px', fontWeight: '700', color: C.navy }}>
-                검색 결과 <span style={{ color: C.gold }}>{searchResults.length}개</span>
-              </div>
-              <button onClick={() => { setSearchResults([]); setSearch('') }} style={{
-                background: 'none', border: `1px solid ${C.border}`, borderRadius: '5px',
-                padding: '4px 12px', cursor: 'pointer', fontSize: '12px', color: C.muted,
-              }}>닫기</button>
-            </div>
+        {/* 결과 목록 */}
+        {results.length === 0
+          ? <div style={{ textAlign: 'center', padding: '60px 0', color: C.muted, fontSize: '13px' }}>조건에 맞는 시약이 없습니다.</div>
+          : (
             <div style={{ display: 'flex', alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <Card noPadding><ReagentTable data={searchResults} /></Card>
+                <Card noPadding><ReagentTable data={results} /></Card>
               </div>
-              <AlphabetIndex data={searchResults} />
+              <AlphabetIndex data={results} />
             </div>
-          </div>
-        )}
-
-        {searchResults.length === 0 && !showLocationBrowse && (
-          <div style={{ marginBottom: '32px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div style={{ fontSize: '14px', fontWeight: '700', color: C.navy }}>
-                전체 시약 목록 <span style={{ color: C.gold }}>{allReagents.length}개</span>
-              </div>
-              <button onClick={() => setShowLocationBrowse(true)} style={{
-                background: 'none', border: `1px solid ${C.border}`, borderRadius: '5px',
-                padding: '4px 12px', cursor: 'pointer', fontSize: '12px', color: C.muted,
-              }}>위치별로 찾아보기 ▾</button>
-            </div>
-            {allReagents.length === 0
-              ? <div style={{ textAlign: 'center', padding: '60px 0', color: C.muted, fontSize: '13px' }}>등록된 시약이 없습니다.</div>
-              : (
-                <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Card noPadding><ReagentTable data={allReagents} /></Card>
-                  </div>
-                  <AlphabetIndex data={allReagents} />
-                </div>
-              )}
-          </div>
-        )}
-
-        {searchResults.length === 0 && showLocationBrowse && (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>위치별로 찾아보기</div>
-              <button onClick={() => { setShowLocationBrowse(false); setSelectedLocation(null); setOpenRooms({}) }} style={{
-                background: 'none', border: `1px solid ${C.border}`, borderRadius: '5px',
-                padding: '4px 12px', cursor: 'pointer', fontSize: '12px', color: C.muted,
-              }}>닫기</button>
-            </div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
-              {rooms.map(room => (
-                <div key={room} style={{ position: 'relative' }}>
-                  <div onClick={() => toggleRoom(room)} style={{
-                    padding: '9px 16px', cursor: 'pointer', fontWeight: '700', fontSize: '13px',
-                    background: openRooms[room] ? C.navy : C.white,
-                    color: openRooms[room] ? C.white : C.text,
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px',
-                    border: `1px solid ${C.border}`, borderRadius: '8px',
-                    borderLeft: openRooms[room] ? `3px solid ${C.gold}` : `3px solid ${C.border}`,
-                    boxShadow: '0 1px 4px rgba(26,42,94,0.06)', minWidth: '120px', userSelect: 'none',
-                  }}>
-                    <span>{room}</span>
-                    <span style={{ fontSize: '11px', opacity: 0.7 }}>{openRooms[room] ? '▲' : '▼'}</span>
-                  </div>
-                  {openRooms[room] && (
-                    <div style={{
-                      position: 'absolute', top: '100%', left: 0, zIndex: 100,
-                      background: C.white, border: `1px solid ${C.border}`,
-                      borderRadius: '8px', marginTop: '4px', minWidth: '140px',
-                      boxShadow: '0 4px 16px rgba(26,42,94,0.12)', overflow: 'hidden',
-                    }}>
-                      {locations.filter(l => l.room === room).map(loc => (
-                        <div key={loc.id}
-                          onClick={() => { setSelectedLocation(loc); fetchReagentsByLocation(loc.id); setOpenRooms({}) }}
-                          style={{
-                            padding: '9px 16px', cursor: 'pointer', fontSize: '13px',
-                            borderBottom: `1px solid ${C.border}`,
-                            background: selectedLocation?.id === loc.id ? '#EEF2FB' : C.white,
-                            color: selectedLocation?.id === loc.id ? C.navy : C.text,
-                            fontWeight: selectedLocation?.id === loc.id ? '700' : '400',
-                            borderLeft: selectedLocation?.id === loc.id ? `3px solid ${C.gold}` : '3px solid transparent',
-                          }}>
-                          {loc.detail || loc.room}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-            {selectedLocation ? (
-              <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <Card
-                    title={`${selectedLocation.room}${selectedLocation.detail ? ' — ' + selectedLocation.detail : ''}`}
-                    sub={`${reagents.length}개 시약`} noPadding>
-                    {reagents.length === 0
-                      ? <div style={{ padding: '32px', textAlign: 'center', color: C.muted, fontSize: '13px' }}>이 위치에 시약이 없습니다.</div>
-                      : <ReagentTable data={reagents} />}
-                  </Card>
-                </div>
-                {reagents.length > 0 && <AlphabetIndex data={reagents} />}
-              </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '60px 0', color: C.muted }}>
-                <div style={{ fontSize: '32px', marginBottom: '12px' }}>📍</div>
-                <div style={{ fontSize: '14px' }}>위에서 위치를 선택하세요</div>
-              </div>
-            )}
-          </>
-        )}
+          )}
       </div>
 
       {/* 다량 위치 이동 모달 */}
