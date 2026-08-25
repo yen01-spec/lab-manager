@@ -68,6 +68,28 @@ export function exportReagents(reagents) {
   downloadExcel(rows, columns, '시약목록')
 }
 
+// ── 선택 시약 목록 내보내기 (검색결과에서 체크한 항목) ────
+export function exportPickedReagents(rows) {
+  const data = rows.map(r => {
+    const lot = (r.reagent_lots || [])[0]
+    return {
+      name: r.name,
+      spec: r.volume ? `${r.volume}${r.unit || ''}` : '-',
+      stock: lot ? `${lot.current_stock}%` : '-',
+      location: r.locations ? `${r.locations.room}${r.locations.detail ? ' - ' + r.locations.detail : ''}` : '-',
+      confirmed: r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString('ko-KR') : '-',
+    }
+  })
+  const columns = [
+    { key: 'name', label: '시약명' },
+    { key: 'spec', label: '규격/용량' },
+    { key: 'stock', label: '잔량' },
+    { key: 'location', label: '위치' },
+    { key: 'confirmed', label: '최근 확인' },
+  ]
+  downloadExcel(data, columns, '선택시약목록')
+}
+
 // ── 물품 목록 내보내기 ────────────────────────────────
 export function exportItems(items) {
   const rows = []

@@ -53,6 +53,16 @@ input, select, textarea { font-family: inherit; }
   body { background: #fff !important; }
 }
 
+/* ── 특정 영역만 인쇄(예: 선택 시약 목록) ──────────────── */
+@media print {
+  body.printing-picked-list * { visibility: hidden !important; }
+  body.printing-picked-list .picked-print-target,
+  body.printing-picked-list .picked-print-target * { visibility: visible !important; }
+  body.printing-picked-list .picked-print-target {
+    position: absolute; left: 0; top: 0; width: 100%; background: #fff;
+  }
+}
+
 /* ── 스크롤바 ─────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

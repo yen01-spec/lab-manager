@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, Fragment } from 'react'
 import { useOutletContext, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
-import { exportReagents } from '../exportUtils'
+import { exportReagents, exportPickedReagents } from '../exportUtils'
 
 const GHS_MAP = [
   { keywords: ['인화', '발화', '가연', 'flammable', 'flame'],        emoji: '🔥', label: '인화성' },
@@ -41,6 +41,10 @@ export default function ReagentList() {
   // 편집 모드
   const [editMode, setEditMode] = useState(false)
   const [checkedIds, setCheckedIds] = useState(new Set())
+
+  // 선택 목록 (검색결과에서 여러 시약을 체크해 모아보기 — 전체 사용자). id -> reagent row
+  const [pickedIds, setPickedIds] = useState(new Map())
+  const [showPickedModal, setShowPickedModal] = useState(false)
   const [showBulkMoveModal, setShowBulkMoveModal] = useState(false)
   const [bulkMoveLocation, setBulkMoveLocation] = useState('')
   const [bulkMovedBy, setBulkMovedBy] = useState('')
@@ -192,6 +196,24 @@ function toggleCheck(id, e, allData) {
   function toggleAll(data) {
     if (checkedIds.size === data.length) setCheckedIds(new Set())
     else setCheckedIds(new Set(data.map(r => r.id)))
+  }
+
+  function togglePick(r, e) {
+    e.stopPropagation()
+    setPickedIds(prev => {
+      const next = new Map(prev)
+      next.has(r.id) ? next.delete(r.id) : next.set(r.id, r)
+      return next
+    })
+  }
+
+  function togglePickAll(data) {
+    const allPicked = data.length > 0 && data.every(r => pickedIds.has(r.id))
+    setPickedIds(prev => {
+      const next = new Map(prev)
+      data.forEach(r => allPicked ? next.delete(r.id) : next.set(r.id, r))
+      return next
+    })
   }
 
   // 다량 위치 이동
@@ -436,13 +458,14 @@ async function confirmReagent() {
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' })
   }
 
-  const COLS = editMode ? 11 : 10
+  const COLS = 11
 
   const ReagentTable = ({ data }) => {
     const groups = getGroupedReagents(data)
     const letters = Object.keys(groups).sort()
     const availableLetters = new Set(letters)
     const allChecked = data.length > 0 && checkedIds.size === data.length
+    const allPicked = data.length > 0 && data.every(r => pickedIds.has(r.id))
 
     const renderRow = (r, indent) => {
       const lotList = r.reagent_lots || []
@@ -453,6 +476,7 @@ async function confirmReagent() {
       const ghsList = getGhsEmojis(r.hazard)
       const loc = r.locations
       const isChecked = checkedIds.has(r.id)
+      const isPicked = pickedIds.has(r.id)
       const editingThisSealed = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'sealed_count'
       const editingThisStock = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'current_stock'
       const firstLot = lotList[0]
@@ -461,18 +485,17 @@ async function confirmReagent() {
         <tr key={r.id}
           onClick={e => editMode ? toggleCheck(r.id, e, data) : openReagent(r)}
           style={{
-            background: isChecked ? '#EEF2FB' : isLow ? '#FFF8F8' : C.white,
+            background: (editMode ? isChecked : isPicked) ? '#EEF2FB' : isLow ? '#FFF8F8' : C.white,
             cursor: 'pointer',
-            borderLeft: isChecked ? `3px solid ${C.navy}` : indent ? `3px solid ${C.borderRow}` : '3px solid transparent',
+            borderLeft: (editMode ? isChecked : isPicked) ? `3px solid ${C.navy}` : indent ? `3px solid ${C.borderRow}` : '3px solid transparent',
           }}
           onMouseEnter={e => { if (!isChecked) e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg }}
           onMouseLeave={e => { if (!isChecked) e.currentTarget.style.background = isLow ? '#FFF8F8' : C.white }}>
-          {editMode && (
-            <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => toggleCheck(r.id, e, data)}>
-              <input type="checkbox" checked={isChecked} onChange={() => {}}
-                style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
-            </td>
-          )}
+          <td style={{ ...tdStyle, textAlign: 'center' }}
+            onClick={e => editMode ? toggleCheck(r.id, e, data) : togglePick(r, e)}>
+            <input type="checkbox" checked={editMode ? isChecked : isPicked} onChange={() => {}}
+              style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+          </td>
           <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', paddingLeft: indent ? '32px' : undefined }}>
             {r.name}
             {r.reagent_type === 'self_made' && <span style={{ marginLeft: '6px', fontSize: '9.5px', background: '#EAF1FB',
@@ -552,13 +575,11 @@ async function confirmReagent() {
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
         <thead>
           <tr>
-            {editMode && (
-              <th style={thStyle}>
-                <input type="checkbox" checked={allChecked}
-                  onChange={() => toggleAll(data)}
-                  style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
-              </th>
-            )}
+            <th style={thStyle}>
+              <input type="checkbox" checked={editMode ? allChecked : allPicked}
+                onChange={() => editMode ? toggleAll(data) : togglePickAll(data)}
+                style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+            </th>
             {['시약명', 'CAS No.', '회사', '용량', '성상', '위치', 'GHS', '재고', '최근확인', '상태'].map(h => (
               <th key={h} style={thStyle}>{h}</th>
             ))}
@@ -710,6 +731,28 @@ async function confirmReagent() {
                 }}>선택 해제</button>
               </>
             )}
+          </div>
+        )}
+
+        {/* 선택 목록 액션 바 */}
+        {!editMode && pickedIds.size > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '12px',
+            padding: '12px 16px', marginBottom: '16px',
+            background: '#EEF2FB', border: `1px solid ${C.navy}`,
+            borderRadius: '8px',
+          }}>
+            <span style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>
+              📋 {pickedIds.size}개 선택됨
+            </span>
+            <button onClick={() => setShowPickedModal(true)} style={{
+              background: C.navy, color: '#fff', border: 'none',
+              padding: '7px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
+            }}>선택 목록 보기</button>
+            <button onClick={() => setPickedIds(new Map())} style={{
+              background: C.white, color: C.muted, border: `1px solid ${C.border}`,
+              padding: '7px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px',
+            }}>선택 해제</button>
           </div>
         )}
 
@@ -1298,6 +1341,58 @@ async function confirmReagent() {
               </table>
             </div>
           )}
+        </Modal>
+      )}
+
+      {/* 선택 목록 모달 */}
+      {showPickedModal && (
+        <Modal onClose={() => setShowPickedModal(false)}>
+          <div className="picked-print-target">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <div>
+                <div style={{ fontSize: '10px', color: C.gold, fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '4px' }}>선택 목록</div>
+                <h2 style={{ margin: 0, color: C.navy, fontSize: '18px', fontWeight: '800' }}>선택한 시약 {pickedIds.size}개</h2>
+              </div>
+              <button className="no-print" onClick={() => setShowPickedModal(false)} style={{ background: 'transparent', border: 'none', borderRadius: '6px', width: '32px', height: '32px', cursor: 'pointer', fontSize: '18px', color: '#CBD5E0' }}>×</button>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px' }}>
+              <thead>
+                <tr>
+                  {['시약명', '규격/용량', '잔량', '위치', '최근 확인', ''].map(h => (
+                    <th key={h} style={thStyle} className={h === '' ? 'no-print' : undefined}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from(pickedIds.values()).map(r => {
+                  const lot = (r.reagent_lots || [])[0]
+                  const loc = r.locations
+                  return (
+                    <tr key={r.id}>
+                      <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>{r.name}</td>
+                      <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{r.volume ? `${r.volume}${r.unit || ''}` : '-'}</td>
+                      <td style={{ ...tdStyle, fontSize: '12px' }}>{lot ? `${lot.current_stock}%` : '-'}</td>
+                      <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}</td>
+                      <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted }}>{r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString() : '-'}</td>
+                      <td className="no-print" style={{ ...tdStyle, textAlign: 'center' }}>
+                        <button onClick={() => setPickedIds(prev => { const next = new Map(prev); next.delete(r.id); return next })}
+                          style={{ background: 'none', border: 'none', color: C.danger, cursor: 'pointer', fontSize: '13px' }}>제거</button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="no-print" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            <button onClick={() => setShowPickedModal(false)} style={{ padding: '9px 16px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>닫기</button>
+            <button onClick={() => {
+              document.body.classList.add('printing-picked-list')
+              window.print()
+              setTimeout(() => document.body.classList.remove('printing-picked-list'), 200)
+            }} style={{ padding: '9px 16px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🖨️ 인쇄/PDF</button>
+            <button onClick={() => exportPickedReagents(Array.from(pickedIds.values()))} style={{ padding: '9px 16px', borderRadius: '6px', border: 'none', background: '#1D6F42', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>📥 Excel</button>
+          </div>
         </Modal>
       )}
 

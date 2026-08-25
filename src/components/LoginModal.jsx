@@ -25,6 +25,7 @@ export default function LoginModal({ open, onClose, onSuccess }) {
     writeSession(session)
     reset()
     onSuccess(session)
+    onClose()
   }
 
   async function handleSubmit(e) {

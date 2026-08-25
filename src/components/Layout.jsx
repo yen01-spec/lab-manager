@@ -24,6 +24,8 @@ const NAV_ITEMS = [
   { to: '/notices',          label: '자료',      icon: 'campaign'               },
 ]
 
+const BULK_EDIT_ITEM = { to: '/reagents/bulk-edit', label: '시약 일괄정리', icon: 'inventory_2' }
+
 const BOTTOM_NAV = NAV_ITEMS
 
 export default function Layout() {
@@ -51,6 +53,9 @@ export default function Layout() {
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
 
   const sidebarW = isDesktop ? 210 : isTablet ? 60 : 0
+  const navItems = isAdmin
+    ? [...NAV_ITEMS.slice(0, 2), BULK_EDIT_ITEM, ...NAV_ITEMS.slice(2)]
+    : NAV_ITEMS
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: C.bg }}>
@@ -128,20 +133,20 @@ export default function Layout() {
         {/* 데스크톱 사이드바 */}
         {isDesktop && (
           <SidebarDesktop
-            items={NAV_ITEMS} isAdmin={isAdmin} isSuper={isSuper}
+            items={navItems} isAdmin={isAdmin} isSuper={isSuper}
             location={location}
           />
         )}
 
         {/* 태블릿 미니 사이드바 */}
         {isTablet && (
-          <SidebarMini items={NAV_ITEMS} isAdmin={isAdmin} isSuper={isSuper} location={location} />
+          <SidebarMini items={navItems} isAdmin={isAdmin} isSuper={isSuper} location={location} />
         )}
 
         {/* 모바일 드로어 */}
         {isMobile && drawerOpen && (
           <Drawer
-            items={NAV_ITEMS} isAdmin={isAdmin} isSuper={isSuper} session={session}
+            items={navItems} isAdmin={isAdmin} isSuper={isSuper} session={session}
             onClose={() => setDrawerOpen(false)}
             onLogin={() => setLoginOpen(true)}
             onUpgrade={() => setUpgradeOpen(true)}

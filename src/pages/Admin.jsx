@@ -9,7 +9,6 @@ export default function Admin() {
   const TABS = [
     { key: 'notice', label: '공지/안전관리', icon: '📢', sub: 'Notice' },
   { key: 'changereq', label: '변경 요청', icon: '📝', sub: 'Change Requests' },
-  { key: 'bulkedit', label: '시약 일괄정리', icon: '🧹', sub: 'Bulk Edit' },
   { key: 'reagent',  label: '시약 추가',      icon: '🧪', sub: 'Add Reagent' },
   { key: 'item',     label: '물품 추가',       icon: '📦', sub: 'Add Item' },
   { key: 'disposal', label: '폐기 관리',       icon: '🗑️', sub: 'Disposal' },
@@ -93,7 +92,6 @@ export default function Admin() {
         <div style={{ flex: 1, minWidth: 0 }}>
           {tab === 'notice' && <NoticeTab />}
           {tab === 'changereq' && <ChangeRequestTab student={student} />}
-          {tab === 'bulkedit' && <BulkEditTab locations={locations} student={student} />}
           {tab === 'reagent'  && <ReagentAddTab locations={locations} />}
           {tab === 'item'     && <ItemAddTab locations={locations} />}
           {tab === 'disposal' && <DisposalTab onCountChange={fetchDisposalCount} student={student} />}
@@ -1627,7 +1625,7 @@ if (data) setReagents(data)
 // ══════════════════════════════════════════════
 //  시약 일괄정리 탭
 // ══════════════════════════════════════════════
-function BulkEditTab({ locations, student }) {
+export function BulkEditTab({ locations, student }) {
   const [reagents, setReagents] = useState([])
   const [loading, setLoading] = useState(false)
   const [roomFilter, setRoomFilter] = useState('')
