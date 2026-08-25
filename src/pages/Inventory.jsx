@@ -84,13 +84,13 @@ function ZoneProgressCard({ zone, members, zoneProgress, onComplete, isAdmin }) 
 }
 
 export default function Inventory() {
-  const { isAdmin } = useOutletContext?.() || {}
+  const { isAdmin, student } = useOutletContext?.() || {}
+  const myName = student?.name || ''
   const [view, setView] = useState('main')
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
   const [assignments, setAssignments] = useState([])
   const [locations, setLocations] = useState([])
-  const [myName, setMyName] = useState(() => localStorage.getItem('inventory_user_name') || '')
   const [myAssignments, setMyAssignments] = useState([])
   const [startForm, setStartForm] = useState({ year: new Date().getFullYear(), start_date: '', created_by: '', label: '' })
   const [showStartModal, setShowStartModal] = useState(false)
@@ -302,9 +302,11 @@ if (counts) {
   }
 
   function enterCounting() {
-    if (!myName.trim()) { alert('이름을 입력해주세요'); return }
-    localStorage.setItem('inventory_user_name', myName)
-    const myZones = assignments.filter(a => a.assigned_to === myName.trim())
+    if (!student) { alert('로그인 후 이용해주세요'); return }
+    const myZones = assignments.filter(a =>
+      (a.assigned_student_id && a.assigned_student_id === student.student_id) ||
+      (!a.assigned_student_id && a.assigned_to === student.name)
+    )
     if (myZones.length === 0 && !isAdmin) { alert('배정된 구역이 없습니다. 관리자에게 문의하세요'); return }
     setMyAssignments(myZones)
     setView('count')
@@ -322,6 +324,7 @@ if (counts) {
     <InventoryCountView
       session={activeSession}
       myName={myName}
+      student={student}
       myAssignments={myAssignments}
       isAdmin={isAdmin}
       onBack={() => { setView('main'); fetchProgress() }}
@@ -382,11 +385,12 @@ if (counts) {
                 </div>
               </div>
               {activeSession.status === 'paused' && !isAdmin ? null : (
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
-                  <div style={{ flex: 1, maxWidth: '240px' }}>
-                    <label style={labelStyle}>내 이름</label>
-                    <input value={myName} onChange={e => setMyName(e.target.value)} placeholder="본인 이름 입력" style={inputStyle} />
-                  </div>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  {student ? (
+                    <span style={{ fontSize: '13.5px', color: C.text }}>👤 {student.name}님으로 시작합니다</span>
+                  ) : (
+                    <span style={{ fontSize: '13.5px', color: C.muted }}>로그인 후 이용해주세요</span>
+                  )}
                   <button onClick={enterCounting} style={btnPrimary}>📝 실사 입력 시작</button>
                 </div>
               )}
@@ -527,7 +531,7 @@ if (counts) {
 // ════════════════════════════════════════════════════════════
 //  실사 입력 화면 (학생/관리자 공용)
 // ════════════════════════════════════════════════════════════
-function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack }) {
+function InventoryCountView({ session, myName, student, myAssignments, isAdmin, onBack }) {
   const [lots, setLots] = useState([])
   const [counts, setCounts] = useState({})
   const [loading, setLoading] = useState(true)
@@ -587,7 +591,7 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
     if (isNaN(numVal) || numVal < 0) return
     setSaving(prev => ({ ...prev, [lot.id]: true }))
     const existing = counts[lot.id]
-    const updateData = { [field]: numVal, counted_by: myName, counted_at: new Date().toISOString() }
+    const updateData = { [field]: numVal, counted_by: myName, counted_by_student_id: student?.student_id ?? null, counted_at: new Date().toISOString() }
     if (existing) {
       await supabase.from('inventory_counts').update(updateData).eq('id', existing.id)
       setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], ...updateData } }))
@@ -600,7 +604,8 @@ function InventoryCountView({ session, myName, myAssignments, isAdmin, onBack })
     const reagent = changeModal.reagent
     const oldValue = reagent[changeForm.field_name] ?? ''
     await supabase.from('reagent_change_requests').insert({
-      reagent_id: reagent.id, requested_by: myName, field_name: changeForm.field_name,
+      reagent_id: reagent.id, requested_by: myName, requested_by_student_id: student?.student_id ?? null,
+      field_name: changeForm.field_name,
       old_value: String(oldValue), new_value: changeForm.new_value,
     })
     alert('변경 요청이 제출되었습니다. 관리자 승인 후 반영됩니다.')

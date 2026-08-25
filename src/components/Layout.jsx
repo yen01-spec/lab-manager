@@ -1,8 +1,10 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { supabase } from '../supabase'
 import { useFCM } from '../hooks/useFCM'
 import { C, Icon } from '../design'
+import { readSession, revalidateSession, clearSession } from '../lib/session'
+import LoginModal from './LoginModal'
+import AdminUpgradeModal from './AdminUpgradeModal'
 
 function useBreakpoint() {
   const [width, setWidth] = useState(window.innerWidth)
@@ -34,24 +36,27 @@ const BOTTOM_NAV = [
 ]
 
 export default function Layout() {
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [isSuper, setIsSuper] = useState(false)
+  const [session, setSession] = useState(() => readSession())
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [loginOpen, setLoginOpen] = useState(false)
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
   const location = useLocation()
   const { isMobile, isTablet, isDesktop } = useBreakpoint()
+
+  const isAdmin = !!session?.is_admin
+  const isSuper = !!session?.is_super
+  const student = session ? { student_id: session.student_id, name: session.name } : null
+
   useFCM(isAdmin || isSuper)
 
-  async function handleAdminLogin() {
-    const pw = prompt('관리자 비밀번호를 입력하세요')
-    if (pw === null) return
-    const { data } = await supabase.from('app_settings').select('key, value').in('key', ['admin_password', 'super_password'])
-    const s = {}; data?.forEach(d => { s[d.key] = d.value })
-    if (pw === s['super_password']) { setIsAdmin(true); setIsSuper(true) }
-    else if (pw === s['admin_password']) { setIsAdmin(true); setIsSuper(false) }
-    else alert('비밀번호가 틀렸습니다')
-  }
+  useEffect(() => {
+    revalidateSession().then(setSession)
+  }, [])
 
-  function handleLogout() { setIsAdmin(false); setIsSuper(false) }
+  function handleLogout() {
+    clearSession()
+    setSession(null)
+  }
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
 
   const sidebarW = isDesktop ? 210 : isTablet ? 60 : 0
@@ -91,14 +96,22 @@ export default function Layout() {
 
         {/* 오른쪽: 로그인 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {isAdmin ? (
+          {session ? (
             <>
               {!isMobile && (
-                <NavLink to="/admin" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ color: '#B8C9E8', fontSize: 13, fontWeight: 600 }}>
-                    {isSuper ? '슈퍼관리자' : '관리자'}
-                  </span>
-                </NavLink>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ color: '#DCE4F2', fontSize: 13, fontWeight: 600 }}>{session.name}님</span>
+                  {isAdmin ? (
+                    <NavLink to="/admin" style={{ textDecoration: 'none' }}>
+                      <span style={{ color: '#B8C9E8', fontSize: 12 }}>· {isSuper ? '슈퍼관리자' : '관리자'}</span>
+                    </NavLink>
+                  ) : (
+                    <button onClick={() => setUpgradeOpen(true)} style={{
+                      background: 'none', border: 'none', color: '#8FA6D4', fontSize: 12,
+                      cursor: 'pointer', fontFamily: 'inherit', padding: 0,
+                    }}>· 관리자 승격</button>
+                  )}
+                </div>
               )}
               <button onClick={handleLogout} style={{
                 background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
@@ -107,12 +120,12 @@ export default function Layout() {
               }}>로그아웃</button>
             </>
           ) : (
-            <button onClick={handleAdminLogin} style={{
+            <button onClick={() => setLoginOpen(true)} style={{
               background: 'transparent', border: '1px solid rgba(255,255,255,0.3)',
               color: 'rgba(255,255,255,0.8)', padding: '5px 12px', borderRadius: 7,
               cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
             }}>
-              {isMobile ? '로그인' : '관리자 로그인'}
+              로그인
             </button>
           )}
         </div>
@@ -137,9 +150,11 @@ export default function Layout() {
         {/* 모바일 드로어 */}
         {isMobile && drawerOpen && (
           <Drawer
-            items={NAV_ITEMS} isAdmin={isAdmin} isSuper={isSuper}
+            items={NAV_ITEMS} isAdmin={isAdmin} isSuper={isSuper} session={session}
             onClose={() => setDrawerOpen(false)}
-            onAdminLogin={handleAdminLogin} onLogout={handleLogout}
+            onLogin={() => setLoginOpen(true)}
+            onUpgrade={() => setUpgradeOpen(true)}
+            onLogout={handleLogout}
             location={location}
           />
         )}
@@ -149,9 +164,14 @@ export default function Layout() {
           flex: 1, minWidth: 0,
           paddingBottom: isMobile ? 64 : 0,
         }}>
-          <Outlet context={{ isAdmin, isSuper }} />
+          <Outlet context={{ isAdmin, isSuper, student }} />
         </main>
       </div>
+
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} onSuccess={setSession} />
+      {student && (
+        <AdminUpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} student={student} onSuccess={setSession} />
+      )}
 
       {/* 모바일 바텀 탭 */}
       {isMobile && (
@@ -280,7 +300,7 @@ function SidebarMini({ items, isAdmin, isSuper, location }) {
   )
 }
 
-function Drawer({ items, isAdmin, isSuper, onClose, onAdminLogin, onLogout, location }) {
+function Drawer({ items, isAdmin, isSuper, session, onClose, onLogin, onUpgrade, onLogout, location }) {
   return (
     <>
       <div onClick={onClose} style={{
@@ -313,18 +333,30 @@ function Drawer({ items, isAdmin, isSuper, onClose, onAdminLogin, onLogout, loca
           </nav>
         </div>
         <div style={{ padding: '14px 16px', borderTop: `1px solid ${C.border}` }}>
-          {isAdmin ? (
-            <button onClick={onLogout} style={{
-              width: '100%', padding: 10, borderRadius: 8,
-              border: `1px solid ${C.border}`, background: C.white,
-              cursor: 'pointer', fontSize: 13, color: C.muted, fontFamily: 'inherit',
-            }}>로그아웃</button>
+          {session ? (
+            <>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text, marginBottom: 8, textAlign: 'center' }}>
+                {session.name}님 {isAdmin && `· ${isSuper ? '슈퍼관리자' : '관리자'}`}
+              </div>
+              {!isAdmin && (
+                <button onClick={onUpgrade} style={{
+                  width: '100%', padding: 9, borderRadius: 8, marginBottom: 8,
+                  border: `1px solid rgba(47,107,219,0.4)`, background: C.blueTint,
+                  cursor: 'pointer', fontSize: 12.5, color: C.blueDark, fontWeight: 600, fontFamily: 'inherit',
+                }}>관리자 승격</button>
+              )}
+              <button onClick={onLogout} style={{
+                width: '100%', padding: 10, borderRadius: 8,
+                border: `1px solid ${C.border}`, background: C.white,
+                cursor: 'pointer', fontSize: 13, color: C.muted, fontFamily: 'inherit',
+              }}>로그아웃</button>
+            </>
           ) : (
-            <button onClick={onAdminLogin} style={{
+            <button onClick={onLogin} style={{
               width: '100%', padding: 10, borderRadius: 8,
               border: `1px solid rgba(47,107,219,0.4)`, background: C.blueTint,
               cursor: 'pointer', fontSize: 13, color: C.blueDark, fontWeight: 600, fontFamily: 'inherit',
-            }}>관리자 로그인</button>
+            }}>로그인</button>
           )}
           <div style={{ marginTop: 10, fontSize: 11, color: C.muted, textAlign: 'center' }}>
             강원대학교 과학교육학부 연구실

@@ -23,7 +23,7 @@ function getGhsEmojis(hazard) {
 }
 
 export default function ReagentList() {
-  const { isAdmin } = useOutletContext?.() || {}
+  const { isAdmin, student } = useOutletContext?.() || {}
   const [locations, setLocations] = useState([])
   const [selectedLocation, setSelectedLocation] = useState(null)
   const [reagents, setReagents] = useState([])
@@ -56,9 +56,6 @@ export default function ReagentList() {
 
   // 인라인 편집
   const [inlineEdit, setInlineEdit] = useState(null)
-  const [userName, setUserName] = useState(() => localStorage.getItem('stock_user_name') || '')
-  const [showNameModal, setShowNameModal] = useState(false)
-  const [pendingEdit, setPendingEdit] = useState(null)
 
   useEffect(() => { fetchLocations() }, [])
 
@@ -306,11 +303,6 @@ async function saveField(field, value, sourceField) {
   function startInlineEdit(lotId, reagentId, field, currentValue, e) {
     e.stopPropagation()
     if (!isAdmin) return
-    if (!userName.trim()) {
-      setPendingEdit({ lotId, reagentId, field, currentValue })
-      setShowNameModal(true)
-      return
-    }
     setInlineEdit({ lotId, reagentId, field, value: currentValue })
   }
 
@@ -321,7 +313,7 @@ async function saveField(field, value, sourceField) {
     if (isNaN(numVal)) { alert('숫자를 입력해주세요'); return }
     await supabase.from('reagent_lots').update({ [field]: numVal }).eq('id', lotId)
     await supabase.from('stock_logs').insert({
-      target_type: 'reagent', lot_id: lotId, user_name: userName,
+      target_type: 'reagent', lot_id: lotId, user_name: student?.name || '',
       before_sealed: lot.sealed_count,
       after_sealed: field === 'sealed_count' ? numVal : lot.sealed_count,
       before_stock: lot.current_stock,
@@ -1073,33 +1065,6 @@ async function saveField(field, value, sourceField) {
         </Modal>
       )}
 
-      {/* 이름 입력 모달 */}
-      {showNameModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26,42,94,0.45)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: C.white, borderRadius: '12px', padding: '24px', width: '320px', boxShadow: '0 24px 64px rgba(26,42,94,0.25)' }}>
-            <h3 style={{ marginTop: 0, color: C.navy, fontSize: '15px' }}>이름 입력</h3>
-            <p style={{ color: C.muted, fontSize: '13px', marginBottom: '12px' }}>수정 이력에 기록될 이름을 입력해주세요.</p>
-            <input value={userName} onChange={e => setUserName(e.target.value)} placeholder="본인 이름" autoFocus
-              onKeyDown={e => {
-                if (e.key === 'Enter' && userName.trim()) {
-                  localStorage.setItem('stock_user_name', userName)
-                  setShowNameModal(false)
-                  if (pendingEdit) { setInlineEdit({ ...pendingEdit, value: pendingEdit.currentValue }); setPendingEdit(null) }
-                }
-              }}
-              style={{ ...inputStyle, marginBottom: '14px' }} />
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={() => { setShowNameModal(false); setPendingEdit(null) }} style={{ flex: 1, padding: '9px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
-              <button onClick={() => {
-                if (!userName.trim()) return
-                localStorage.setItem('stock_user_name', userName)
-                setShowNameModal(false)
-                if (pendingEdit) { setInlineEdit({ ...pendingEdit, value: pendingEdit.currentValue }); setPendingEdit(null) }
-              }} style={{ flex: 1, padding: '9px', borderRadius: '6px', border: 'none', background: C.navy, color: C.white, cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>확인</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
