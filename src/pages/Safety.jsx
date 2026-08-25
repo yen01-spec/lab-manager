@@ -64,6 +64,27 @@ function Pagination({ page, totalPages, setPage }) {
   )
 }
 
+function ResourceTabs({ active }) {
+  const navigate = useNavigate()
+  const tabs = [
+    { key: 'notices', label: '공지사항', to: '/notices' },
+    { key: 'safety', label: '안전관리', to: '/safety' },
+  ]
+  return (
+    <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: `1px solid ${C.border}` }}>
+      {tabs.map(t => (
+        <button key={t.key} onClick={() => navigate(t.to)} style={{
+          padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer',
+          fontSize: 13.5, fontFamily: 'inherit', fontWeight: active === t.key ? 700 : 500,
+          color: active === t.key ? C.blueDark : C.muted,
+          borderBottom: active === t.key ? `2px solid ${C.blue}` : '2px solid transparent',
+          marginBottom: -1,
+        }}>{t.label}</button>
+      ))}
+    </div>
+  )
+}
+
 export default function Safety() {
   const { isAdmin } = useOutletContext()
   const navigate = useNavigate()
@@ -134,6 +155,7 @@ export default function Safety() {
         )}
       />
       <div style={{ padding: '20px 24px', maxWidth: 960, margin: '0 auto' }}>
+        <ResourceTabs active="safety" />
         <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
           <SearchInput value={searchInput} onChange={setSearchInput} placeholder="제목으로 검색…" style={{ width: 300 }} />
           <button onClick={() => { setSearch(searchInput); setPage(1) }} style={{ ...btnPrimary, padding: '8px 18px' }}>검색</button>

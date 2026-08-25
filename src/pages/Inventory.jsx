@@ -744,7 +744,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['시약명', '위치', 'Lot No.', '장부(미개봉)', '실측(미개봉)', '잔량(%)', '차이', '입력자', '변경요청'].map(h => (
+                  {['시약명', '위치', 'Lot No.', '장부(미개봉)', '실측(미개봉)', '잔량(%)', '차이', ...(isAdmin ? ['입력자'] : ['입력일']), '변경요청'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
@@ -823,8 +823,14 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                           {diff === null ? '-' : diff > 0 ? `+${diff}` : diff}
                         </td>
                         <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>
-                          {count?.counted_by || '-'}
-                          {count?.counted_at && <div style={{ fontSize: '10px' }}>{new Date(count.counted_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</div>}
+                          {isAdmin ? (
+                            <>
+                              {count?.counted_by || '-'}
+                              {count?.counted_at && <div style={{ fontSize: '10px' }}>{new Date(count.counted_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</div>}
+                            </>
+                          ) : (
+                            count?.counted_at ? new Date(count.counted_at).toLocaleDateString('ko-KR') : '-'
+                          )}
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'center' }}>
                           <button onClick={() => { setChangeModal({ lot, reagent: lot.reagents }); setChangeForm({ field_name: 'name', new_value: '' }) }} style={{

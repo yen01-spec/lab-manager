@@ -17,22 +17,14 @@ function useBreakpoint() {
 }
 
 const NAV_ITEMS = [
-  { to: '/',                   label: '홈',         icon: 'home',          end: true },
-  { to: '/reagents/locations', label: '시약장 위치', icon: 'location_on'            },
-  { to: '/reagents/list',      label: '시약 목록',  icon: 'science'                },
-  { to: '/purchase-request',   label: '구매요청서', icon: 'shopping_cart'          },
-  { to: '/inventory',          label: '재고 실사',  icon: 'checklist'              },
-  { to: '/notices',            label: '공지사항',   icon: 'campaign'               },
-  { to: '/safety',             label: '안전관리',   icon: 'health_and_safety'      },
+  { to: '/',                 label: '홈',        icon: 'home',          end: true },
+  { to: '/reagents/list',    label: '시약',      icon: 'science'                },
+  { to: '/inventory',        label: '재고실사',  icon: 'checklist'              },
+  { to: '/purchase-request', label: '구매요청서', icon: 'shopping_cart'         },
+  { to: '/notices',          label: '자료',      icon: 'campaign'               },
 ]
 
-const BOTTOM_NAV = [
-  { to: '/',                 label: '홈',    icon: 'home',         end: true },
-  { to: '/reagents/list',    label: '시약',  icon: 'science'               },
-  { to: '/purchase-request', label: '구매',  icon: 'shopping_cart'         },
-  { to: '/inventory',        label: '실사',  icon: 'checklist'             },
-  { to: '/notices',          label: '자료',  icon: 'campaign'              },
-]
+const BOTTOM_NAV = NAV_ITEMS
 
 export default function Layout() {
   const [session, setSession] = useState(() => readSession())

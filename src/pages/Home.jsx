@@ -26,12 +26,12 @@ function Card({ title, titleExtra, children, noPadding }) {
 
 export default function Home() {
   const navigate = useNavigate()
-  const { student } = useOutletContext?.() || {}
+  const { student, isAdmin } = useOutletContext?.() || {}
   const [search, setSearch] = useState('')
   const [stats, setStats] = useState({ reagents: 0, confirmedPct: 0, expiring: 0, myPending: 0 })
   const [recentConfirms, setRecentConfirms] = useState([])
 
-  useEffect(() => { fetchAll() }, [student?.student_id])
+  useEffect(() => { fetchAll() }, [student?.student_id, isAdmin])
 
   async function fetchAll() {
     await Promise.all([fetchStats(), fetchRecentConfirms()])
@@ -70,13 +70,15 @@ export default function Home() {
       .order('last_confirmed_at', { ascending: false })
       .limit(5)
     if (!data || data.length === 0) { setRecentConfirms([]); return }
-    const ids = [...new Set(data.map(r => r.confirmed_by).filter(Boolean))]
     let names = {}
-    if (ids.length > 0) {
-      const { data: students } = await supabase.from('students').select('student_id, name').in('student_id', ids)
-      students?.forEach(s => { names[s.student_id] = s.name })
+    if (isAdmin) {
+      const ids = [...new Set(data.map(r => r.confirmed_by).filter(Boolean))]
+      if (ids.length > 0) {
+        const { data: students } = await supabase.from('students').select('student_id, name').in('student_id', ids)
+        students?.forEach(s => { names[s.student_id] = s.name })
+      }
     }
-    setRecentConfirms(data.map(r => ({ ...r, confirmedByName: names[r.confirmed_by] || r.confirmed_by })))
+    setRecentConfirms(data.map(r => ({ ...r, confirmedByName: names[r.confirmed_by] || (isAdmin ? r.confirmed_by : '') })))
   }
 
   function submitSearch() {
@@ -160,7 +162,7 @@ export default function Home() {
                         <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{loc ? `${loc.room}${loc.detail ? ' ' + loc.detail : ''}` : '위치 미지정'}</div>
                       </div>
                       <div style={{ fontSize: 11.5, color: C.muted, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {isToday ? '오늘' : new Date(r.last_confirmed_at).toLocaleDateString('ko-KR')} · {r.confirmedByName}
+                        {isToday ? '오늘' : new Date(r.last_confirmed_at).toLocaleDateString('ko-KR')}{isAdmin && r.confirmedByName ? ` · ${r.confirmedByName}` : ''}
                       </div>
                     </div>
                   )

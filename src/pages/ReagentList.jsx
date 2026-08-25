@@ -31,6 +31,7 @@ export default function ReagentList() {
   const [selectedReagent, setSelectedReagent] = useState(null)
   const [lots, setLots] = useState([])
   const [openRooms, setOpenRooms] = useState({})
+  const [showLocationBrowse, setShowLocationBrowse] = useState(false)
   const [search, setSearch] = useState(() => searchParams.get('q') || '')
   const [searchResults, setSearchResults] = useState([])
   const [stockHistory, setStockHistory] = useState([])
@@ -677,8 +678,26 @@ async function confirmReagent() {
           </div>
         )}
 
-        {searchResults.length === 0 && (
+        {searchResults.length === 0 && !showLocationBrowse && (
+          <div style={{ textAlign: 'center', padding: '60px 0', color: C.muted }}>
+            <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔍</div>
+            <div style={{ fontSize: '14px', marginBottom: '18px' }}>시약명을 검색해보세요</div>
+            <button onClick={() => setShowLocationBrowse(true)} style={{
+              background: 'none', border: `1px solid ${C.border}`, borderRadius: '8px',
+              padding: '8px 18px', cursor: 'pointer', fontSize: '12.5px', color: C.muted, fontWeight: '600',
+            }}>또는 위치별로 찾아보기 ▾</button>
+          </div>
+        )}
+
+        {searchResults.length === 0 && showLocationBrowse && (
           <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>위치별로 찾아보기</div>
+              <button onClick={() => { setShowLocationBrowse(false); setSelectedLocation(null); setOpenRooms({}) }} style={{
+                background: 'none', border: `1px solid ${C.border}`, borderRadius: '5px',
+                padding: '4px 12px', cursor: 'pointer', fontSize: '12px', color: C.muted,
+              }}>닫기</button>
+            </div>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
               {rooms.map(room => (
                 <div key={room} style={{ position: 'relative' }}>
@@ -1088,7 +1107,9 @@ async function confirmReagent() {
       background: pending ? C.warningTint : 'transparent' }}>
       {pending && (
         <div style={{ fontSize: '10.5px', color: '#8A5A16', marginBottom: '3px' }}>
-          ⏳ {pending.requested_by} 제안: "{pending.new_value}" · 관리자 승인 대기중
+          {isAdmin
+            ? `⏳ ${pending.requested_by} 제안: "${pending.new_value}" · 관리자 승인 대기중`
+            : `⏳ 수정 제안됨: "${pending.new_value}" ${pending.created_at ? '· ' + new Date(pending.created_at).toLocaleDateString() : ''} · 관리자 승인 대기중`}
         </div>
       )}
       {showEditModal && field && editingField === field ? (
@@ -1141,7 +1162,9 @@ async function confirmReagent() {
             <span style={{ color: C.muted }}>최종 확인</span>
             <span style={{ color: C.text, fontWeight: '600' }}>
               {selectedReagent.last_confirmed_at
-                ? `${new Date(selectedReagent.last_confirmed_at).toLocaleDateString()} · ${confirmedByName || selectedReagent.confirmed_by}`
+                ? isAdmin
+                  ? `${new Date(selectedReagent.last_confirmed_at).toLocaleDateString()} · ${confirmedByName || selectedReagent.confirmed_by}`
+                  : new Date(selectedReagent.last_confirmed_at).toLocaleDateString()
                 : '확인 기록 없음'}
             </span>
           </div>
@@ -1205,7 +1228,7 @@ async function confirmReagent() {
             <div style={{ marginTop: '20px' }}>
               <div style={{ fontSize: '12px', fontWeight: '700', color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '12px' }}>입출고 이력</div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr>{['일시','구분','수량','담당자','메모'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                <thead><tr>{['일시','구분','수량', ...(isAdmin ? ['담당자'] : []),'메모'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
                 <tbody>
                   {stockHistory.map(h => (
                     <tr key={h.id}>
@@ -1216,7 +1239,7 @@ async function confirmReagent() {
                         </span>
                       </td>
                       <td style={{ ...tdStyle, fontSize: '12px' }}>{h.quantity}{h.unit}</td>
-                      <td style={{ ...tdStyle, fontSize: '12px' }}>{h.user_name}</td>
+                      {isAdmin && <td style={{ ...tdStyle, fontSize: '12px' }}>{h.user_name}</td>}
                       <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{h.notes || '-'}</td>
                     </tr>
                   ))}
