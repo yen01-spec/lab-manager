@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, Fragment } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useOutletContext, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
 import { exportReagents } from '../exportUtils'
@@ -24,13 +24,14 @@ function getGhsEmojis(hazard) {
 
 export default function ReagentList() {
   const { isAdmin, student } = useOutletContext?.() || {}
+  const [searchParams] = useSearchParams()
   const [locations, setLocations] = useState([])
   const [selectedLocation, setSelectedLocation] = useState(null)
   const [reagents, setReagents] = useState([])
   const [selectedReagent, setSelectedReagent] = useState(null)
   const [lots, setLots] = useState([])
   const [openRooms, setOpenRooms] = useState({})
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('q') || '')
   const [searchResults, setSearchResults] = useState([])
   const [stockHistory, setStockHistory] = useState([])
   const alphabetRefs = useRef({})
@@ -65,6 +66,13 @@ export default function ReagentList() {
 
   useEffect(() => { fetchLocations() }, [])
 
+  // 홈 화면의 통합검색에서 ?q= 로 넘어온 경우 자동으로 검색 실행 (초기값은 위 useState에서 이미 반영)
+  useEffect(() => {
+    const q = searchParams.get('q')
+    if (q) handleSearch(q)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function fetchLocations() {
     const { data } = await supabase.from('locations').select('*').order('room')
     if (data) setLocations(data)
@@ -86,11 +94,12 @@ export default function ReagentList() {
     if (selectedLocation) await fetchReagentsByLocation(selectedLocation.id)
   }
 
-  async function handleSearch() {
-  if (!search.trim()) return
+  async function handleSearch(term) {
+  const q = term ?? search
+  if (!q.trim()) return
   const { data, count } = await supabase.from('reagents')
     .select('*, reagent_lots(*), locations(*)', { count: 'exact' })
-    .ilike('name', `%${search}%`)
+    .ilike('name', `%${q}%`)
     .neq('status', 'archived')
     .range(0, 4999)
   if (count > 4999) {
@@ -596,7 +605,7 @@ async function confirmReagent() {
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
               placeholder="시약 이름으로 검색..."
               style={{ ...inputStyle, flex: 1 }} />
-            <button onClick={handleSearch} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>검색</button>
+            <button onClick={() => handleSearch()} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>검색</button>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {student && (
