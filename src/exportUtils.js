@@ -169,10 +169,13 @@ export function exportPurchaseRequestForm(reagentItems, goodsItems, requesterNam
   const wb = XLSX.utils.book_new()
 
   if (reagentItems.length > 0) {
-    const header = ['No.', '시약명', '회사', 'CAS No.', 'Cat No.', '성상', '규격', '수량', '용도', '비고']
+    const header = ['No.', '시약명', '회사', 'CAS No.', 'Cat No.', '성상', '규격', '수량', '단가', '총가격', '용도', '비고']
     const rows = reagentItems.map((it, i) => [
-      i + 1, it.name, it.company, it.cas_no, it.cat_no, it.state, it.spec, it.quantity, it.purpose, it.note,
+      i + 1, it.name, it.company, it.cas_no, it.cat_no, it.state, it.spec, it.quantity,
+      it.unit_price, (Number(it.unit_price) || 0) * (Number(it.quantity) || 0), it.purpose, it.note,
     ])
+    const totalPrice = reagentItems.reduce((s, it) => s + (Number(it.unit_price) || 0) * (Number(it.quantity) || 0), 0)
+    rows.push(['', '', '', '', '', '', '', '합계', '', totalPrice, '', ''])
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
     ws['!cols'] = header.map((h, i) => ({ wch: Math.max(h.length + 2, ...rows.map(r => String(r[i] ?? '').length + 2)) }))
     XLSX.utils.book_append_sheet(wb, ws, '시약')

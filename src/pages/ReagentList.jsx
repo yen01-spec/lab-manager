@@ -28,6 +28,7 @@ export default function ReagentList() {
   const [locations, setLocations] = useState([])
   const [selectedLocation, setSelectedLocation] = useState(null)
   const [reagents, setReagents] = useState([])
+  const [allReagents, setAllReagents] = useState([])
   const [selectedReagent, setSelectedReagent] = useState(null)
   const [lots, setLots] = useState([])
   const [openRooms, setOpenRooms] = useState({})
@@ -70,7 +71,7 @@ export default function ReagentList() {
   const [showMadeModal, setShowMadeModal] = useState(false)
   const [madeForm, setMadeForm] = useState({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
 
-  useEffect(() => { fetchLocations() }, [])
+  useEffect(() => { fetchLocations(); fetchAllReagents() }, [])
 
   // 홈 화면의 통합검색에서 ?q= 로 넘어온 경우 자동으로 검색 실행 (초기값은 위 useState에서 이미 반영)
   useEffect(() => {
@@ -82,6 +83,17 @@ export default function ReagentList() {
   async function fetchLocations() {
     const { data } = await supabase.from('locations').select('*').order('room')
     if (data) setLocations(data)
+  }
+
+  async function fetchAllReagents() {
+    const { data, count } = await supabase.from('reagents')
+      .select('*, reagent_lots(*), locations(*)', { count: 'exact' })
+      .neq('status', 'archived')
+      .range(0, 4999)
+    if (count > 4999) {
+      alert(`⚠️ 시약이 ${count}개로 많아 일부만 표시됩니다. 관리자에게 문의하세요.`)
+    }
+    if (data) setAllReagents(data.sort((a, b) => a.name.localeCompare(b.name)))
   }
 
   async function fetchReagentsByLocation(locationId) {
@@ -458,12 +470,38 @@ async function confirmReagent() {
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' })
   }
 
+  // 카드(overflow:hidden) 밖에 형제로 렌더링해야 position:sticky가 실제로 뷰포트 기준으로 붙는다
+  const AlphabetIndex = ({ data }) => {
+    if (editMode) return null
+    const availableLetters = new Set(data.map(r => r.name[0].toUpperCase()))
+    return (
+      <div style={{
+        width: '18px', flexShrink: 0, marginLeft: '4px',
+        position: 'sticky', top: '96px',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+      }}>
+        {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => (
+          <button key={letter} onClick={() => scrollToLetter(letter)}
+            disabled={!availableLetters.has(letter)} style={{
+              width: '18px', height: '14px', border: 'none', background: 'transparent',
+              cursor: availableLetters.has(letter) ? 'pointer' : 'default',
+              color: availableLetters.has(letter) ? C.muted : '#E2E5EA',
+              fontSize: '9px', fontWeight: availableLetters.has(letter) ? '700' : '400', padding: 0,
+              transition: 'color 0.1s',
+            }}
+            onMouseEnter={e => { if (availableLetters.has(letter)) e.currentTarget.style.color = C.blue }}
+            onMouseLeave={e => { if (availableLetters.has(letter)) e.currentTarget.style.color = C.muted }}
+          >{letter}</button>
+        ))}
+      </div>
+    )
+  }
+
   const COLS = 11
 
   const ReagentTable = ({ data }) => {
     const groups = getGroupedReagents(data)
     const letters = Object.keys(groups).sort()
-    const availableLetters = new Set(letters)
     const allChecked = data.length > 0 && checkedIds.size === data.length
     const allPicked = data.length > 0 && data.every(r => pickedIds.has(r.id))
 
@@ -569,9 +607,7 @@ async function confirmReagent() {
     }
 
     return (
-  <div style={{ display: 'flex' }}>
-    {/* 테이블 영역 */}
-    <div style={{ flex: 1, overflowX: 'auto', paddingRight: '52px' }}>
+    <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
         <thead>
           <tr>
@@ -637,33 +673,10 @@ async function confirmReagent() {
         </div>
       )}
     </div>
-
-    {/* 알파벳 인덱스 - 테이블 오른쪽 */}
-    {!editMode && (
-      <div style={{
-  width: '28px', flexShrink: 0,
-  position: 'fixed', right: '8px', top: '50%', transform: 'translateY(-50%)',
-  display: 'flex', flexDirection: 'column', gap: '1px',
-  padding: '4px 2px', alignItems: 'center',
-  zIndex: 50,
-}}>
-        {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => (
-          <button key={letter} onClick={() => scrollToLetter(letter)}
-            disabled={!availableLetters.has(letter)} style={{
-              width: '20px', height: '18px', borderRadius: '3px', border: 'none',
-              cursor: availableLetters.has(letter) ? 'pointer' : 'default',
-              background: availableLetters.has(letter) ? C.navy : 'transparent',
-              color: availableLetters.has(letter) ? C.white : '#ccc',
-              fontSize: '10px', fontWeight: '700', padding: 0,
-            }}>{letter}</button>
-        ))}
-      </div>
-    )}
-  </div>
 )
-  } 
+  }
 
-  const currentData = searchResults.length > 0 ? searchResults : reagents
+  const currentData = searchResults.length > 0 ? searchResults : showLocationBrowse ? reagents : allReagents
 
   return (
     <div>
@@ -768,18 +781,36 @@ async function confirmReagent() {
                 padding: '4px 12px', cursor: 'pointer', fontSize: '12px', color: C.muted,
               }}>닫기</button>
             </div>
-            <Card noPadding><ReagentTable data={searchResults} /></Card>
+            <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Card noPadding><ReagentTable data={searchResults} /></Card>
+              </div>
+              <AlphabetIndex data={searchResults} />
+            </div>
           </div>
         )}
 
         {searchResults.length === 0 && !showLocationBrowse && (
-          <div style={{ textAlign: 'center', padding: '60px 0', color: C.muted }}>
-            <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔍</div>
-            <div style={{ fontSize: '14px', marginBottom: '18px' }}>시약명을 검색해보세요</div>
-            <button onClick={() => setShowLocationBrowse(true)} style={{
-              background: 'none', border: `1px solid ${C.border}`, borderRadius: '8px',
-              padding: '8px 18px', cursor: 'pointer', fontSize: '12.5px', color: C.muted, fontWeight: '600',
-            }}>또는 위치별로 찾아보기 ▾</button>
+          <div style={{ marginBottom: '32px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ fontSize: '14px', fontWeight: '700', color: C.navy }}>
+                전체 시약 목록 <span style={{ color: C.gold }}>{allReagents.length}개</span>
+              </div>
+              <button onClick={() => setShowLocationBrowse(true)} style={{
+                background: 'none', border: `1px solid ${C.border}`, borderRadius: '5px',
+                padding: '4px 12px', cursor: 'pointer', fontSize: '12px', color: C.muted,
+              }}>위치별로 찾아보기 ▾</button>
+            </div>
+            {allReagents.length === 0
+              ? <div style={{ textAlign: 'center', padding: '60px 0', color: C.muted, fontSize: '13px' }}>등록된 시약이 없습니다.</div>
+              : (
+                <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Card noPadding><ReagentTable data={allReagents} /></Card>
+                  </div>
+                  <AlphabetIndex data={allReagents} />
+                </div>
+              )}
           </div>
         )}
 
@@ -834,13 +865,18 @@ async function confirmReagent() {
               ))}
             </div>
             {selectedLocation ? (
-              <Card
-                title={`${selectedLocation.room}${selectedLocation.detail ? ' — ' + selectedLocation.detail : ''}`}
-                sub={`${reagents.length}개 시약`} noPadding>
-                {reagents.length === 0
-                  ? <div style={{ padding: '32px', textAlign: 'center', color: C.muted, fontSize: '13px' }}>이 위치에 시약이 없습니다.</div>
-                  : <ReagentTable data={reagents} />}
-              </Card>
+              <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Card
+                    title={`${selectedLocation.room}${selectedLocation.detail ? ' — ' + selectedLocation.detail : ''}`}
+                    sub={`${reagents.length}개 시약`} noPadding>
+                    {reagents.length === 0
+                      ? <div style={{ padding: '32px', textAlign: 'center', color: C.muted, fontSize: '13px' }}>이 위치에 시약이 없습니다.</div>
+                      : <ReagentTable data={reagents} />}
+                  </Card>
+                </div>
+                {reagents.length > 0 && <AlphabetIndex data={reagents} />}
+              </div>
             ) : (
               <div style={{ textAlign: 'center', padding: '60px 0', color: C.muted }}>
                 <div style={{ fontSize: '32px', marginBottom: '12px' }}>📍</div>
