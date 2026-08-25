@@ -52,6 +52,12 @@ export default function ReagentList() {
   // 인라인 편집 (목록에서 재고 숫자 바로 수정)
   const [inlineEdit, setInlineEdit] = useState(null)
 
+  // 시약 일괄조회 (여러 시약명을 한번에 붙여넣어 존재유무/위치 확인 — 학기 준비용)
+  const [showBulkLookupModal, setShowBulkLookupModal] = useState(false)
+  const [bulkLookupText, setBulkLookupText] = useState('')
+  const [bulkLookupResults, setBulkLookupResults] = useState(null)
+  const [bulkLookupLoading, setBulkLookupLoading] = useState(false)
+
   // 직접제조시약
   const [showMadeModal, setShowMadeModal] = useState(false)
   const [madeForm, setMadeForm] = useState({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
@@ -155,6 +161,34 @@ function toggleCheck(id, e, allData) {
       spec: r.volume ? `${r.volume}${r.unit || ''}` : '', quantity: '1', unit_price: '', purpose: '', note: '',
     }))
     navigate('/purchase-request', { state: { prefillReagentItems } })
+  }
+
+  async function runBulkLookup() {
+    const lines = [...new Set(bulkLookupText.split('\n').map(l => l.trim()).filter(Boolean))]
+    if (lines.length === 0) return
+    setBulkLookupLoading(true)
+    const orFilter = lines.map(l => `name.ilike.%${l.replace(/[,()]/g, ' ').trim()}%`).join(',')
+    const { data } = await supabase.from('reagents')
+      .select('*, reagent_lots(*), locations(*)')
+      .or(orFilter)
+      .neq('status', 'archived')
+    const pool = data || []
+    const results = lines.map(line => {
+      const lower = line.toLowerCase()
+      const matches = pool.filter(r => r.name.toLowerCase().includes(lower))
+      return { query: line, matches }
+    })
+    setBulkLookupResults(results)
+    setBulkLookupLoading(false)
+  }
+
+  function addBulkLookupMatchesToPicked() {
+    setPickedIds(prev => {
+      const next = new Map(prev)
+      bulkLookupResults?.forEach(({ matches }) => matches.forEach(r => next.set(r.id, r)))
+      return next
+    })
+    setShowBulkLookupModal(false)
   }
 
   // 다량 위치 이동
@@ -545,6 +579,11 @@ function toggleCheck(id, e, allData) {
               </div>
             )}
           </div>
+          <button onClick={() => { setShowBulkLookupModal(true); setBulkLookupResults(null) }} style={{
+            background: C.white, color: C.text, border: `1px solid ${C.border}`,
+            padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
+            fontSize: '13px', fontWeight: '600', flexShrink: 0,
+          }}>📋 목록으로 일괄 조회</button>
           {student && (
             <button onClick={() => setShowMadeModal(true)} style={{
               background: '#F9FBFF', color: '#1F4E96', border: `1px dashed #C9DAF5`,
@@ -684,6 +723,81 @@ function toggleCheck(id, e, allData) {
         </div>
       )}
 
+      {/* 시약 일괄조회 모달 */}
+      {showBulkLookupModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(26,42,94,0.55)', zIndex: 400,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
+        }} onClick={() => setShowBulkLookupModal(false)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: C.white, borderRadius: '14px', padding: '28px',
+            width: '760px', maxWidth: '95vw', maxHeight: '86vh', overflowY: 'auto',
+            boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
+          }}>
+            <h3 style={{ margin: '0 0 4px', color: C.navy }}>📋 시약 일괄조회</h3>
+            <p style={{ margin: '0 0 16px', color: C.muted, fontSize: '12.5px' }}>
+              필요한 시약명을 한 줄에 하나씩 붙여넣으면 목록에 있는지, 위치와 잔량이 어떤지 한번에 확인할 수 있어요.
+            </p>
+            <textarea value={bulkLookupText} onChange={e => setBulkLookupText(e.target.value)}
+              placeholder={'예)\nAcetone\nHCl\nEDTA'} rows={6}
+              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+              <button onClick={runBulkLookup} disabled={bulkLookupLoading} style={{ ...btnPrimary, padding: '9px 20px', opacity: bulkLookupLoading ? 0.6 : 1 }}>
+                {bulkLookupLoading ? '조회 중...' : '조회'}
+              </button>
+            </div>
+
+            {bulkLookupResults && (
+              <div style={{ marginTop: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>
+                    조회 결과 · 있음 {bulkLookupResults.filter(r => r.matches.length > 0).length}/{bulkLookupResults.length}건
+                  </span>
+                  {bulkLookupResults.some(r => r.matches.length > 0) && (
+                    <button onClick={addBulkLookupMatchesToPicked} style={{
+                      background: C.navy, color: '#fff', border: 'none', padding: '7px 14px',
+                      borderRadius: '6px', cursor: 'pointer', fontSize: '12.5px', fontWeight: '600',
+                    }}>찾은 시약 모두 선택 목록에 담기</button>
+                  )}
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>{['입력한 이름', '결과', '위치', '잔량', '최근확인'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {bulkLookupResults.map(({ query, matches }) => (
+                      matches.length === 0 ? (
+                        <tr key={query}>
+                          <td style={{ ...tdStyle, fontWeight: '600' }}>{query}</td>
+                          <td style={{ ...tdStyle, color: C.danger, fontWeight: '700' }}>✕ 없음</td>
+                          <td style={tdStyle}>-</td><td style={tdStyle}>-</td><td style={tdStyle}>-</td>
+                        </tr>
+                      ) : matches.map((r, i) => {
+                        const avgStock = (r.reagent_lots || []).length > 0
+                          ? Math.round(r.reagent_lots.reduce((s, l) => s + l.current_stock, 0) / r.reagent_lots.length) : 0
+                        return (
+                          <tr key={r.id}>
+                            <td style={{ ...tdStyle, fontWeight: '600' }}>{i === 0 ? query : ''}</td>
+                            <td style={{ ...tdStyle, color: '#00875A', fontWeight: '700' }}>{i === 0 && matches.length > 1 ? `✓ ${matches.length}건` : '✓ 있음'}</td>
+                            <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{r.locations ? `${r.locations.room}${r.locations.detail ? ' · ' + r.locations.detail : ''}` : '-'}</td>
+                            <td style={{ ...tdStyle, fontSize: '12px' }}>{avgStock}%</td>
+                            <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted }}>{r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString() : '-'}</td>
+                          </tr>
+                        )
+                      })
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button onClick={() => setShowBulkLookupModal(false)} style={{ ...btnPrimary, background: C.white, color: C.text, border: `1px solid ${C.border}`, padding: '9px 18px' }}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 직접 제조 시약 등록 모달 */}
       {showMadeModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -785,6 +899,13 @@ function toggleCheck(id, e, allData) {
               window.print()
               setTimeout(() => document.body.classList.remove('printing-picked-list'), 200)
             }} style={{ padding: '9px 16px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🖨️ 인쇄/PDF</button>
+            <button onClick={() => {
+              const withMsds = Array.from(pickedIds.values()).filter(r => r.msds_url)
+              if (withMsds.length === 0) { alert('선택한 시약 중 등록된 MSDS 파일이 있는 항목이 없어요.'); return }
+              withMsds.forEach(r => window.open(r.msds_url, '_blank'))
+            }} style={{ padding: '9px 16px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+              📄 MSDS 일괄 열기 ({Array.from(pickedIds.values()).filter(r => r.msds_url).length}건)
+            </button>
             <button onClick={() => exportPickedReagents(Array.from(pickedIds.values()))} style={{ padding: '9px 16px', borderRadius: '6px', border: 'none', background: '#1D6F42', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>📥 Excel</button>
           </div>
         </Modal>

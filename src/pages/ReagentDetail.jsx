@@ -45,6 +45,7 @@ export default function ReagentDetail() {
   const [stockHistory, setStockHistory] = useState([])
   const [disposalPending, setDisposalPending] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [uploadingMsds, setUploadingMsds] = useState(false)
 
   const [editMode, setEditMode] = useState(false)
   const [editingField, setEditingField] = useState(null)
@@ -134,6 +135,20 @@ export default function ReagentDetail() {
     await supabase.from('reagents').update({ last_confirmed_at: now, confirmed_by: student.student_id }).eq('id', id)
     setReagent(prev => ({ ...prev, last_confirmed_at: now, confirmed_by: student.student_id }))
     setConfirmedByName(student.name)
+  }
+
+  async function uploadMsds(file) {
+    if (!file) return
+    if (file.size > 20 * 1024 * 1024) { alert('20MB 이하 파일만 업로드할 수 있어요'); return }
+    setUploadingMsds(true)
+    const ext = file.name.split('.').pop()
+    const path = `msds/${id}_${Date.now()}.${ext}`
+    const { error } = await supabase.storage.from('documents').upload(path, file)
+    if (error) { alert('업로드 중 오류가 발생했습니다: ' + error.message); setUploadingMsds(false); return }
+    const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path)
+    await supabase.from('reagents').update({ msds_url: urlData.publicUrl, msds_source: 'manual' }).eq('id', id)
+    setReagent(prev => ({ ...prev, msds_url: urlData.publicUrl, msds_source: 'manual' }))
+    setUploadingMsds(false)
   }
 
   function startInlineEdit(lotId, field, currentValue, e) {
@@ -392,9 +407,25 @@ export default function ReagentDetail() {
                 <span style={{ background: '#FDECEC', color: '#C13B3F', border: '1px solid #F3D6D6', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', width: 'fit-content' }}>⚠️ {reagent.ghs_live.isYudok}</span>
               )}
               {ghsList.length === 0 && !reagent.ghs_live?.isYudok && <div style={{ fontSize: '12.5px', color: C.muted }}>등록된 위험정보가 없습니다.</div>}
-              {reagent.msds_url && (
-                <a href={reagent.msds_url} target="_blank" rel="noreferrer" style={{ fontSize: '12.5px' }}>📄 MSDS 문서 보기</a>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                {reagent.msds_url ? (
+                  <a href={reagent.msds_url} target="_blank" rel="noreferrer" style={{ fontSize: '12.5px' }}>📄 MSDS 문서 보기</a>
+                ) : (
+                  <span style={{ fontSize: '12.5px', color: C.muted }}>등록된 MSDS 파일이 없습니다.</span>
+                )}
+                {reagent.cas_no && (
+                  <a href={`https://www.google.com/search?q=${encodeURIComponent(reagent.cas_no + ' MSDS')}`} target="_blank" rel="noreferrer" style={{ fontSize: '11.5px', color: C.muted }}>
+                    🔍 CAS 번호로 MSDS 검색
+                  </a>
+                )}
+                {isAdmin && (
+                  <label style={{ fontSize: '11.5px', color: C.blue, cursor: uploadingMsds ? 'default' : 'pointer' }}>
+                    {uploadingMsds ? '업로드 중...' : (reagent.msds_url ? '📤 파일 교체' : '📤 MSDS 파일 업로드')}
+                    <input type="file" accept="application/pdf" disabled={uploadingMsds}
+                      onChange={e => uploadMsds(e.target.files[0])} style={{ display: 'none' }} />
+                  </label>
+                )}
+              </div>
             </div>
           </div>
         </div>
