@@ -75,7 +75,7 @@ export default function Home() {
   async function fetchLowStock() {
     const { data } = await supabase
       .from('reagent_lots')
-      .select('id, current_stock, max_stock, reagent_id, reagents(name, location)')
+      .select('id, current_stock, reagent_id, reagents(name, locations(room, detail))')
       .lte('current_stock', 10)
       .order('current_stock')
       .limit(5)
@@ -197,15 +197,16 @@ export default function Home() {
               {lowStockList.length === 0
                 ? <EmptyState icon="check_circle" message="재고 부족 시약이 없습니다" />
                 : lowStockList.map(lot => {
-                    const max = lot.max_stock || 100
-                    const pct = Math.round((lot.current_stock / max) * 100)
+                    const pct = lot.current_stock
+                    const loc = lot.reagents?.locations
+                    const locLabel = loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '위치 미지정'
                     return (
                       <div key={lot.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 20px', borderBottom: `1px solid ${C.borderRow}` }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 600, color: C.navyDeep, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {lot.reagents?.name || '시약명 없음'}
                           </div>
-                          <div style={{ fontSize: 11.5, color: C.muted, marginTop: 1 }}>{lot.reagents?.location || '위치 미지정'}</div>
+                          <div style={{ fontSize: 11.5, color: C.muted, marginTop: 1 }}>{locLabel}</div>
                         </div>
                         <StockBar pct={pct} />
                         <div style={{ width: 34, textAlign: 'right', fontSize: 12, fontWeight: 600, color: C.dangerDark }}>{lot.current_stock}</div>

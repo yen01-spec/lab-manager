@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, Fragment } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
@@ -436,7 +436,7 @@ async function confirmReagent() {
         </thead>
         <tbody>
           {letters.map(letter => (
-            <>
+            <Fragment key={letter}>
               <tr key={letter + '_header'} ref={el => alphabetRefs.current[letter] = el}>
                 <td colSpan={COLS} style={{
                   padding: '8px 14px',
@@ -545,7 +545,7 @@ async function confirmReagent() {
                   </tr>
                 )
               })}
-            </>
+            </Fragment>
           ))}
         </tbody>
       </table>
