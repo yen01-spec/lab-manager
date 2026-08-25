@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, Fragment } from 'react'
-import { useOutletContext, useSearchParams } from 'react-router-dom'
+import { useOutletContext, useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
 import { exportReagents, exportPickedReagents } from '../exportUtils'
@@ -24,6 +24,7 @@ function getGhsEmojis(hazard) {
 
 export default function ReagentList() {
   const { isAdmin, student } = useOutletContext?.() || {}
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [locations, setLocations] = useState([])
   const [companies, setCompanies] = useState([])
@@ -214,6 +215,15 @@ function toggleCheck(id, e, allData) {
       data.forEach(r => allPicked ? next.delete(r.id) : next.set(r.id, r))
       return next
     })
+  }
+
+  function goToPurchaseRequestWithPicked() {
+    const prefillReagentItems = Array.from(pickedIds.values()).map(r => ({
+      reagent_id: r.id, name: r.name, company: r.company || '', cas_no: r.cas_no || '',
+      cat_no: '', state: r.category === '고체' ? '고체' : '액체',
+      spec: r.volume ? `${r.volume}${r.unit || ''}` : '', quantity: '1', unit_price: '', purpose: '', note: '',
+    }))
+    navigate('/purchase-request', { state: { prefillReagentItems } })
   }
 
   // 다량 위치 이동
@@ -799,9 +809,14 @@ async function confirmReagent() {
               📋 {pickedIds.size}개 선택됨
             </span>
             <button onClick={() => setShowPickedModal(true)} style={{
-              background: C.navy, color: '#fff', border: 'none',
+              background: C.white, color: C.navy, border: `1px solid #C9DAF5`,
               padding: '7px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
             }}>선택 목록 보기</button>
+            <button onClick={goToPurchaseRequestWithPicked} style={{
+              background: C.navy, color: '#fff', border: 'none',
+              padding: '7px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
+              display: 'flex', alignItems: 'center', gap: '6px',
+            }}>🛒 구매요청서에 담기</button>
             <button onClick={() => setPickedIds(new Map())} style={{
               background: C.white, color: C.muted, border: `1px solid ${C.border}`,
               padding: '7px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px',

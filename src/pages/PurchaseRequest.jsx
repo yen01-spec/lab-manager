@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useOutletContext, useLocation } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, Modal, inputStyle, btnPrimary, btnGhost, thStyle, tdStyle } from '../design'
 import { exportPurchaseRequestForm } from '../exportUtils'
@@ -37,7 +37,12 @@ function highlightMatch(text, query) {
 
 export default function PurchaseRequest() {
   const { student } = useOutletContext?.() || {}
-  const [reagentItems, setReagentItems] = useState([emptyReagentItem()])
+  const routerLocation = useLocation()
+  const [reagentItems, setReagentItems] = useState(() => {
+    const prefill = routerLocation.state?.prefillReagentItems
+    if (prefill && prefill.length > 0) return prefill.map(it => ({ ...it, id: newId() }))
+    return [emptyReagentItem()]
+  })
   const [goodsItems, setGoodsItems] = useState([emptyGoodsItem()])
   const [activeRow, setActiveRow] = useState(null)
   const [rowOptions, setRowOptions] = useState([])
