@@ -12,6 +12,7 @@ import Inventory from './pages/Inventory'
 import NoticeDetail from './pages/NoticeDetail'
 import PurchaseRequest from './pages/PurchaseRequest'
 import BulkEdit from './pages/BulkEdit'
+import ReagentDetail from './pages/ReagentDetail'
 
 // isAdmin이 확정되기 전엔 관리자 화면을 렌더링하지 않는다 (한 프레임도 노출 안 함).
 function RequireAdmin({ children }) {
@@ -33,6 +34,7 @@ function App() {
         <Route index element={<Home />} />
         <Route path="reagents/locations" element={<ReagentLocations />} />
         <Route path="reagents/list" element={<ReagentList />} />
+        <Route path="reagents/:id" element={<ReagentDetail />} />
         <Route path="reagents/bulk-edit" element={<RequireAdmin><BulkEdit /></RequireAdmin>} />
         <Route path="items" element={<Items />} />
         <Route path="requests" element={<Requests />} />
