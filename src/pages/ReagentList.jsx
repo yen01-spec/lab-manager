@@ -32,6 +32,7 @@ export default function ReagentList() {
   const [lots, setLots] = useState([])
   const [openRooms, setOpenRooms] = useState({})
   const [showLocationBrowse, setShowLocationBrowse] = useState(false)
+  const [expandedNames, setExpandedNames] = useState(new Set())
   const [search, setSearch] = useState(() => searchParams.get('q') || '')
   const [searchResults, setSearchResults] = useState([])
   const [stockHistory, setStockHistory] = useState([])
@@ -412,6 +413,24 @@ async function confirmReagent() {
     return groups
   }
 
+  const groupByName = (rows) => {
+    const groups = {}
+    rows.forEach(r => {
+      const key = r.name.trim().toLowerCase()
+      if (!groups[key]) groups[key] = []
+      groups[key].push(r)
+    })
+    return groups
+  }
+
+  function toggleNameGroup(key) {
+    setExpandedNames(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
   const scrollToLetter = (letter) => {
     const el = alphabetRefs.current[letter]
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' })
@@ -424,6 +443,107 @@ async function confirmReagent() {
     const letters = Object.keys(groups).sort()
     const availableLetters = new Set(letters)
     const allChecked = data.length > 0 && checkedIds.size === data.length
+
+    const renderRow = (r, indent) => {
+      const lotList = r.reagent_lots || []
+      const totalSealed = lotList.reduce((s, l) => s + l.sealed_count, 0)
+      const avgStock = lotList.length > 0
+        ? Math.round(lotList.reduce((s, l) => s + l.current_stock, 0) / lotList.length) : 0
+      const isLow = lotList.some(l => l.sealed_count === 0 && l.current_stock <= 20)
+      const ghsList = getGhsEmojis(r.hazard)
+      const loc = r.locations
+      const isChecked = checkedIds.has(r.id)
+      const editingThisSealed = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'sealed_count'
+      const editingThisStock = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'current_stock'
+      const firstLot = lotList[0]
+
+      return (
+        <tr key={r.id}
+          onClick={e => editMode ? toggleCheck(r.id, e, data) : openReagent(r)}
+          style={{
+            background: isChecked ? '#EEF2FB' : isLow ? '#FFF8F8' : C.white,
+            cursor: 'pointer',
+            borderLeft: isChecked ? `3px solid ${C.navy}` : indent ? `3px solid ${C.borderRow}` : '3px solid transparent',
+          }}
+          onMouseEnter={e => { if (!isChecked) e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg }}
+          onMouseLeave={e => { if (!isChecked) e.currentTarget.style.background = isLow ? '#FFF8F8' : C.white }}>
+          {editMode && (
+            <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => toggleCheck(r.id, e, data)}>
+              <input type="checkbox" checked={isChecked} onChange={() => {}}
+                style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+            </td>
+          )}
+          <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', paddingLeft: indent ? '32px' : undefined }}>
+            {r.name}
+            {r.reagent_type === 'self_made' && <span style={{ marginLeft: '6px', fontSize: '9.5px', background: '#EAF1FB',
+              color: '#1F4E96', padding: '1px 7px', borderRadius: '999px', fontWeight: '700' }}>직접제조</span>}
+            {isLow && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
+              color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
+          </td>
+          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>{r.cas_no || '-'}</td>
+          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>{r.company || '-'}</td>
+          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>
+            {r.volume ? `${r.volume}${r.unit}` : '-'}
+          </td>
+          <td style={{ ...tdStyle, fontSize: '12px' }}>
+            {r.category
+              ? <span style={{ background: '#EEF2FB', color: C.navy, padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600' }}>{r.category}</span>
+              : <span style={{ color: C.muted }}>-</span>}
+          </td>
+          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>
+            {loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
+          </td>
+          <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+            {ghsList.length > 0
+              ? <span title={ghsList.map(g => g.label).join(', ')}>{ghsList.map(g => g.emoji).join('')}</span>
+              : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
+          </td>
+          <td style={{ ...tdStyle, whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+            {firstLot ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {editingThisSealed ? (
+                  <input autoFocus type="number" min="0" value={inlineEdit.value}
+                    onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                    onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(firstLot); if (e.key === 'Escape') setInlineEdit(null) }}
+                    onBlur={() => saveInlineEdit(firstLot)}
+                    style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
+                ) : (
+                  <span onClick={e => !editMode && firstLot && startInlineEdit(firstLot.id, r.id, 'sealed_count', totalSealed, e)}
+                    title={isAdmin && !editMode ? '클릭하여 수정' : ''}
+                    style={{ cursor: isAdmin && !editMode ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
+                      border: isAdmin && !editMode ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
+                    {totalSealed}병
+                  </span>
+                )}
+                <span style={{ color: C.muted, fontSize: '11px' }}>/</span>
+                {editingThisStock ? (
+                  <input autoFocus type="number" min="0" max="100" value={inlineEdit.value}
+                    onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                    onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(firstLot); if (e.key === 'Escape') setInlineEdit(null) }}
+                    onBlur={() => saveInlineEdit(firstLot)}
+                    style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
+                ) : (
+                  <span onClick={e => !editMode && firstLot && startInlineEdit(firstLot.id, r.id, 'current_stock', avgStock, e)}
+                    title={isAdmin && !editMode ? '클릭하여 수정' : ''}
+                    style={{ cursor: isAdmin && !editMode ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
+                      border: isAdmin && !editMode ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
+                    {avgStock}%
+                  </span>
+                )}
+              </div>
+            ) : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
+          </td>
+          <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted, whiteSpace: 'nowrap' }}>
+            {r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString() : '-'}
+          </td>
+          <td style={tdStyle}>
+            {isLow
+              ? <span style={{ color: C.danger, fontWeight: '700', fontSize: '12px' }}>⚠ 부족</span>
+              : <span style={{ color: '#00875A', fontWeight: '600', fontSize: '12px' }}>✓ 정상</span>}
+          </td>
+        </tr>
+      )
+    }
 
     return (
   <div style={{ display: 'flex' }}>
@@ -455,104 +575,35 @@ async function confirmReagent() {
                   borderBottom: `1px solid ${C.border}`, borderLeft: `3px solid ${C.gold}`,
                 }}>{letter}</td>
               </tr>
-              {groups[letter].map(r => {
-                const lotList = r.reagent_lots || []
-                const totalSealed = lotList.reduce((s, l) => s + l.sealed_count, 0)
-                const avgStock = lotList.length > 0
-                  ? Math.round(lotList.reduce((s, l) => s + l.current_stock, 0) / lotList.length) : 0
-                const isLow = lotList.some(l => l.sealed_count === 0 && l.current_stock <= 20)
-                const ghsList = getGhsEmojis(r.hazard)
-                const loc = r.locations
-                const isChecked = checkedIds.has(r.id)
-                const editingThisSealed = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'sealed_count'
-                const editingThisStock = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'current_stock'
-                const firstLot = lotList[0]
-
+              {Object.entries(groupByName(groups[letter])).map(([nameKey, rowsForName]) => {
+                if (editMode || rowsForName.length === 1) {
+                  return <Fragment key={nameKey}>{rowsForName.map(r => renderRow(r, false))}</Fragment>
+                }
+                const isExpanded = expandedNames.has(nameKey)
+                const sample = rowsForName[0]
+                const ghsList = getGhsEmojis(sample.hazard)
                 return (
-                  <tr key={r.id}
-                    onClick={e => editMode ? toggleCheck(r.id, e, data) : openReagent(r)}
-                    style={{
-                      background: isChecked ? '#EEF2FB' : isLow ? '#FFF8F8' : C.white,
-                      cursor: 'pointer',
-                      borderLeft: isChecked ? `3px solid ${C.navy}` : '3px solid transparent',
-                    }}
-                    onMouseEnter={e => { if (!isChecked) e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg }}
-                    onMouseLeave={e => { if (!isChecked) e.currentTarget.style.background = isLow ? '#FFF8F8' : C.white }}>
-                    {editMode && (
-                      <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => toggleCheck(r.id, e, data)}>
-                        <input type="checkbox" checked={isChecked} onChange={() => {}}
-                          style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+                  <Fragment key={nameKey}>
+                    <tr onClick={() => toggleNameGroup(nameKey)}
+                      style={{ cursor: 'pointer', background: C.white }}
+                      onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                      onMouseLeave={e => e.currentTarget.style.background = C.white}>
+                      <td colSpan={COLS} style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
+                        <span style={{ marginRight: '8px', color: C.muted, fontSize: '11px' }}>{isExpanded ? '▾' : '▸'}</span>
+                        <span style={{ fontWeight: '700', color: C.navy }}>{sample.name}</span>
+                        <span style={{ marginLeft: '8px', fontSize: '11px', background: '#EEF2FB', color: C.navy,
+                          padding: '2px 9px', borderRadius: '10px', fontWeight: '700' }}>
+                          {rowsForName.length}병
+                        </span>
+                        {ghsList.length > 0 && (
+                          <span style={{ marginLeft: '8px', fontSize: '14px' }} title={ghsList.map(g => g.label).join(', ')}>
+                            {ghsList.map(g => g.emoji).join('')}
+                          </span>
+                        )}
                       </td>
-                    )}
-                    <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px' }}>
-                      {r.name}
-                      {r.reagent_type === 'self_made' && <span style={{ marginLeft: '6px', fontSize: '9.5px', background: '#EAF1FB',
-                        color: '#1F4E96', padding: '1px 7px', borderRadius: '999px', fontWeight: '700' }}>직접제조</span>}
-                      {isLow && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
-                        color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
-                    </td>
-                    <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>{r.cas_no || '-'}</td>
-                    <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>{r.company || '-'}</td>
-                    <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>
-                      {r.volume ? `${r.volume}${r.unit}` : '-'}
-                    </td>
-                    <td style={{ ...tdStyle, fontSize: '12px' }}>
-                      {r.category
-                        ? <span style={{ background: '#EEF2FB', color: C.navy, padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600' }}>{r.category}</span>
-                        : <span style={{ color: C.muted }}>-</span>}
-                    </td>
-                    <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>
-                      {loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
-                    </td>
-                    <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
-                      {ghsList.length > 0
-                        ? <span title={ghsList.map(g => g.label).join(', ')}>{ghsList.map(g => g.emoji).join('')}</span>
-                        : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
-                    </td>
-                    <td style={{ ...tdStyle, whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
-                      {firstLot ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          {editingThisSealed ? (
-                            <input autoFocus type="number" min="0" value={inlineEdit.value}
-                              onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                              onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(firstLot); if (e.key === 'Escape') setInlineEdit(null) }}
-                              onBlur={() => saveInlineEdit(firstLot)}
-                              style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
-                          ) : (
-                            <span onClick={e => !editMode && firstLot && startInlineEdit(firstLot.id, r.id, 'sealed_count', totalSealed, e)}
-                              title={isAdmin && !editMode ? '클릭하여 수정' : ''}
-                              style={{ cursor: isAdmin && !editMode ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
-                                border: isAdmin && !editMode ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
-                              {totalSealed}병
-                            </span>
-                          )}
-                          <span style={{ color: C.muted, fontSize: '11px' }}>/</span>
-                          {editingThisStock ? (
-                            <input autoFocus type="number" min="0" max="100" value={inlineEdit.value}
-                              onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                              onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(firstLot); if (e.key === 'Escape') setInlineEdit(null) }}
-                              onBlur={() => saveInlineEdit(firstLot)}
-                              style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
-                          ) : (
-                            <span onClick={e => !editMode && firstLot && startInlineEdit(firstLot.id, r.id, 'current_stock', avgStock, e)}
-                              title={isAdmin && !editMode ? '클릭하여 수정' : ''}
-                              style={{ cursor: isAdmin && !editMode ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
-                                border: isAdmin && !editMode ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
-                              {avgStock}%
-                            </span>
-                          )}
-                        </div>
-                      ) : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
-                    </td>
-                    <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted, whiteSpace: 'nowrap' }}>
-                      {r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString() : '-'}
-                    </td>
-                    <td style={tdStyle}>
-                      {isLow
-                        ? <span style={{ color: C.danger, fontWeight: '700', fontSize: '12px' }}>⚠ 부족</span>
-                        : <span style={{ color: '#00875A', fontWeight: '600', fontSize: '12px' }}>✓ 정상</span>}
-                    </td>
-                  </tr>
+                    </tr>
+                    {isExpanded && rowsForName.map(r => renderRow(r, true))}
+                  </Fragment>
                 )
               })}
             </Fragment>

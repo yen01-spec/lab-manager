@@ -28,7 +28,7 @@ export default function Home() {
   const navigate = useNavigate()
   const { student, isAdmin } = useOutletContext?.() || {}
   const [search, setSearch] = useState('')
-  const [stats, setStats] = useState({ reagents: 0, confirmedPct: 0, expiring: 0, myPending: 0 })
+  const [stats, setStats] = useState({ reagents: 0, species: 0, bottles: 0, confirmedPct: 0, expiring: 0, myPending: 0 })
   const [recentConfirms, setRecentConfirms] = useState([])
 
   useEffect(() => { fetchAll() }, [student?.student_id, isAdmin])
@@ -47,15 +47,20 @@ export default function Home() {
       supabase.from('reagents').select('*', { count: 'exact', head: true }).neq('status', 'archived'),
       supabase.from('reagents').select('*', { count: 'exact', head: true }).neq('status', 'archived').gte('last_confirmed_at', yearStart),
       supabase.from('reagent_lots').select('*', { count: 'exact', head: true }).lte('expiry_date', soonStr).gte('expiry_date', today),
+      supabase.from('reagents').select('name').neq('status', 'archived'),
     ]
     if (student?.student_id) {
       queries.push(
         supabase.from('reagent_change_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('requested_by_student_id', student.student_id)
       )
     }
-    const [{ count: total }, { count: confirmed }, { count: expiring }, myPendingRes] = await Promise.all(queries)
+    const [{ count: total }, { count: confirmed }, { count: expiring }, { data: allReagents }, myPendingRes] = await Promise.all(queries)
+    // 같은 이름으로 등록된 병(위치별로 각각 한 행)이 여럿일 수 있어 종류 수는 별도로 센다
+    const speciesSet = new Set((allReagents || []).map(r => r.name.trim().toLowerCase()))
     setStats({
       reagents: total || 0,
+      species: speciesSet.size,
+      bottles: total || 0,
       confirmedPct: total ? Math.round((confirmed || 0) / total * 100) : 0,
       expiring: expiring || 0,
       myPending: myPendingRes?.count || 0,
@@ -87,7 +92,7 @@ export default function Home() {
   }
 
   const STAT_ITEMS = [
-    { label: '전체 시약', value: `${stats.reagents.toLocaleString()}개`, muted: false },
+    { label: '전체 시약', value: `${stats.species.toLocaleString()}종`, sub: `총 ${stats.bottles.toLocaleString()}병`, muted: false },
     { label: '올해 확인 완료', value: `${stats.confirmedPct}%`, muted: false, accent: C.successDark },
     { label: '유효기간 임박', value: `${stats.expiring}건`, muted: stats.expiring === 0 },
     { label: '내 수정요청 대기중', value: `${stats.myPending}건`, muted: stats.myPending === 0 },
@@ -119,7 +124,10 @@ export default function Home() {
           {STAT_ITEMS.map(s => (
             <div key={s.label} style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, boxShadow: '0 1px 3px rgba(16,24,40,.06)' }}>
               <div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600 }}>{s.label}</div>
-              <div style={{ fontSize: 24, fontWeight: 700, marginTop: 6, color: s.muted ? '#B6BCC6' : s.accent || C.navyDeep }}>{s.value}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 6 }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: s.muted ? '#B6BCC6' : s.accent || C.navyDeep }}>{s.value}</div>
+                {s.sub && <div style={{ fontSize: 12, color: C.muted }}>{s.sub}</div>}
+              </div>
             </div>
           ))}
         </div>
