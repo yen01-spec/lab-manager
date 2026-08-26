@@ -42,6 +42,7 @@ export default function ReagentDetail() {
   const [lots, setLots] = useState([])
   const [pendingChanges, setPendingChanges] = useState([])
   const [confirmedByName, setConfirmedByName] = useState('')
+  const [registeredByName, setRegisteredByName] = useState('')
   const [stockHistory, setStockHistory] = useState([])
   const [disposalPending, setDisposalPending] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -77,6 +78,10 @@ export default function ReagentDetail() {
         const { data: cs } = await supabase.from('students').select('name').eq('student_id', data.confirmed_by).maybeSingle()
         setConfirmedByName(cs?.name || data.confirmed_by)
       } else setConfirmedByName('')
+      if (data.registered_by) {
+        const { data: rs } = await supabase.from('students').select('name').eq('student_id', data.registered_by).maybeSingle()
+        setRegisteredByName(rs?.name || data.registered_by)
+      } else setRegisteredByName('')
       const { data: disposal } = await supabase.from('disposal_requests')
         .select('*').eq('reagent_id', id).eq('status', 'pending').maybeSingle()
       setDisposalPending(disposal || null)
@@ -196,7 +201,9 @@ export default function ReagentDetail() {
     if (action === 'confirm') {
       await supabase.from('disposal_requests').update({ status: 'approved', approved_by_student_id: student?.student_id ?? null }).eq('id', disposalPending.id)
       const firstLot = lots[0]
-      if (firstLot) await supabase.from('reagent_lots').update({ sealed_count: 0, current_stock: 0 }).eq('id', firstLot.id)
+      if (firstLot) await supabase.from('reagent_lots').update({
+        sealed_count: 0, current_stock: 0, disposal_date: new Date().toISOString().split('T')[0],
+      }).eq('id', firstLot.id)
     } else {
       await supabase.from('disposal_requests').update({ status: 'rejected' }).eq('id', disposalPending.id)
     }
@@ -385,6 +392,7 @@ export default function ReagentDetail() {
                     <InfoRow label="입고일" value={lot.received_date} />
                     <InfoRow label="개봉일" value={lot.opened_date} />
                     <InfoRow label="유효기간" value={lot.expiry_date} />
+                    {lot.disposal_date && <InfoRow label="폐기일" value={lot.disposal_date} />}
                   </div>
                 )
               })}
@@ -458,6 +466,14 @@ export default function ReagentDetail() {
                     : '확인 기록 없음'}
                 </span>
               </div>
+              {isAdmin && reagent.registered_by && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '12px', color: C.muted }}>등록자</span>
+                  <span style={{ fontSize: '13px', color: C.text, fontWeight: '600' }}>
+                    {new Date(reagent.created_at).toLocaleDateString()} · {registeredByName || reagent.registered_by}
+                  </span>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '12px', color: C.muted }}>비고</span>
                 <span style={{ fontSize: '13px', color: C.text }}>{reagent.notes || '-'}</span>

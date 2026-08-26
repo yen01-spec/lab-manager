@@ -92,7 +92,7 @@ export default function Admin() {
         <div style={{ flex: 1, minWidth: 0 }}>
           {tab === 'notice' && <NoticeTab />}
           {tab === 'changereq' && <ChangeRequestTab student={student} />}
-          {tab === 'reagent'  && <ReagentAddTab locations={locations} />}
+          {tab === 'reagent'  && <ReagentAddTab locations={locations} student={student} />}
           {tab === 'item'     && <ItemAddTab locations={locations} />}
           {tab === 'disposal' && <DisposalTab onCountChange={fetchDisposalCount} student={student} />}
           {tab === 'move'     && <MoveTab locations={locations} />}
@@ -111,7 +111,7 @@ export default function Admin() {
 // ══════════════════════════════════════════════
 //  시약 추가 (CAS 자동조회 포함)
 // ══════════════════════════════════════════════
-function ReagentAddTab({ locations }) {
+function ReagentAddTab({ locations, student }) {
   const init = {
     name: '', cas_no: '', company: '', hazard: '', category: '',
     volume: '', unit: '', location_id: '', notes: '',
@@ -218,6 +218,7 @@ try {
       hazard: form.hazard, category: form.category,
       volume: form.volume || null, unit: form.unit,
       location_id: form.location_id || null, notes: form.notes,
+      registered_by: student?.student_id ?? null,
     }).select().single()
     if (r) {
       await supabase.from('reagent_lots').insert({
@@ -447,7 +448,10 @@ function DisposalTab({ onCountChange, student }) {
     if (!window.confirm(`"${req.reagent_name}" 폐기를 완료 처리하시겠습니까?\n⚠️ 재고에서 차감됩니다.`)) return
     if (req.lot_id) {
       const { data: lot } = await supabase.from('reagent_lots').select('*').eq('id', req.lot_id).single()
-      if (lot) await supabase.from('reagent_lots').update({ sealed_count: Math.max(0, lot.sealed_count - 1) }).eq('id', req.lot_id)
+      if (lot) await supabase.from('reagent_lots').update({
+        sealed_count: Math.max(0, lot.sealed_count - 1),
+        disposal_date: new Date().toISOString().split('T')[0],
+      }).eq('id', req.lot_id)
     }
     // 남은 lot이 전부 소진됐으면 목록에서 보관(archived) 처리 — 데이터는 지우지 않음
     if (req.reagent_id) {

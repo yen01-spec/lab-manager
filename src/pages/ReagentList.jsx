@@ -232,6 +232,7 @@ function toggleCheck(id, e, allData) {
       name: madeForm.name, volume: madeForm.volume || null, unit: madeForm.unit || null,
       location_id: madeForm.location_id, reagent_type: 'self_made',
       made_date: madeForm.made_date, made_purpose: madeForm.made_purpose,
+      registered_by: student.student_id,
     }).select().single()
     if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
     await supabase.from('reagent_lots').insert({
