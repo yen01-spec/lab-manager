@@ -363,12 +363,12 @@ function toggleCheck(id, e, allData) {
           }}
           onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = isLow ? '#FFEFEF' : indent ? '#EFF3FA' : C.bg }}
           onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = baseBg }}>
-          <td style={{ ...tdStyle, textAlign: 'center' }}
+          <td style={{ ...tdStyle, textAlign: 'center', borderRight: `1px solid ${C.borderRow}` }}
             onClick={e => editMode ? toggleCheck(r.id, e, data) : togglePick(r, e)}>
             <input type="checkbox" checked={isSelected} onChange={() => {}}
               style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
           </td>
-          <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', maxWidth: '300px', whiteSpace: 'nowrap', paddingLeft: indent ? '30px' : undefined }}>
+          <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', maxWidth: '300px', whiteSpace: 'nowrap', paddingLeft: indent ? '30px' : undefined, borderRight: `1px solid ${C.borderRow}` }}>
             {indent && <span style={{ color: C.blue, marginRight: '5px', fontSize: '11px' }}>↳</span>}
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: '230px', verticalAlign: 'middle' }} title={r.name}>{r.name}</span>
             {r.reagent_type === 'self_made' && <span style={{ marginLeft: '6px', fontSize: '9.5px', background: '#EAF1FB',
@@ -376,26 +376,26 @@ function toggleCheck(id, e, allData) {
             {isLow && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
               color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
           </td>
-          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>{r.cas_no || '-'}</td>
-          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '110px' }} title={r.company || ''}>{r.company || '-'}</td>
-          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>
+          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{r.cas_no || '-'}</td>
+          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '110px', borderRight: `1px solid ${C.borderRow}` }} title={r.company || ''}>{r.company || '-'}</td>
+          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
             {r.volume ? `${r.volume}${r.unit}` : '-'}
           </td>
-          <td style={{ ...tdStyle, fontSize: '12px' }}>
+          <td style={{ ...tdStyle, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>
             {r.category
               ? <span style={{ background: '#EEF2FB', color: C.navy, padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600' }}>{r.category}</span>
               : <span style={{ color: C.muted }}>-</span>}
           </td>
-          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px' }}
+          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px', borderRight: `1px solid ${C.borderRow}` }}
             title={loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : ''}>
             {loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
           </td>
-          <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+          <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }} onClick={e => e.stopPropagation()}>
             {ghsList.length > 0
               ? <span title={ghsList.map(g => g.label).join(', ')}>{ghsList.map(g => g.emoji).join('')}</span>
               : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
           </td>
-          <td style={{ ...tdStyle, whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+          <td style={{ ...tdStyle, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }} onClick={e => e.stopPropagation()}>
             {firstLot ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <div style={{ width: '36px', height: '6px', borderRadius: '3px', background: '#F0F2F6', overflow: 'hidden', flexShrink: 0 }}>
@@ -434,12 +434,12 @@ function toggleCheck(id, e, allData) {
             ) : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
           </td>
           {visibleCols.lot && (
-            <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap' }}>{firstLot?.lot_no || '-'}</td>
+            <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{firstLot?.lot_no || '-'}</td>
           )}
           {visibleCols.expiry && (
-            <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap' }}>{firstLot?.expiry_date || '-'}</td>
+            <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{firstLot?.expiry_date || '-'}</td>
           )}
-          <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted, whiteSpace: 'nowrap' }}>
+          <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
             {r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString() : '-'}
           </td>
           <td style={tdStyle}>
@@ -456,7 +456,7 @@ function toggleCheck(id, e, allData) {
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
         <thead>
           <tr>
-            <th style={thStyle}>
+            <th style={{ ...thStyle, borderRight: `1px solid ${C.borderRow}` }}>
               <input type="checkbox" checked={editMode ? allChecked : allPicked}
                 onChange={() => editMode ? toggleAll(data) : togglePickAll(data)}
                 style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
@@ -467,7 +467,7 @@ function toggleCheck(id, e, allData) {
               ...(visibleCols.expiry ? ['유효기간'] : []),
               '최근확인', '상태',
             ].map(h => (
-              <th key={h} style={thStyle}>{h}</th>
+              <th key={h} style={{ ...thStyle, borderRight: `1px solid ${C.borderRow}` }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -496,7 +496,7 @@ function toggleCheck(id, e, allData) {
                       style={{ cursor: 'pointer', background: groupPicked ? '#EEF2FB' : '#FAFBFD' }}
                       onMouseEnter={e => { if (!groupPicked) e.currentTarget.style.background = C.bg }}
                       onMouseLeave={e => { if (!groupPicked) e.currentTarget.style.background = '#FAFBFD' }}>
-                      <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => { e.stopPropagation(); togglePickAll(rowsForName) }}>
+                      <td style={{ ...tdStyle, textAlign: 'center', borderRight: `1px solid ${C.borderRow}` }} onClick={e => { e.stopPropagation(); togglePickAll(rowsForName) }}>
                         <input type="checkbox" checked={groupPicked} onChange={() => {}}
                           style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
                       </td>
