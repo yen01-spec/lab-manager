@@ -32,11 +32,11 @@ export default function ReagentList() {
   const [search, setSearch] = useState(() => searchParams.get('q') || '')
   const [locationFilter, setLocationFilter] = useState('')
   const [companyFilter, setCompanyFilter] = useState('')
-  const [showColMenu, setShowColMenu] = useState(false)
-  const [visibleCols, setVisibleCols] = useState({ lot: false, expiry: false })
+  const [visibleCols, setVisibleCols] = useState({ lot: false, expiry: false, category: false, ghs: false, status: false })
   const [results, setResults] = useState([])
   const [totalCount, setTotalCount] = useState(0)
   const alphabetRefs = useRef({})
+  const fetchRequestRef = useRef(0)
 
   // 편집 모드
   const [editMode, setEditMode] = useState(false)
@@ -87,6 +87,7 @@ export default function ReagentList() {
   }
 
   async function fetchResults() {
+    const myRequestId = ++fetchRequestRef.current
     let query = supabase.from('reagents')
       .select('*, reagent_lots(*), locations(*)', { count: 'exact' })
       .neq('status', 'archived')
@@ -94,6 +95,7 @@ export default function ReagentList() {
     if (locationFilter) query = query.eq('location_id', locationFilter)
     if (companyFilter) query = query.eq('company', companyFilter)
     const { data, count } = await query.range(0, 4999)
+    if (fetchRequestRef.current !== myRequestId) return // 늦게 도착한 응답이 최신 필터 결과를 덮어쓰지 않도록 함
     if (count > 4999) {
       alert(`⚠️ 시약이 ${count}개로 많아 일부만 표시됩니다. 관리자에게 문의하세요.`)
     }
@@ -327,7 +329,9 @@ function toggleCheck(id, e, allData) {
     )
   }
 
-  const COLS = 11 + (visibleCols.lot ? 1 : 0) + (visibleCols.expiry ? 1 : 0)
+  const COLS = 8
+    + (visibleCols.lot ? 1 : 0) + (visibleCols.expiry ? 1 : 0)
+    + (visibleCols.category ? 1 : 0) + (visibleCols.ghs ? 1 : 0) + (visibleCols.status ? 1 : 0)
 
   const ReagentTable = ({ data }) => {
     const groups = getGroupedReagents(data)
@@ -380,20 +384,6 @@ function toggleCheck(id, e, allData) {
           <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
             {r.volume ? `${r.volume}${r.unit}` : '-'}
           </td>
-          <td style={{ ...tdStyle, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>
-            {r.category
-              ? <span style={{ background: '#EEF2FB', color: C.navy, padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600' }}>{r.category}</span>
-              : <span style={{ color: C.muted }}>-</span>}
-          </td>
-          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px', borderRight: `1px solid ${C.borderRow}` }}
-            title={loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : ''}>
-            {loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
-          </td>
-          <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }} onClick={e => e.stopPropagation()}>
-            {ghsList.length > 0
-              ? <span title={ghsList.map(g => g.label).join(', ')}>{ghsList.map(g => g.emoji).join('')}</span>
-              : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
-          </td>
           <td style={{ ...tdStyle, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }} onClick={e => e.stopPropagation()}>
             {firstLot ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -432,20 +422,40 @@ function toggleCheck(id, e, allData) {
               </div>
             ) : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
           </td>
+          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px', borderRight: `1px solid ${C.borderRow}` }}
+            title={loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : ''}>
+            {loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
+          </td>
           {visibleCols.lot && (
             <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{firstLot?.lot_no || '-'}</td>
           )}
           {visibleCols.expiry && (
             <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{firstLot?.expiry_date || '-'}</td>
           )}
-          <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
+          {visibleCols.category && (
+            <td style={{ ...tdStyle, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>
+              {r.category
+                ? <span style={{ background: '#EEF2FB', color: C.navy, padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600' }}>{r.category}</span>
+                : <span style={{ color: C.muted }}>-</span>}
+            </td>
+          )}
+          {visibleCols.ghs && (
+            <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }} onClick={e => e.stopPropagation()}>
+              {ghsList.length > 0
+                ? <span title={ghsList.map(g => g.label).join(', ')}>{ghsList.map(g => g.emoji).join('')}</span>
+                : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
+            </td>
+          )}
+          <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted, whiteSpace: 'nowrap', borderRight: visibleCols.status ? `1px solid ${C.borderRow}` : undefined }}>
             {r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString() : '-'}
           </td>
-          <td style={tdStyle}>
-            {isLow
-              ? <span style={{ color: C.danger, fontWeight: '700', fontSize: '12px' }}>⚠ 부족</span>
-              : <span style={{ color: '#00875A', fontWeight: '600', fontSize: '12px' }}>✓ 정상</span>}
-          </td>
+          {visibleCols.status && (
+            <td style={tdStyle}>
+              {isLow
+                ? <span style={{ color: C.danger, fontWeight: '700', fontSize: '12px' }}>⚠ 부족</span>
+                : <span style={{ color: '#00875A', fontWeight: '600', fontSize: '12px' }}>✓ 정상</span>}
+            </td>
+          )}
         </tr>
       )
     }
@@ -461,10 +471,13 @@ function toggleCheck(id, e, allData) {
                 style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
             </th>
             {[
-              '시약명', 'CAS No.', '회사', '용량', '성상', '위치', 'GHS', '재고',
+              '시약명', 'CAS No.', '회사', '용량', '재고', '위치',
               ...(visibleCols.lot ? ['Lot No.'] : []),
               ...(visibleCols.expiry ? ['유효기간'] : []),
-              '최근확인', '상태',
+              ...(visibleCols.category ? ['성상'] : []),
+              ...(visibleCols.ghs ? ['GHS'] : []),
+              '최근확인',
+              ...(visibleCols.status ? ['상태'] : []),
             ].map(h => (
               <th key={h} style={{ ...thStyle, borderRight: `1px solid ${C.borderRow}` }}>{h}</th>
             ))}
@@ -512,20 +525,26 @@ function toggleCheck(id, e, allData) {
                       <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
                       <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
                       <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
-                      <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
-                        {ghsList.length > 0
-                          ? <span title={ghsList.map(g => g.label).join(', ')}>{ghsList.map(g => g.emoji).join('')}</span>
-                          : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
-                      </td>
-                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
                       {visibleCols.lot && (
                         <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
                       )}
                       {visibleCols.expiry && (
                         <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
                       )}
-                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
-                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>-</td>
+                      {visibleCols.category && (
+                        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      )}
+                      {visibleCols.ghs && (
+                        <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
+                          {ghsList.length > 0
+                            ? <span title={ghsList.map(g => g.label).join(', ')}>{ghsList.map(g => g.emoji).join('')}</span>
+                            : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
+                        </td>
+                      )}
+                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: visibleCols.status ? `1px solid ${C.borderRow}` : undefined }}>-</td>
+                      {visibleCols.status && (
+                        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>-</td>
+                      )}
                     </tr>
                     {isExpanded && rowsForName.map(r => renderRow(r))}
                   </Fragment>
@@ -584,26 +603,6 @@ function toggleCheck(id, e, allData) {
             background: 'none', border: `1px solid ${C.border}`, borderRadius: '6px',
             padding: '9px 14px', cursor: 'pointer', fontSize: '13px', color: C.muted, flexShrink: 0,
           }}>필터 초기화</button>
-          <div style={{ position: 'relative' }}>
-            <button onClick={() => setShowColMenu(v => !v)} style={{
-              background: C.white, border: `1px solid ${C.border}`, borderRadius: '6px',
-              padding: '9px 14px', cursor: 'pointer', fontSize: '13px', color: C.text, flexShrink: 0,
-            }}>표시 열 ▾</button>
-            {showColMenu && (
-              <div style={{
-                position: 'absolute', top: '100%', right: 0, marginTop: '4px', zIndex: 100,
-                background: C.white, border: `1px solid ${C.border}`, borderRadius: '8px',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '10px 14px', minWidth: '140px',
-              }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: C.text, marginBottom: '8px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={visibleCols.lot} onChange={() => setVisibleCols(v => ({ ...v, lot: !v.lot }))} />Lot No.
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: C.text, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={visibleCols.expiry} onChange={() => setVisibleCols(v => ({ ...v, expiry: !v.expiry }))} />유효기간
-                </label>
-              </div>
-            )}
-          </div>
           <button onClick={() => { setShowBulkLookupModal(true); setBulkLookupResults(null) }} style={{
             background: C.white, color: C.text, border: `1px solid ${C.border}`,
             padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
@@ -632,6 +631,26 @@ function toggleCheck(id, e, allData) {
               fontSize: '13px', fontWeight: '600', flexShrink: 0,
             }}>✏️ {editMode ? '편집 종료' : '편집'}</button>
           )}
+        </div>
+
+        {/* 표시 열 선택 (기본 열 + 선택 열) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '2px 4px 12px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11.5px', color: C.muted }}>기본: 시약명 · CAS · 제조사 · 규격 · 재고 · 위치 · 최근확인</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleCols.lot} onChange={() => setVisibleCols(v => ({ ...v, lot: !v.lot }))} />Lot No.
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleCols.expiry} onChange={() => setVisibleCols(v => ({ ...v, expiry: !v.expiry }))} />유효기간
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleCols.category} onChange={() => setVisibleCols(v => ({ ...v, category: !v.category }))} />성상
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleCols.ghs} onChange={() => setVisibleCols(v => ({ ...v, ghs: !v.ghs }))} />GHS
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleCols.status} onChange={() => setVisibleCols(v => ({ ...v, status: !v.status }))} />상태
+          </label>
         </div>
 
         {/* 편집 모드 액션 바 */}
