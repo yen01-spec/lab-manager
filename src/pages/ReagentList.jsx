@@ -500,19 +500,33 @@ function toggleCheck(id, e, allData) {
                         <input type="checkbox" checked={groupPicked} onChange={() => {}}
                           style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
                       </td>
-                      <td colSpan={COLS - 1} style={{ ...tdStyle, padding: '11px 14px' }}>
-                        <span style={{ marginRight: '8px', color: C.blue, fontSize: '11px', fontWeight: '700' }}>{isExpanded ? '▾' : '▸'}</span>
-                        <span style={{ fontWeight: '700', color: C.navy }}>{sample.name}</span>
-                        <span style={{ marginLeft: '8px', fontSize: '11px', background: '#EEF2FB', color: C.navy,
-                          padding: '2px 9px', borderRadius: '10px', fontWeight: '700' }}>
+                      <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', maxWidth: '300px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
+                        <span style={{ marginRight: '5px', color: C.blue, fontSize: '11px', fontWeight: '700' }}>{isExpanded ? '▾' : '▸'}</span>
+                        <span style={{ fontWeight: '700' }}>{sample.name}</span>
+                        <span style={{ marginLeft: '6px', fontSize: '10.5px', background: '#EEF2FB', color: C.navy,
+                          padding: '2px 8px', borderRadius: '10px', fontWeight: '700' }}>
                           {rowsForName.length}병 · 위치별 보기
                         </span>
-                        {ghsList.length > 0 && (
-                          <span style={{ marginLeft: '8px', fontSize: '14px' }} title={ghsList.map(g => g.label).join(', ')}>
-                            {ghsList.map(g => g.emoji).join('')}
-                          </span>
-                        )}
                       </td>
+                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
+                        {ghsList.length > 0
+                          ? <span title={ghsList.map(g => g.label).join(', ')}>{ghsList.map(g => g.emoji).join('')}</span>
+                          : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
+                      </td>
+                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      {visibleCols.lot && (
+                        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      )}
+                      {visibleCols.expiry && (
+                        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      )}
+                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>-</td>
                     </tr>
                     {isExpanded && rowsForName.map(r => renderRow(r, true))}
                   </Fragment>
