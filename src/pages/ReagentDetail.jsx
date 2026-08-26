@@ -295,16 +295,12 @@ export default function ReagentDetail() {
             <button onClick={() => setShowDisposalModal(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: '1px solid #F3D6D6', background: '#FDECEC', fontSize: '13px', color: '#C13B3F', fontWeight: '600', cursor: 'pointer' }}>🗑️ 폐기 신청</button>
             <button onClick={() => setShowStockModal(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.white, fontSize: '13px', color: '#586173', cursor: 'pointer' }}>📦 입출고</button>
             <button onClick={() => setShowMoveModal(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.white, fontSize: '13px', color: '#586173', cursor: 'pointer' }}>📍 위치 이동{!isAdmin && ' 신청'}</button>
-            {student && (
-              <button onClick={() => setEditMode(v => !v)} style={{
-                padding: '9px 16px', borderRadius: '8px', border: `1px solid ${editMode ? C.navy : C.border}`,
-                background: editMode ? C.navy : C.white, fontSize: '13px', color: editMode ? '#fff' : '#586173',
-                cursor: 'pointer', fontWeight: '600',
-              }}>✏️ {editMode ? '수정 완료' : isAdmin ? '정보 수정' : '수정 신청'}</button>
-            )}
-            {student && (
-              <button onClick={confirmReagent} style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: C.blue, fontSize: '13px', color: '#fff', fontWeight: '600', cursor: 'pointer' }}>✓ 정보 맞음 · 확인만 하기</button>
-            )}
+            <button onClick={() => { if (!student) { alert('로그인 후 이용해주세요'); return } setEditMode(v => !v) }} style={{
+              padding: '9px 16px', borderRadius: '8px', border: `1px solid ${editMode ? C.navy : C.border}`,
+              background: editMode ? C.navy : C.white, fontSize: '13px', color: editMode ? '#fff' : '#586173',
+              cursor: 'pointer', fontWeight: '600',
+            }}>✏️ {editMode ? '수정 완료' : isAdmin ? '정보 수정' : '수정 신청'}</button>
+            <button onClick={() => { if (!student) { alert('로그인 후 이용해주세요'); return } confirmReagent() }} style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: C.blue, fontSize: '13px', color: '#fff', fontWeight: '600', cursor: 'pointer' }}>✓ 정보 맞음 · 확인만 하기</button>
           </div>
         }
       />

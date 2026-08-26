@@ -608,13 +608,11 @@ function toggleCheck(id, e, allData) {
             padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
             fontSize: '13px', fontWeight: '600', flexShrink: 0,
           }}>📋 목록으로 일괄 조회</button>
-          {student && (
-            <button onClick={() => setShowMadeModal(true)} style={{
-              background: '#F9FBFF', color: '#1F4E96', border: `1px dashed #C9DAF5`,
-              padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
-              fontSize: '13px', fontWeight: '600', flexShrink: 0,
-            }}>🧪 직접 제조 시약 등록</button>
-          )}
+          <button onClick={() => { if (!student) { alert('로그인 후 이용해주세요'); return } setShowMadeModal(true) }} style={{
+            background: '#F9FBFF', color: '#1F4E96', border: `1px dashed #C9DAF5`,
+            padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
+            fontSize: '13px', fontWeight: '600', flexShrink: 0,
+          }}>🧪 직접 제조 시약 등록</button>
           {isAdmin && results.length > 0 && (
             <button onClick={() => exportReagents(results)} style={{
               background: '#1D6F42', color: 'white', border: 'none',
