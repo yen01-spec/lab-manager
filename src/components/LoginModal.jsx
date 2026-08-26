@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { C, Modal, inputStyle, labelStyle, btnPrimary, btnGhost, Icon } from '../design'
+import { C, inputStyle, labelStyle, btnPrimary, btnGhost, Icon } from '../design'
 import { lookupStudent, registerStudent, loginAdmin, writeSession } from '../lib/session'
 
 const EMPTY_FORM = { student_id: '', birth_date: '', name: '', password: '' }
@@ -134,67 +134,133 @@ export default function LoginModal({ open, onClose, onSuccess }) {
     }
   }
 
+  if (!open) return null
+
   return (
-    <Modal open={open} onClose={handleClose} title={step === 'confirm_new' ? '신규 등록 확인' : '로그인'} width={420}>
-      {step === 'id_entry' ? (
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ fontSize: 12, color: C.muted }}>학번·생년월일·이름으로 접속합니다. 처음이면 자동으로 등록돼요.</div>
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(16,24,40,0.45)', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    }} onClick={e => { if (e.target === e.currentTarget) handleClose() }}>
+      <div style={{
+        width: '100%', maxWidth: 860, display: 'grid', gridTemplateColumns: '1fr 1fr',
+        background: C.white, border: `1px solid ${C.border}`, borderRadius: 16,
+        boxShadow: '0 24px 64px rgba(16,24,40,.2)', overflow: 'hidden', position: 'relative',
+      }}>
+        <button onClick={handleClose} style={{
+          position: 'absolute', top: 14, right: 14, background: 'rgba(16,24,40,0.06)', border: 'none',
+          borderRadius: 8, width: 30, height: 30, cursor: 'pointer', color: C.muted, fontSize: 16, zIndex: 2,
+        }}>×</button>
 
-          <div>
-            <label style={labelStyle}>학번</label>
-            <input style={inputStyle} value={form.student_id} onChange={e => update('student_id', e.target.value)} placeholder="예) 202112345" autoFocus />
-          </div>
-          <div>
-            <label style={labelStyle}>생년월일</label>
-            <BirthDateInput value={form.birth_date} onChange={v => update('birth_date', v)} />
-          </div>
-          <div>
-            <label style={labelStyle}>이름</label>
-            <input style={inputStyle} value={form.name} onChange={e => update('name', e.target.value)} placeholder="예) 이OO" />
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowPassword(v => !v)}
-            style={{ background: 'none', border: 'none', color: C.blue, fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0, fontFamily: 'inherit' }}
-          >
-            {showPassword ? '− 관리자 비밀번호 접기' : '+ 관리자이신가요?'}
-          </button>
-
-          {showPassword && (
-            <div>
-              <label style={labelStyle}>비밀번호</label>
-              <input style={inputStyle} type="password" value={form.password} onChange={e => update('password', e.target.value)} placeholder="관리자 승격 시 설정한 비밀번호" />
+        {/* 왼쪽 브랜드 패널 */}
+        <div style={{
+          background: C.navy, padding: '48px 40px', display: 'flex', flexDirection: 'column',
+          justifyContent: 'space-between', color: '#fff',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9, background: C.blue, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="science" size={18} color="#fff" />
             </div>
-          )}
-
-          {error && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: C.dangerDark, background: C.dangerTint, padding: '8px 10px', borderRadius: 8 }}>
-              <Icon name="error" size={14} color={C.dangerDark} />
-              {error}
+            <div style={{ lineHeight: 1.25 }}>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>연구실 시약관리 시스템</div>
+              <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '1.4px', color: '#8497B8' }}>LAB CHEMICAL MANAGEMENT</div>
             </div>
-          )}
-
-          <button type="submit" disabled={loading} style={{ ...btnPrimary, width: '100%', justifyContent: 'center', opacity: loading ? 0.6 : 1 }}>
-            {loading ? '확인 중...' : '로그인'}
-          </button>
-        </form>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ fontSize: 13.5, color: C.text, lineHeight: 1.6 }}>
-            <b>{form.name}</b>님(학번: {form.student_id}, 생년월일: {form.birth_date})이 맞으신가요?
           </div>
-          {error && (
-            <div style={{ fontSize: 11.5, color: C.dangerDark, background: C.dangerTint, padding: '8px 10px', borderRadius: 8 }}>{error}</div>
-          )}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setStep('id_entry')} style={{ ...btnGhost, flex: 1, justifyContent: 'center' }}>아니요</button>
-            <button onClick={handleConfirmRegister} disabled={loading} style={{ ...btnPrimary, flex: 1, justifyContent: 'center', opacity: loading ? 0.6 : 1 }}>
-              {loading ? '등록 중...' : '예, 맞습니다'}
-            </button>
+          <div style={{ margin: '48px 0' }}>
+            <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.4, letterSpacing: '-0.3px' }}>
+              찾기 → 확인하기 →<br />최신 상태로 남기기
+            </div>
+            <div style={{ fontSize: 12.5, color: '#A9B7CF', marginTop: 12, lineHeight: 1.6 }}>
+              학번과 생년월일로 간편하게 접속하고,<br />재고실사·구매요청을 빠르게 처리하세요.
+            </div>
           </div>
+          <div style={{ fontSize: 11, color: '#7889A4' }}>강원대학교 과학교육학부 연구실</div>
         </div>
-      )}
-    </Modal>
+
+        {/* 오른쪽 로그인 폼 */}
+        <div style={{ padding: '44px 40px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {step === 'id_entry' ? (
+            <>
+              <div style={{ display: 'flex', background: C.bg, borderRadius: 10, padding: 3, gap: 2 }}>
+                <button type="button" onClick={() => setShowPassword(false)} style={{
+                  flex: 1, textAlign: 'center', padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  background: !showPassword ? C.white : 'transparent',
+                  boxShadow: !showPassword ? '0 1px 3px rgba(16,24,40,.06)' : 'none',
+                  fontSize: 13, fontWeight: !showPassword ? 700 : 600, color: !showPassword ? C.blueDark : C.muted,
+                  fontFamily: 'inherit',
+                }}>일반 로그인</button>
+                <button type="button" onClick={() => setShowPassword(true)} style={{
+                  flex: 1, textAlign: 'center', padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  background: showPassword ? C.white : 'transparent',
+                  boxShadow: showPassword ? '0 1px 3px rgba(16,24,40,.06)' : 'none',
+                  fontSize: 13, fontWeight: showPassword ? 700 : 600, color: showPassword ? C.blueDark : C.muted,
+                  fontFamily: 'inherit',
+                }}>관리자 로그인</button>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: C.navyDeep, letterSpacing: '-0.3px' }}>로그인</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>학번·생년월일·이름으로 접속합니다. 처음이면 자동으로 등록돼요.</div>
+              </div>
+
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div>
+                  <label style={labelStyle}>학번</label>
+                  <input style={inputStyle} value={form.student_id} onChange={e => update('student_id', e.target.value)} placeholder="예) 202112345" autoFocus />
+                </div>
+                <div>
+                  <label style={labelStyle}>생년월일</label>
+                  <BirthDateInput value={form.birth_date} onChange={v => update('birth_date', v)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>이름</label>
+                  <input style={inputStyle} value={form.name} onChange={e => update('name', e.target.value)} placeholder="예) 이OO" />
+                </div>
+
+                {showPassword && (
+                  <div>
+                    <label style={labelStyle}>관리자 비밀번호</label>
+                    <input style={inputStyle} type="password" value={form.password} onChange={e => update('password', e.target.value)} placeholder="관리자 승격 시 설정한 비밀번호" />
+                  </div>
+                )}
+
+                {error && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: C.dangerDark, background: C.dangerTint, padding: '8px 10px', borderRadius: 8 }}>
+                    <Icon name="error" size={14} color={C.dangerDark} />
+                    {error}
+                  </div>
+                )}
+
+                <button type="submit" disabled={loading} style={{ ...btnPrimary, width: '100%', justifyContent: 'center', opacity: loading ? 0.6 : 1 }}>
+                  {loading ? '확인 중...' : '로그인'}
+                </button>
+              </form>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Icon name="error" size={15} color="#C77B1E" style={{ flexShrink: 0 }} />
+                <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>
+                  등록된 정보와 다르면 로그인되지 않아요. 본인이 맞다면 관리자에게 문의하세요.
+                </div>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, justifyContent: 'center', flex: 1 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: C.navyDeep }}>신규 등록 확인</div>
+              <div style={{ fontSize: 13.5, color: C.text, lineHeight: 1.6 }}>
+                <b>{form.name}</b>님(학번: {form.student_id}, 생년월일: {form.birth_date})이 맞으신가요?
+              </div>
+              {error && (
+                <div style={{ fontSize: 11.5, color: C.dangerDark, background: C.dangerTint, padding: '8px 10px', borderRadius: 8 }}>{error}</div>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setStep('id_entry')} style={{ ...btnGhost, flex: 1, justifyContent: 'center' }}>아니요</button>
+                <button onClick={handleConfirmRegister} disabled={loading} style={{ ...btnPrimary, flex: 1, justifyContent: 'center', opacity: loading ? 0.6 : 1 }}>
+                  {loading ? '등록 중...' : '예, 맞습니다'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
