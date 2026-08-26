@@ -28,7 +28,7 @@ export default function Home() {
   const navigate = useNavigate()
   const { student, isAdmin } = useOutletContext?.() || {}
   const [search, setSearch] = useState('')
-  const [stats, setStats] = useState({ reagents: 0, species: 0, bottles: 0, confirmedPct: 0, expiring: 0, totalPending: 0 })
+  const [stats, setStats] = useState({ reagents: 0, species: 0, bottles: 0, confirmedPct: 0, completedDate: null, expiring: 0, totalPending: 0 })
   const [recentConfirms, setRecentConfirms] = useState([])
   const [pendingRequests, setPendingRequests] = useState([])
   const [busyId, setBusyId] = useState(null)
@@ -117,16 +117,19 @@ export default function Home() {
       supabase.from('reagents').select('*', { count: 'exact', head: true }).neq('status', 'archived').gte('last_confirmed_at', yearStart),
       supabase.from('reagent_lots').select('*', { count: 'exact', head: true }).lte('expiry_date', soonStr).gte('expiry_date', today),
       supabase.from('reagents').select('name').neq('status', 'archived'),
+      supabase.from('reagents').select('last_confirmed_at').neq('status', 'archived').gte('last_confirmed_at', yearStart).order('last_confirmed_at', { ascending: false }).limit(1),
     ]
-    const [{ count: total }, { count: confirmed }, { count: expiring }, { data: allReagents }] = await Promise.all(queries)
+    const [{ count: total }, { count: confirmed }, { count: expiring }, { data: allReagents }, { data: latestConfirm }] = await Promise.all(queries)
     // 같은 이름으로 등록된 병(위치별로 각각 한 행)이 여럿일 수 있어 종류 수는 별도로 센다
     const speciesSet = new Set((allReagents || []).map(r => r.name.trim().toLowerCase()))
+    const confirmedPct = total ? Math.round((confirmed || 0) / total * 100) : 0
     setStats(prev => ({
       ...prev,
       reagents: total || 0,
       species: speciesSet.size,
       bottles: total || 0,
-      confirmedPct: total ? Math.round((confirmed || 0) / total * 100) : 0,
+      confirmedPct,
+      completedDate: confirmedPct === 100 ? latestConfirm?.[0]?.last_confirmed_at || null : null,
       expiring: expiring || 0,
     }))
   }
@@ -157,7 +160,10 @@ export default function Home() {
 
   const STAT_ITEMS = [
     { label: '전체 시약', value: `${stats.species.toLocaleString()}종`, sub: `총 ${stats.bottles.toLocaleString()}병`, muted: false },
-    { label: '올해 확인 완료', value: `${stats.confirmedPct}%`, muted: false, accent: C.successDark },
+    {
+      label: '올해 확인 완료', value: `${stats.confirmedPct}%`, muted: false, accent: C.successDark,
+      sub: stats.completedDate ? `${new Date(stats.completedDate).toLocaleDateString('ko-KR')} 완료` : undefined,
+    },
     { label: '유효기간 임박', value: `${stats.expiring}건`, muted: stats.expiring === 0 },
     { label: '대기중 요청·변경사항', value: `${stats.totalPending}건`, muted: stats.totalPending === 0 },
   ]
