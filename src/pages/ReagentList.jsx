@@ -335,7 +335,7 @@ function toggleCheck(id, e, allData) {
     const allChecked = data.length > 0 && checkedIds.size === data.length
     const allPicked = data.length > 0 && data.every(r => pickedIds.has(r.id))
 
-    const renderRow = (r, indent) => {
+    const renderRow = (r) => {
       const lotList = r.reagent_lots || []
       const totalSealed = lotList.reduce((s, l) => s + l.sealed_count, 0)
       const avgStock = lotList.length > 0
@@ -349,7 +349,7 @@ function toggleCheck(id, e, allData) {
       const editingThisStock = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'current_stock'
       const firstLot = lotList[0]
 
-      const baseBg = isLow ? '#FFF8F8' : indent ? '#F7F9FC' : C.white
+      const baseBg = isLow ? '#FFF8F8' : C.white
       const selectedBg = '#EEF2FB'
       const isSelected = editMode ? isChecked : isPicked
 
@@ -359,17 +359,16 @@ function toggleCheck(id, e, allData) {
           style={{
             background: isSelected ? selectedBg : baseBg,
             cursor: 'pointer',
-            borderLeft: isSelected ? `3px solid ${C.navy}` : indent ? `3px solid ${C.blue}` : '3px solid transparent',
+            borderLeft: isSelected ? `3px solid ${C.navy}` : '3px solid transparent',
           }}
-          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = isLow ? '#FFEFEF' : indent ? '#EFF3FA' : C.bg }}
+          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg }}
           onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = baseBg }}>
           <td style={{ ...tdStyle, textAlign: 'center', borderRight: `1px solid ${C.borderRow}` }}
             onClick={e => editMode ? toggleCheck(r.id, e, data) : togglePick(r, e)}>
             <input type="checkbox" checked={isSelected} onChange={() => {}}
               style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
           </td>
-          <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', maxWidth: '300px', whiteSpace: 'nowrap', paddingLeft: indent ? '30px' : undefined, borderRight: `1px solid ${C.borderRow}` }}>
-            {indent && <span style={{ color: C.blue, marginRight: '5px', fontSize: '11px' }}>↳</span>}
+          <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', maxWidth: '300px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: '230px', verticalAlign: 'middle' }} title={r.name}>{r.name}</span>
             {r.reagent_type === 'self_made' && <span style={{ marginLeft: '6px', fontSize: '9.5px', background: '#EAF1FB',
               color: '#1F4E96', padding: '1px 7px', borderRadius: '999px', fontWeight: '700' }}>직접제조</span>}
@@ -484,7 +483,7 @@ function toggleCheck(id, e, allData) {
               </tr>
               {Object.entries(groupByName(groups[letter])).map(([nameKey, rowsForName]) => {
                 if (editMode || rowsForName.length === 1) {
-                  return <Fragment key={nameKey}>{rowsForName.map(r => renderRow(r, false))}</Fragment>
+                  return <Fragment key={nameKey}>{rowsForName.map(r => renderRow(r))}</Fragment>
                 }
                 const isExpanded = expandedNames.has(nameKey)
                 const sample = rowsForName[0]
@@ -528,7 +527,7 @@ function toggleCheck(id, e, allData) {
                       <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
                       <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>-</td>
                     </tr>
-                    {isExpanded && rowsForName.map(r => renderRow(r, true))}
+                    {isExpanded && rowsForName.map(r => renderRow(r))}
                   </Fragment>
                 )
               })}
