@@ -367,16 +367,16 @@ function toggleCheck(id, e, allData) {
             <input type="checkbox" checked={isSelected} onChange={() => {}}
               style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
           </td>
-          <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', paddingLeft: indent ? '30px' : undefined }}>
+          <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', maxWidth: '300px', whiteSpace: 'nowrap', paddingLeft: indent ? '30px' : undefined }}>
             {indent && <span style={{ color: C.blue, marginRight: '5px', fontSize: '11px' }}>↳</span>}
-            {r.name}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: '230px', verticalAlign: 'middle' }} title={r.name}>{r.name}</span>
             {r.reagent_type === 'self_made' && <span style={{ marginLeft: '6px', fontSize: '9.5px', background: '#EAF1FB',
               color: '#1F4E96', padding: '1px 7px', borderRadius: '999px', fontWeight: '700' }}>직접제조</span>}
             {isLow && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
               color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
           </td>
           <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>{r.cas_no || '-'}</td>
-          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>{r.company || '-'}</td>
+          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '110px' }} title={r.company || ''}>{r.company || '-'}</td>
           <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap' }}>
             {r.volume ? `${r.volume}${r.unit}` : '-'}
           </td>
@@ -385,7 +385,8 @@ function toggleCheck(id, e, allData) {
               ? <span style={{ background: '#EEF2FB', color: C.navy, padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600' }}>{r.category}</span>
               : <span style={{ color: C.muted }}>-</span>}
           </td>
-          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>
+          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px' }}
+            title={loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : ''}>
             {loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
           </td>
           <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
