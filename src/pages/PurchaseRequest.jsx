@@ -204,7 +204,9 @@ export default function PurchaseRequest() {
                       {activeRow === it.id && rowOptions.length > 0 && (
                         <div style={{ position: 'absolute', top: '100%', left: 8, zIndex: 100, background: C.white, border: `1px solid ${C.border}`, borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', width: '260px', maxHeight: '220px', overflowY: 'auto' }}>
                           {rowOptions.map((r, i) => (
-                            <div key={r.id} onMouseDown={() => selectRowOption(it.id, r)} onMouseEnter={() => setHighlightIdx(i)}
+                            <div key={r.id} onMouseDown={() => selectRowOption(it.id, r)}
+                              onMouseEnter={e => { e.currentTarget.style.background = C.blueTint }}
+                              onMouseLeave={e => { e.currentTarget.style.background = i === highlightIdx ? C.blueTint : C.white }}
                               style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', borderBottom: `1px solid ${C.border}`, background: i === highlightIdx ? C.blueTint : C.white }}>
                               <div style={{ fontWeight: '600' }}>{highlightMatch(r.name, it.name)}</div>
                               <div style={{ fontSize: '11px', color: C.muted }}>{r.company || '-'} · {r.cas_no || '-'}</div>
