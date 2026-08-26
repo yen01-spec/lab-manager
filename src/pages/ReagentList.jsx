@@ -348,22 +348,27 @@ function toggleCheck(id, e, allData) {
       const editingThisStock = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'current_stock'
       const firstLot = lotList[0]
 
+      const baseBg = isLow ? '#FFF8F8' : indent ? '#F7F9FC' : C.white
+      const selectedBg = '#EEF2FB'
+      const isSelected = editMode ? isChecked : isPicked
+
       return (
         <tr key={r.id}
           onClick={e => editMode ? toggleCheck(r.id, e, data) : navigate(`/reagents/${r.id}`)}
           style={{
-            background: (editMode ? isChecked : isPicked) ? '#EEF2FB' : isLow ? '#FFF8F8' : C.white,
+            background: isSelected ? selectedBg : baseBg,
             cursor: 'pointer',
-            borderLeft: (editMode ? isChecked : isPicked) ? `3px solid ${C.navy}` : indent ? `3px solid ${C.borderRow}` : '3px solid transparent',
+            borderLeft: isSelected ? `3px solid ${C.navy}` : indent ? `3px solid ${C.blue}` : '3px solid transparent',
           }}
-          onMouseEnter={e => { if (!isChecked) e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg }}
-          onMouseLeave={e => { if (!isChecked) e.currentTarget.style.background = isLow ? '#FFF8F8' : C.white }}>
+          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = isLow ? '#FFEFEF' : indent ? '#EFF3FA' : C.bg }}
+          onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = baseBg }}>
           <td style={{ ...tdStyle, textAlign: 'center' }}
             onClick={e => editMode ? toggleCheck(r.id, e, data) : togglePick(r, e)}>
-            <input type="checkbox" checked={editMode ? isChecked : isPicked} onChange={() => {}}
+            <input type="checkbox" checked={isSelected} onChange={() => {}}
               style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
           </td>
-          <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', paddingLeft: indent ? '32px' : undefined }}>
+          <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', paddingLeft: indent ? '30px' : undefined }}>
+            {indent && <span style={{ color: C.blue, marginRight: '5px', fontSize: '11px' }}>↳</span>}
             {r.name}
             {r.reagent_type === 'self_made' && <span style={{ marginLeft: '6px', fontSize: '9.5px', background: '#EAF1FB',
               color: '#1F4E96', padding: '1px 7px', borderRadius: '999px', fontWeight: '700' }}>직접제조</span>}
@@ -482,18 +487,23 @@ function toggleCheck(id, e, allData) {
                 const isExpanded = expandedNames.has(nameKey)
                 const sample = rowsForName[0]
                 const ghsList = getGhsEmojis(sample.hazard)
+                const groupPicked = rowsForName.every(r => pickedIds.has(r.id))
                 return (
                   <Fragment key={nameKey}>
                     <tr onClick={() => toggleNameGroup(nameKey)}
-                      style={{ cursor: 'pointer', background: C.white }}
-                      onMouseEnter={e => e.currentTarget.style.background = C.bg}
-                      onMouseLeave={e => e.currentTarget.style.background = C.white}>
-                      <td colSpan={COLS} style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
-                        <span style={{ marginRight: '8px', color: C.muted, fontSize: '11px' }}>{isExpanded ? '▾' : '▸'}</span>
+                      style={{ cursor: 'pointer', background: groupPicked ? '#EEF2FB' : '#FAFBFD' }}
+                      onMouseEnter={e => { if (!groupPicked) e.currentTarget.style.background = C.bg }}
+                      onMouseLeave={e => { if (!groupPicked) e.currentTarget.style.background = '#FAFBFD' }}>
+                      <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => { e.stopPropagation(); togglePickAll(rowsForName) }}>
+                        <input type="checkbox" checked={groupPicked} onChange={() => {}}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+                      </td>
+                      <td colSpan={COLS - 1} style={{ ...tdStyle, padding: '11px 14px' }}>
+                        <span style={{ marginRight: '8px', color: C.blue, fontSize: '11px', fontWeight: '700' }}>{isExpanded ? '▾' : '▸'}</span>
                         <span style={{ fontWeight: '700', color: C.navy }}>{sample.name}</span>
                         <span style={{ marginLeft: '8px', fontSize: '11px', background: '#EEF2FB', color: C.navy,
                           padding: '2px 9px', borderRadius: '10px', fontWeight: '700' }}>
-                          {rowsForName.length}병
+                          {rowsForName.length}병 · 위치별 보기
                         </span>
                         {ghsList.length > 0 && (
                           <span style={{ marginLeft: '8px', fontSize: '14px' }} title={ghsList.map(g => g.label).join(', ')}>
