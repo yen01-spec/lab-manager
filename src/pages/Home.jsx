@@ -28,13 +28,82 @@ export default function Home() {
   const navigate = useNavigate()
   const { student, isAdmin } = useOutletContext?.() || {}
   const [search, setSearch] = useState('')
-  const [stats, setStats] = useState({ reagents: 0, species: 0, bottles: 0, confirmedPct: 0, expiring: 0, myPending: 0 })
+  const [stats, setStats] = useState({ reagents: 0, species: 0, bottles: 0, confirmedPct: 0, expiring: 0, totalPending: 0 })
   const [recentConfirms, setRecentConfirms] = useState([])
+  const [pendingRequests, setPendingRequests] = useState([])
+  const [busyId, setBusyId] = useState(null)
 
   useEffect(() => { fetchAll() }, [student?.student_id, isAdmin])
 
   async function fetchAll() {
-    await Promise.all([fetchStats(), fetchRecentConfirms()])
+    await Promise.all([fetchStats(), fetchRecentConfirms(), fetchPendingRequests()])
+  }
+
+  const FIELD_LABELS = {
+    cas_no: 'CAS 번호', company: '제조사', category: '유별/성질', volume: '용량',
+    manager: '담당자', msds_url: 'MSDS URL', notes: '비고', name: '시약명',
+    sealed_count: '미개봉 병 수', current_stock: '잔량',
+  }
+
+  async function fetchPendingRequests() {
+    const [{ data: changes }, { data: disposals }, { data: locs }] = await Promise.all([
+      supabase.from('reagent_change_requests').select('*, reagents(name)').eq('status', 'pending').order('created_at', { ascending: false }).limit(10),
+      supabase.from('disposal_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false }).limit(10),
+      supabase.from('location_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false }).limit(10),
+    ])
+    const combined = [
+      ...(changes || []).map(c => ({
+        type: 'change', id: c.id, reagent_id: c.reagent_id, reagent_name: c.reagents?.name || '(삭제된 시약)',
+        detail: `${FIELD_LABELS[c.field_name] || c.field_name}: ${c.old_value || '-'} → ${c.new_value}`,
+        requested_by: c.requested_by, created_at: c.created_at, raw: c,
+      })),
+      ...(disposals || []).map(d => ({
+        type: 'disposal', id: d.id, reagent_id: d.reagent_id, reagent_name: d.reagent_name,
+        detail: `폐기 신청: ${d.reason || '-'}`,
+        requested_by: d.requested_by, created_at: d.created_at, raw: d,
+      })),
+      ...(locs || []).map(l => ({
+        type: 'location', id: l.id, reagent_id: l.reagent_id, reagent_name: l.reagent_name,
+        detail: `위치 이동: ${l.from_location_name || '미지정'} → ${l.to_location_name}`,
+        requested_by: l.requested_by, created_at: l.created_at, raw: l,
+      })),
+    ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    setPendingRequests(combined.slice(0, 8))
+    setStats(prev => ({ ...prev, totalPending: combined.length }))
+  }
+
+  async function approveItem(item) {
+    setBusyId(item.id)
+    const now = new Date().toISOString()
+    if (item.type === 'change') {
+      const req = item.raw
+      await supabase.from('reagents').update({ [req.field_name]: req.new_value, last_confirmed_at: now, confirmed_by: student?.student_id ?? null }).eq('id', req.reagent_id)
+      await supabase.from('reagent_change_requests').update({ status: 'approved', approved_by: student?.name, approved_by_student_id: student?.student_id ?? null, approved_at: now }).eq('id', req.id)
+    } else if (item.type === 'disposal') {
+      const req = item.raw
+      await supabase.from('disposal_requests').update({ status: 'approved', approved_by_student_id: student?.student_id ?? null }).eq('id', req.id)
+      if (req.lot_id) await supabase.from('reagent_lots').update({ sealed_count: 0, current_stock: 0 }).eq('id', req.lot_id)
+    } else if (item.type === 'location') {
+      const req = item.raw
+      await supabase.from('reagents').update({ location_id: req.to_location_id }).eq('id', req.reagent_id)
+      await supabase.from('location_history').insert({
+        reagent_id: req.reagent_id, reagent_name: req.reagent_name,
+        from_location_id: req.from_location_id, from_location_name: req.from_location_name,
+        to_location_id: req.to_location_id, to_location_name: req.to_location_name, moved_by: student?.name,
+      })
+      await supabase.from('location_requests').update({ status: 'approved' }).eq('id', req.id)
+    }
+    await fetchPendingRequests()
+    setBusyId(null)
+  }
+
+  async function rejectItem(item) {
+    setBusyId(item.id)
+    const table = item.type === 'change' ? 'reagent_change_requests' : item.type === 'disposal' ? 'disposal_requests' : 'location_requests'
+    const extra = item.type === 'change' ? { approved_by: student?.name, approved_by_student_id: student?.student_id ?? null } : {}
+    await supabase.from(table).update({ status: 'rejected', ...extra }).eq('id', item.id)
+    await fetchPendingRequests()
+    setBusyId(null)
   }
 
   async function fetchStats() {
@@ -49,22 +118,17 @@ export default function Home() {
       supabase.from('reagent_lots').select('*', { count: 'exact', head: true }).lte('expiry_date', soonStr).gte('expiry_date', today),
       supabase.from('reagents').select('name').neq('status', 'archived'),
     ]
-    if (student?.student_id) {
-      queries.push(
-        supabase.from('reagent_change_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('requested_by_student_id', student.student_id)
-      )
-    }
-    const [{ count: total }, { count: confirmed }, { count: expiring }, { data: allReagents }, myPendingRes] = await Promise.all(queries)
+    const [{ count: total }, { count: confirmed }, { count: expiring }, { data: allReagents }] = await Promise.all(queries)
     // 같은 이름으로 등록된 병(위치별로 각각 한 행)이 여럿일 수 있어 종류 수는 별도로 센다
     const speciesSet = new Set((allReagents || []).map(r => r.name.trim().toLowerCase()))
-    setStats({
+    setStats(prev => ({
+      ...prev,
       reagents: total || 0,
       species: speciesSet.size,
       bottles: total || 0,
       confirmedPct: total ? Math.round((confirmed || 0) / total * 100) : 0,
       expiring: expiring || 0,
-      myPending: myPendingRes?.count || 0,
-    })
+    }))
   }
 
   async function fetchRecentConfirms() {
@@ -95,7 +159,7 @@ export default function Home() {
     { label: '전체 시약', value: `${stats.species.toLocaleString()}종`, sub: `총 ${stats.bottles.toLocaleString()}병`, muted: false },
     { label: '올해 확인 완료', value: `${stats.confirmedPct}%`, muted: false, accent: C.successDark },
     { label: '유효기간 임박', value: `${stats.expiring}건`, muted: stats.expiring === 0 },
-    { label: '내 수정요청 대기중', value: `${stats.myPending}건`, muted: stats.myPending === 0 },
+    { label: '대기중 요청·변경사항', value: `${stats.totalPending}건`, muted: stats.totalPending === 0 },
   ]
 
   return (
@@ -179,6 +243,59 @@ export default function Home() {
             )}
           </Card>
         </div>
+
+        {/* 요청사항 · 변경사항 */}
+        <Card title="요청사항 · 변경사항" titleExtra={
+          pendingRequests.length > 0 && (
+            <span style={{ fontSize: 11.5, color: C.muted, background: C.bg, padding: '2px 9px', borderRadius: 999, fontWeight: 600 }}>
+              대기중 {stats.totalPending}건
+            </span>
+          )
+        }>
+          {pendingRequests.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: C.muted, fontSize: 12.5 }}>대기중인 요청·변경사항이 없습니다</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {pendingRequests.map((item, i) => {
+                const typeMeta = {
+                  change: { icon: '📝', label: '수정요청' },
+                  disposal: { icon: '🗑️', label: '폐기신청' },
+                  location: { icon: '📍', label: '위치이동' },
+                }[item.type]
+                const busy = busyId === item.id
+                return (
+                  <div key={`${item.type}_${item.id}`} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+                    padding: '11px 0', borderBottom: i < pendingRequests.length - 1 ? `1px solid ${C.borderRow}` : 'none',
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0, cursor: item.reagent_id ? 'pointer' : 'default' }}
+                      onClick={() => item.reagent_id && navigate(`/reagents/${item.reagent_id}`)}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.navyDeep }}>
+                        {typeMeta.icon} {item.reagent_name} <span style={{ fontSize: 10.5, color: C.muted, fontWeight: 600 }}>· {typeMeta.label}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{item.detail}</div>
+                      <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2 }}>
+                        {new Date(item.created_at).toLocaleDateString('ko-KR')}{isAdmin && item.requested_by ? ` · ${item.requested_by}` : ''}
+                      </div>
+                    </div>
+                    {isAdmin && (
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                        <button onClick={() => rejectItem(item)} disabled={busy} style={{
+                          padding: '5px 10px', borderRadius: 6, border: `1px solid ${C.border}`, background: C.white,
+                          color: C.muted, cursor: 'pointer', fontSize: 11.5, opacity: busy ? 0.5 : 1,
+                        }}>반려</button>
+                        <button onClick={() => approveItem(item)} disabled={busy} style={{
+                          padding: '5px 10px', borderRadius: 6, border: 'none', background: C.blue,
+                          color: '#fff', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, opacity: busy ? 0.5 : 1,
+                        }}>{busy ? '처리중...' : '승인'}</button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </Card>
       </div>
     </div>
   )
