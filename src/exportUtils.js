@@ -23,7 +23,13 @@ export function downloadExcel(data, columns, filename) {
 }
 
 // ── 시약 목록 내보내기 ────────────────────────────────
-export function exportReagents(reagents) {
+const LOT_STATUS_LABEL = { active: '', used_up: '사용완료', disposed: '폐기', missing: '분실' }
+
+export function exportReagents(reagents, locations = []) {
+  const locName = locId => {
+    const loc = locations.find(l => l.id === locId)
+    return loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '-'
+  }
   const rows = []
   reagents.forEach(r => {
     const lots = r.reagent_lots || []
@@ -32,20 +38,19 @@ export function exportReagents(reagents) {
         name: r.name, cas_no: r.cas_no || '-', company: r.company || '-',
         volume: r.volume ? `${r.volume}${r.unit}` : '-',
         category: r.category || '-', hazard: r.hazard || '-',
-        location: r.locations ? `${r.locations.room}${r.locations.detail ? ' - ' + r.locations.detail : ''}` : '-',
-        lot_no: '-', expiry_date: '-', sealed_count: '-', current_stock: '-', status: '-',
+        location: '-', lot_no: '-', expiry_date: '-', sealed_count: '-', current_stock: '-', status: '-',
       })
     } else {
       lots.forEach(lot => {
-        const isLow = lot.sealed_count === 0 && lot.current_stock <= 20
+        const isLow = lot.status === 'active' && lot.sealed_count === 0 && lot.current_stock <= 20
         rows.push({
           name: r.name, cas_no: r.cas_no || '-', company: r.company || '-',
           volume: r.volume ? `${r.volume}${r.unit}` : '-',
           category: r.category || '-', hazard: r.hazard || '-',
-          location: r.locations ? `${r.locations.room}${r.locations.detail ? ' - ' + r.locations.detail : ''}` : '-',
+          location: locName(lot.location_id),
           lot_no: lot.lot_no || '-', expiry_date: lot.expiry_date || '-',
           sealed_count: lot.sealed_count, current_stock: `${lot.current_stock}%`,
-          status: isLow ? '재고부족' : '정상',
+          status: LOT_STATUS_LABEL[lot.status] || (isLow ? '재고부족' : '정상'),
         })
       })
     }
@@ -69,14 +74,18 @@ export function exportReagents(reagents) {
 }
 
 // ── 선택 시약 목록 내보내기 (검색결과에서 체크한 항목) ────
-export function exportPickedReagents(rows) {
+export function exportPickedReagents(rows, locations = []) {
   const data = rows.map(r => {
-    const lot = (r.reagent_lots || [])[0]
+    const activeLots = (r.reagent_lots || []).filter(l => l.status === 'active')
+    const avgStock = activeLots.length > 0
+      ? Math.round(activeLots.reduce((s, l) => s + l.current_stock, 0) / activeLots.length) : null
+    const locIds = new Set(activeLots.map(l => l.location_id).filter(Boolean))
+    const loc = locIds.size === 1 ? locations.find(l => l.id === activeLots[0].location_id) : null
     return {
       name: r.name,
       spec: r.volume ? `${r.volume}${r.unit || ''}` : '-',
-      stock: lot ? `${lot.current_stock}%` : '-',
-      location: r.locations ? `${r.locations.room}${r.locations.detail ? ' - ' + r.locations.detail : ''}` : '-',
+      stock: avgStock !== null ? `${avgStock}%` : '-',
+      location: locIds.size > 1 ? '위치별 상이' : loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '-',
       confirmed: r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString('ko-KR') : '-',
     }
   })

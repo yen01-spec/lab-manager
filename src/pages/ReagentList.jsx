@@ -643,7 +643,7 @@ function toggleCheck(id, e, allData) {
             fontSize: '13px', fontWeight: '600', flexShrink: 0,
           }}>🧪 직접 제조 시약 등록</button>
           {isAdmin && displayResults.length > 0 && (
-            <button onClick={() => exportReagents(displayResults)} style={{
+            <button onClick={() => exportReagents(displayResults, locations)} style={{
               background: '#1D6F42', color: 'white', border: 'none',
               padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
               fontSize: '13px', fontWeight: '600', flexShrink: 0,
@@ -1010,7 +1010,7 @@ function toggleCheck(id, e, allData) {
             }} style={{ padding: '9px 16px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
               📄 MSDS 일괄 열기 ({Array.from(pickedIds.values()).filter(r => r.msds_url).length}건)
             </button>
-            <button onClick={() => exportPickedReagents(Array.from(pickedIds.values()))} style={{ padding: '9px 16px', borderRadius: '6px', border: 'none', background: '#1D6F42', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>📥 Excel</button>
+            <button onClick={() => exportPickedReagents(Array.from(pickedIds.values()), locations)} style={{ padding: '9px 16px', borderRadius: '6px', border: 'none', background: '#1D6F42', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>📥 Excel</button>
           </div>
         </Modal>
       )}

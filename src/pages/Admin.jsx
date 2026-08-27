@@ -213,11 +213,42 @@ try {
   async function addReagent() {
     if (!form.name.trim()) { alert('시약 이름을 입력해주세요'); return }
     if (!adminName.trim()) { alert('작업자 이름을 입력해주세요'); return }
+
+    // 이미 같은 이름의 마스터가 있으면 신규 시약을 또 만들지 않고 기존 시약에 Lot으로 추가하도록 유도
+    // (재구매인데 매번 새 시약으로 등록되던 문제의 재발 방지). 이름이 같은 row가 여러 개 있을 수 있어서
+    // (예: Lot 미등록으로 병합에서 제외된 "미상" row) Lot을 실제로 갖고 있는 쪽을 진짜 마스터로 우선한다.
+    const { data: existingCandidates } = await supabase.from('reagents')
+      .select('id, name, reagent_lots(id)').ilike('name', form.name.trim()).neq('status', 'archived')
+    const existing = (existingCandidates || []).sort((a, b) => (b.reagent_lots?.length || 0) - (a.reagent_lots?.length || 0))
+    if (existing.length > 0) {
+      const addAsLot = window.confirm(
+        `"${existing[0].name}" 시약이 이미 등록되어 있어요.\n새 시약으로 또 만들지 않고, 기존 시약에 새 Lot(재구매분)으로 추가할까요?\n\n확인 = 기존 시약에 Lot 추가\n취소 = 그래도 새 시약으로 등록`
+      )
+      if (addAsLot) {
+        const { error: lotError } = await supabase.from('reagent_lots').insert({
+          reagent_id: existing[0].id, lot_no: form.lot_no || null,
+          sealed_count: 0, current_stock: 100,
+          expiry_date: form.expiry_date || null, received_date: form.received_date || null,
+          location_id: form.location_id || null, status: 'active',
+        })
+        if (lotError) { alert('Lot 추가 중 오류가 발생했습니다: ' + lotError.message); return }
+        await supabase.from('admin_logs').insert({
+          admin_name: adminName, action: '재고 등록(기존 시약)',
+          target_type: 'reagent',
+          description: `기존 시약에 Lot 추가: ${existing[0].name}`,
+        })
+        alert('기존 시약에 새 Lot이 추가되었습니다!')
+        setForm(init)
+        setCasResult(null)
+        return
+      }
+    }
+
     const { data: r } = await supabase.from('reagents').insert({
       name: form.name, cas_no: form.cas_no, company: form.company,
       hazard: form.hazard, category: form.category,
       volume: form.volume || null, unit: form.unit,
-      location_id: form.location_id || null, notes: form.notes,
+      notes: form.notes,
       registered_by: student?.student_id ?? null,
     }).select().single()
     if (r) {
@@ -226,10 +257,11 @@ try {
         sealed_count: 0, current_stock: 100,
         expiry_date: form.expiry_date || null,
         received_date: form.received_date || null,
+        location_id: form.location_id || null, status: 'active',
       })
       await supabase.from('admin_logs').insert({
         admin_name: adminName, action: '시약 추가',
-        target_type: 'reagent', target_id: r.id,
+        target_type: 'reagent',
         description: `시약 추가: ${form.name}`,
       })
       alert('시약이 추가되었습니다!')
@@ -448,16 +480,16 @@ function DisposalTab({ onCountChange, student }) {
     if (!window.confirm(`"${req.reagent_name}" 폐기를 완료 처리하시겠습니까?\n⚠️ 재고에서 차감됩니다.`)) return
     if (req.lot_id) {
       const { data: lot } = await supabase.from('reagent_lots').select('*').eq('id', req.lot_id).single()
-      if (lot) await supabase.from('reagent_lots').update({
-        sealed_count: Math.max(0, lot.sealed_count - 1),
-        disposal_date: new Date().toISOString().split('T')[0],
-      }).eq('id', req.lot_id)
-    }
-    // 남은 lot이 전부 소진됐으면 목록에서 보관(archived) 처리 — 데이터는 지우지 않음
-    if (req.reagent_id) {
-      const { data: remainingLots } = await supabase.from('reagent_lots').select('sealed_count, current_stock').eq('reagent_id', req.reagent_id)
-      const allGone = (remainingLots || []).every(l => l.sealed_count <= 0 && l.current_stock <= 0)
-      if (allGone) await supabase.from('reagents').update({ status: 'archived' }).eq('id', req.reagent_id)
+      if (lot) {
+        const newSealed = Math.max(0, lot.sealed_count - 1)
+        // 그 Lot이 완전히 소진됐을 때만 disposed로 전환 — 마스터 자체는 절대 archived로 사라지지 않음(재구매 시 이력 단절 방지)
+        const fullyGone = newSealed <= 0 && lot.current_stock <= 0
+        await supabase.from('reagent_lots').update({
+          sealed_count: newSealed,
+          disposal_date: new Date().toISOString().split('T')[0],
+          ...(fullyGone ? { status: 'disposed', current_stock: 0 } : {}),
+        }).eq('id', req.lot_id)
+      }
     }
     await supabase.from('disposal_requests').update({ status: 'disposed', disposed_at: new Date().toISOString() }).eq('id', req.id)
     await supabase.from('admin_logs').insert({
