@@ -727,7 +727,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)   // ← 드롭다운 열림 여부
   const [filter, setFilter] = useState('all')
-  const [forceShowAll, setForceShowAll] = useState(false) // 알파벳 인덱스 점프 시 렌더 캡 해제용
+  const [capStart, setCapStart] = useState(0) // 렌더 캡 윈도우 시작 인덱스 — 알파벳 인덱스 점프 시 이동
   const [saving, setSaving] = useState({})
   const [changeModal, setChangeModal] = useState(null)
   const [changeForm, setChangeForm] = useState({ field_name: 'name', new_value: '' })
@@ -918,15 +918,18 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     return first.match(/[A-Z가-힣]/) ? first : '#'
   }))].sort()
 
+  // 캡에 걸려 대상 행이 안 그려졌을 수 있으니, 전체를 다 풀지 않고 대상 주변으로
+  // 캡 윈도우(capStart~capStart+RENDER_CAP)를 옮긴 뒤 스크롤한다 — 큰 범위에서도 가볍게 유지.
   function scrollToLetter(letter) {
-    const target = lots.find(l => {
+    const idx = lots.findIndex(l => {
       const first = l.reagents?.name?.[0]?.toUpperCase() || ''
       return first === letter
     })
-    if (!target) return
+    if (idx === -1) return
+    const target = lots[idx]
     setSearch('')
     setFilter('all')
-    setForceShowAll(true) // 렌더 캡에 걸려 대상 행이 아직 안 그려졌을 수 있어 캡을 풀고 기다렸다 스크롤
+    setCapStart(Math.max(0, idx - 20))
     setTimeout(() => {
       if (rowRefs.current[target.id]) rowRefs.current[target.id].scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 100)
@@ -937,7 +940,8 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     setSearchOpen(false)
     // filter를 'all'로 리셋 후 스크롤
     setFilter('all')
-    setForceShowAll(true)
+    const idx = lots.findIndex(l => l.id === lot.id)
+    setCapStart(Math.max(0, idx - 20))
     setTimeout(() => {
       if (rowRefs.current[lot.id]) rowRefs.current[lot.id].scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 100)
@@ -963,11 +967,12 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     : []
 
   // 범위가 넓은 실사(예: 전체)에서 수백~수천 행을 한꺼번에 그리면 페이지가 멈춘 것처럼 느려짐 —
-  // 검색/필터 없이 볼 때는 일정 개수까지만 렌더링하고 나머지는 검색으로 찾도록 안내.
-  // 알파벳 인덱스로 점프할 땐 대상 행이 캡 밖에 있을 수 있어 forceShowAll로 캡을 풀어준다.
+  // 검색/필터 없이 볼 때는 캡 윈도우(capStart~capStart+RENDER_CAP)만 렌더링.
+  // 알파벳 인덱스로 점프하면 전체를 다 풀지 않고 이 윈도우를 대상 근처로 옮긴다(성능 유지).
   const RENDER_CAP = 300
-  const isCapped = !forceShowAll && !search && filter === 'all' && filteredLots.length > RENDER_CAP
-  const visibleLots = isCapped ? filteredLots.slice(0, RENDER_CAP) : filteredLots
+  const isCapped = !search && filter === 'all' && filteredLots.length > RENDER_CAP
+  const cappedStart = Math.min(capStart, Math.max(0, filteredLots.length - RENDER_CAP))
+  const visibleLots = isCapped ? filteredLots.slice(cappedStart, cappedStart + RENDER_CAP) : filteredLots
 
   const doneCnt = lots.filter(l => counts[l.id]?.actual_sealed != null).length
   const pct = lots.length > 0 ? Math.round(doneCnt / lots.length * 100) : 0
@@ -1043,7 +1048,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
           </div>
 
           {[['all', '전체'], ['undone', '미입력'], ['diff', '차이있음']].map(([key, label]) => (
-            <button key={key} onClick={() => setFilter(key)} style={{
+            <button key={key} onClick={() => { setFilter(key); setCapStart(0) }} style={{
               padding: '6px 12px', borderRadius: '14px', border: 'none', cursor: 'pointer',
               background: filter === key ? C.navy : C.bg, color: filter === key ? '#fff' : C.text,
               fontSize: '12px', fontWeight: filter === key ? '700' : '400',
@@ -1073,7 +1078,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
 
         {isCapped && (
           <div style={{ background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#92400E' }}>
-            ⚠️ 범위가 넓어 {filteredLots.length}개 중 {RENDER_CAP}개만 표시하고 있어요. 원하는 시약은 검색으로 찾거나, "미입력"/"차이있음" 필터를 사용하세요.
+            ⚠️ 범위가 넓어 {filteredLots.length}개 중 {cappedStart + 1}~{cappedStart + visibleLots.length}번째만 표시하고 있어요. 오른쪽 알파벳 인덱스로 이동하거나, 검색·"미입력"/"차이있음" 필터를 사용하세요.
           </div>
         )}
 
@@ -1139,7 +1144,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                             onKeyDown={e => {
                               if (e.key === 'Enter') {
                                 if (e.target.value !== '') saveCount(lot, 'actual_sealed', e.target.value)
-                                const nextLot = filteredLots[idx + 1]
+                                const nextLot = visibleLots[idx + 1]
                                 if (nextLot && inputRefs.current[`sealed_${nextLot.id}`]) inputRefs.current[`sealed_${nextLot.id}`].focus()
                               }
                             }}
@@ -1161,7 +1166,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                             onKeyDown={e => {
                               if (e.key === 'Enter') {
                                 if (e.target.value !== '') saveCount(lot, 'actual_stock', e.target.value)
-                                const nextLot = filteredLots[idx + 1]
+                                const nextLot = visibleLots[idx + 1]
                                 if (nextLot && inputRefs.current[`stock_${nextLot.id}`]) inputRefs.current[`stock_${nextLot.id}`].focus()
                               }
                             }}
@@ -1184,7 +1189,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                             onKeyDown={e => {
                               if (e.key === 'Enter') {
                                 saveAbnormalNote(lot, e.target.value)
-                                const nextLot = filteredLots[idx + 1]
+                                const nextLot = visibleLots[idx + 1]
                                 if (nextLot && inputRefs.current[`abnormal_${nextLot.id}`]) inputRefs.current[`abnormal_${nextLot.id}`].focus()
                               }
                             }}
