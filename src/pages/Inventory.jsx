@@ -4,8 +4,6 @@ import { supabase } from '../supabase'
 import { C, PageBanner, Card, btnPrimary, btnGhost, inputStyle, labelStyle, thStyle, tdStyle } from '../design'
 import DateSplitInput from '../components/DateSplitInput'
 
-const PURPOSE_LABEL = { quantity_status: '재고/상태확인', comprehensive: '종합실사' }
-
 // Supabase/PostgREST 기본 응답은 1000행으로 잘림 — 시약이 7000개가 넘는 지금은
 // 반드시 페이지네이션해야 함. queryFn(from, to)는 .range(from, to)를 적용한 쿼리를 반환.
 async function fetchAllPages(queryFn) {
@@ -127,7 +125,7 @@ export default function Inventory() {
   const [assignments, setAssignments] = useState([])
   const [locations, setLocations] = useState([])
   const [myAssignments, setMyAssignments] = useState([])
-  const [startForm, setStartForm] = useState({ year: new Date().getFullYear(), start_date: '', created_by: '', label: '', purpose: 'comprehensive', zones: [] })
+  const [startForm, setStartForm] = useState({ year: new Date().getFullYear(), start_date: '', created_by: '', label: '', zones: [] })
   const [zoneMode, setZoneMode] = useState('all') // 'all' | 'select' — startForm.zones에 가짜 플레이스홀더를 넣지 않기 위한 별도 UI 상태
   const [showStartModal, setShowStartModal] = useState(false)
   const [assignForm, setAssignForm] = useState({ zone: '', assigned_to: '' })
@@ -231,7 +229,7 @@ export default function Inventory() {
     if (!startForm.start_date) { alert('날짜를 선택해주세요'); return }
     const { data } = await supabase.from('inventory_sessions').insert({
       year: startForm.year, start_date: startForm.start_date, created_by: startForm.created_by, label: startForm.label.trim() || null,
-      purpose: startForm.purpose, zones: startForm.zones?.length ? startForm.zones : null,
+      purpose: 'comprehensive', zones: startForm.zones?.length ? startForm.zones : null,
     }).select().single()
     if (data) {
       // 구역이 지정된 경우, 전체 active Lot을 내려받아 클라이언트에서 거르지 않고
@@ -259,7 +257,7 @@ export default function Inventory() {
         await Promise.all(chunks.map(c => supabase.from('inventory_counts').insert(c)))
         setActiveSession(data)
         setShowStartModal(false)
-        setStartForm({ year: new Date().getFullYear(), start_date: '', created_by: '', label: '', purpose: 'comprehensive', zones: [] })
+        setStartForm({ year: new Date().getFullYear(), start_date: '', created_by: '', label: '', zones: [] })
         setZoneMode('all')
         fetchSessions(); fetchAssignments(); fetchProgress()
         alert(`실사가 시작되었습니다! 총 ${rows.length}개 Lot`)
@@ -516,7 +514,7 @@ export default function Inventory() {
           <>
             <Card
               title={`📊 ${activeSession.year}년 재고 실사${activeSession.label ? ` · ${activeSession.label}` : ''}`}
-              sub={`시작일: ${activeSession.start_date} · 시작자: ${activeSession.created_by} · ${PURPOSE_LABEL[activeSession.purpose] || '종합실사'} · 범위: ${activeSession.zones?.length ? activeSession.zones.join(', ') : '전체'}`}
+              sub={`시작일: ${activeSession.start_date} · 시작자: ${activeSession.created_by} · 범위: ${activeSession.zones?.length ? activeSession.zones.join(', ') : '전체'}`}
               extra={isAdmin && (
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {activeSession.status === 'paused'
@@ -668,22 +666,6 @@ export default function Inventory() {
             <div style={{ marginBottom: '14px' }}>
               <label style={labelStyle}>관리자 이름 *</label>
               <input value={startForm.created_by} onChange={e => setStartForm({ ...startForm, created_by: e.target.value })} placeholder="본인 이름" style={inputStyle} />
-            </div>
-            <div style={{ marginBottom: '14px' }}>
-              <label style={labelStyle}>실사 목적</label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {Object.entries(PURPOSE_LABEL).map(([key, label]) => (
-                  <button key={key} onClick={() => setStartForm({ ...startForm, purpose: key })} style={{
-                    flex: 1, padding: '8px 10px', borderRadius: '8px', fontSize: '12.5px', fontWeight: '700', cursor: 'pointer',
-                    border: `1px solid ${startForm.purpose === key ? C.navy : C.border}`,
-                    background: startForm.purpose === key ? C.navy : C.white,
-                    color: startForm.purpose === key ? '#fff' : C.text,
-                  }}>{label}</button>
-                ))}
-              </div>
-              <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px' }}>
-                {startForm.purpose === 'comprehensive' ? '수량/상태/위치 확인 및 변경/신규시약·Lot등록/폐기예정/미확인 모두' : '수량/상태 확인 및 이상여부 기록 위주'}
-              </div>
             </div>
             <div style={{ marginBottom: '20px' }}>
               <label style={labelStyle}>실사 범위</label>
@@ -1088,8 +1070,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['시약명', '위치', 'Lot No.', '장부(미개봉)', '실측(미개봉)', '잔량(%)', '미확인', '이상기록',
-                    ...(session.purpose === 'comprehensive' ? ['위치변경'] : []),
+                  {['시약명', '위치', 'Lot No.', '장부(미개봉)', '실측(미개봉)', '잔량(%)', '미확인', '이상기록', '위치변경',
                     ...(isAdmin ? ['입력자'] : ['입력일']), '조치'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
@@ -1097,7 +1078,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
               </thead>
               <tbody>
                 {visibleLots.length === 0
-                  ? <tr><td colSpan={session.purpose === 'comprehensive' ? 11 : 10} style={{ padding: '32px', textAlign: 'center', color: C.muted }}>해당하는 항목이 없습니다.</td></tr>
+                  ? <tr><td colSpan={11} style={{ padding: '32px', textAlign: 'center', color: C.muted }}>해당하는 항목이 없습니다.</td></tr>
                   : visibleLots.map((lot, idx) => {
                     const count = counts[lot.id]
                     const bookSealed = count?.book_sealed ?? lot.sealed_count
@@ -1198,15 +1179,13 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                             }}
                           />
                         </td>
-                        {session.purpose === 'comprehensive' && (
-                          <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                            <select value={counts[lot.id]?.staged_location_id || ''} onChange={e => changeLocation(lot, e.target.value)}
-                              style={{ fontSize: '11px', padding: '4px 6px', borderRadius: '6px', border: `1px solid ${counts[lot.id]?.staged_location_id ? '#1565C0' : C.border}`, maxWidth: '130px' }}>
-                              <option value="">(변경없음)</option>
-                              {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
-                            </select>
-                          </td>
-                        )}
+                        <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          <select value={counts[lot.id]?.staged_location_id || ''} onChange={e => changeLocation(lot, e.target.value)}
+                            style={{ fontSize: '11px', padding: '4px 6px', borderRadius: '6px', border: `1px solid ${counts[lot.id]?.staged_location_id ? '#1565C0' : C.border}`, maxWidth: '130px' }}>
+                            <option value="">(변경없음)</option>
+                            {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+                          </select>
+                        </td>
                         <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>
                           {isAdmin ? (
                             <>
