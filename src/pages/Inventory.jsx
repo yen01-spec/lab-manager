@@ -1066,14 +1066,14 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['시약명', '위치', 'Lot No.', '장부(미개봉)', '실측(미개봉)', '잔량(%)', '차이', ...(isAdmin ? ['입력자'] : ['입력일']), '조치'].map(h => (
+                  {['시약명', '위치', 'Lot No.', '장부(미개봉)', '실측(미개봉)', '잔량(%)', ...(isAdmin ? ['입력자'] : ['입력일']), '조치'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {visibleLots.length === 0
-                  ? <tr><td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: C.muted }}>해당하는 항목이 없습니다.</td></tr>
+                  ? <tr><td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: C.muted }}>해당하는 항목이 없습니다.</td></tr>
                   : visibleLots.map((lot, idx) => {
                     const count = counts[lot.id]
                     const bookSealed = count?.book_sealed ?? lot.sealed_count
@@ -1148,9 +1148,6 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                               fontSize: '14px', fontWeight: '600', background: C.white,
                             }}
                           />
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: 'center', fontWeight: '700', color: diff === null ? C.muted : diff === 0 ? '#38A169' : C.danger }}>
-                          {diff === null ? '-' : diff > 0 ? `+${diff}` : diff}
                         </td>
                         <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>
                           {isAdmin ? (
