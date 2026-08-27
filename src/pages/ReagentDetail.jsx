@@ -152,9 +152,10 @@ export default function ReagentDetail() {
         const isEmpty = l.after_sealed === 0 && l.after_stock === 0
         const isNew = wasEmpty && !isEmpty
         const usedUp = !wasEmpty && isEmpty
+        const fromInventory = l.user_name?.startsWith('[실사]')
         return {
           date: l.created_at, target: lotLabel(l.lot_id),
-          desc: isNew ? `신규 등록 (${l.after_sealed}병/${l.after_stock}%)`
+          desc: isNew ? (fromInventory ? `재고실사 때 새로 등록된 기존 미등록 시약 (${l.after_sealed}병/${l.after_stock}%)` : `신규 등록 (${l.after_sealed}병/${l.after_stock}%)`)
             : usedUp ? '재고 소진 처리'
             : `재고 수정: ${l.before_sealed}병/${l.before_stock}% → ${l.after_sealed}병/${l.after_stock}%`,
           actor: l.user_name,
@@ -433,12 +434,20 @@ export default function ReagentDetail() {
                 const lotLoc = locations.find(l => l.id === lot.location_id)
                 const canEdit = isAdmin && lot.status === 'active'
                 return (
-                  <div key={lot.id} style={{ paddingBottom: lots.length > 1 ? '12px' : 0, borderBottom: lots.length > 1 ? `1px solid ${C.borderRow}` : 'none', opacity: lot.status === 'active' ? 1 : 0.6 }}>
+                  <div key={lot.id} style={{
+                    paddingBottom: lots.length > 1 ? '12px' : 0, borderBottom: lots.length > 1 ? `1px solid ${C.borderRow}` : 'none',
+                    opacity: lot.status === 'active' ? 1 : 0.6,
+                    background: lot.pending_confirm ? '#F0F7FF' : 'transparent',
+                    padding: lot.pending_confirm ? '8px' : 0, borderRadius: lot.pending_confirm ? '8px' : 0,
+                  }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                       <span style={{ fontSize: '12.5px', fontWeight: '700', color: C.navy }}>Lot {lot.lot_no || '(번호 없음)'}</span>
                       <span style={{ fontSize: '10.5px', fontWeight: '700', color: LOT_STATUS_COLOR[lot.status] || C.muted }}>
                         {LOT_STATUS_LABEL[lot.status] || lot.status}
                       </span>
+                      {lot.pending_confirm && (
+                        <span title="실사 반영됨 · 최종 확정 대기 중" style={{ fontSize: '10px', fontWeight: '700', color: '#1565C0', background: '#E3F2FD', padding: '1px 6px', borderRadius: '8px' }}>검토대기</span>
+                      )}
                       {isAdmin && lot.status === 'active' && (
                         <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
                           <button onClick={() => setLotStatus(lot, 'used_up')} style={{ fontSize: '10.5px', color: C.muted, background: 'none', border: `1px solid ${C.border}`, borderRadius: '5px', padding: '2px 7px', cursor: 'pointer' }}>사용완료로 표시</button>

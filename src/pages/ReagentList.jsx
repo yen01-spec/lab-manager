@@ -393,6 +393,7 @@ function toggleCheck(id, e, allData) {
       const avgStock = activeLots.length > 0
         ? Math.round(activeLots.reduce((s, l) => s + l.current_stock, 0) / activeLots.length) : 0
       const isLow = activeLots.some(l => l.sealed_count === 0 && l.current_stock <= 20)
+      const hasPendingConfirm = activeLots.some(l => l.pending_confirm)
       const ghsList = getGhsEmojis(r.hazard)
       const isChecked = checkedIds.has(r.id)
       const isPicked = pickedIds.has(r.id)
@@ -409,7 +410,7 @@ function toggleCheck(id, e, allData) {
       }
       const multiLocation = activeLocIds.size > 1
 
-      const baseBg = isLow ? '#FFF8F8' : C.white
+      const baseBg = isLow ? '#FFF8F8' : hasPendingConfirm ? '#F0F7FF' : C.white
       const selectedBg = '#EEF2FB'
       const isSelected = editMode ? isChecked : isPicked
 
@@ -448,6 +449,8 @@ function toggleCheck(id, e, allData) {
               color: '#1F4E96', padding: '1px 7px', borderRadius: '999px', fontWeight: '700' }}>직접제조</span>}
             {isLow && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
               color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
+            {hasPendingConfirm && <span title="실사 반영됨 · 최종 확정 대기 중" style={{ marginLeft: '6px', fontSize: '10px', background: '#E3F2FD',
+              color: '#1565C0', padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>검토대기</span>}
           </td>
           {visibleCols.casNo && (
             <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{r.cas_no || '-'}</td>
