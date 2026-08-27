@@ -103,7 +103,11 @@ export default function ReagentList() {
     if (count > 4999) {
       alert(`⚠️ 시약이 ${count}개로 많아 일부만 표시됩니다. 관리자에게 문의하세요.`)
     }
-    if (data) setResults(data.sort((a, b) => a.name.localeCompare(b.name)))
+    if (data) {
+      const sorted = data.sort((a, b) => a.name.localeCompare(b.name))
+      setResults(sorted)
+      return sorted
+    }
   }
 
   function resetFilters() {
@@ -263,9 +267,12 @@ function toggleCheck(id, e, allData) {
     setInlineEdit({ lotId, reagentId, field, value: currentValue })
   }
 
-  async function saveInlineEdit(lot) {
+  // advance: Enter로 저장한 경우 같은 항목(잔량/미개봉)을 목록의 다음 시약에서 바로 이어서 편집 —
+  // 단일 Lot 시약만 인라인 편집 대상이라, 다음 항목 중 첫 단일 Lot 시약을 찾아서 연다.
+  async function saveInlineEdit(lot, { advance = false, data } = {}) {
     if (!inlineEdit) return
-    const { lotId, field, value } = inlineEdit
+    const { field, value, reagentId } = inlineEdit
+    const lotId = inlineEdit.lotId
     const numVal = Number(value)
     if (isNaN(numVal)) { alert('숫자를 입력해주세요'); return }
     await supabase.from('reagent_lots').update({ [field]: numVal, needs_review: false }).eq('id', lotId)
@@ -277,7 +284,19 @@ function toggleCheck(id, e, allData) {
       after_stock: field === 'current_stock' ? numVal : lot.current_stock,
     })
     setInlineEdit(null)
-    fetchResults()
+    const fresh = await fetchResults()
+    if (advance && data && fresh) {
+      const idx = fresh.findIndex(r => r.id === reagentId)
+      for (let i = idx + 1; i < fresh.length; i++) {
+        const nextR = fresh[i]
+        const activeLots = (nextR.reagent_lots || []).filter(l => l.status === 'active')
+        if (activeLots.length === 1) {
+          const nextVal = field === 'sealed_count' ? activeLots[0].sealed_count : activeLots[0].current_stock
+          setInlineEdit({ lotId: activeLots[0].id, reagentId: nextR.id, field, value: nextVal })
+          break
+        }
+      }
+    }
   }
 
   const getGroupedReagents = (data) => {
@@ -473,7 +492,7 @@ function toggleCheck(id, e, allData) {
                 {editingThisSealed ? (
                   <input autoFocus type="number" min="0" value={inlineEdit.value}
                     onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                    onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(onlyLot); if (e.key === 'Escape') setInlineEdit(null) }}
+                    onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(onlyLot, { advance: true, data }); if (e.key === 'Escape') setInlineEdit(null) }}
                     onBlur={() => saveInlineEdit(onlyLot)}
                     style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
                 ) : (
@@ -488,7 +507,7 @@ function toggleCheck(id, e, allData) {
                 {editingThisStock ? (
                   <input autoFocus type="number" min="0" max="100" value={inlineEdit.value}
                     onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                    onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(onlyLot); if (e.key === 'Escape') setInlineEdit(null) }}
+                    onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(onlyLot, { advance: true, data }); if (e.key === 'Escape') setInlineEdit(null) }}
                     onBlur={() => saveInlineEdit(onlyLot)}
                     style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
                 ) : (
