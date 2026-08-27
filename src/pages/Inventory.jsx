@@ -727,6 +727,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)   // ← 드롭다운 열림 여부
   const [filter, setFilter] = useState('all')
+  const [forceShowAll, setForceShowAll] = useState(false) // 알파벳 인덱스 점프 시 렌더 캡 해제용
   const [saving, setSaving] = useState({})
   const [changeModal, setChangeModal] = useState(null)
   const [changeForm, setChangeForm] = useState({ field_name: 'name', new_value: '' })
@@ -922,9 +923,13 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
       const first = l.reagents?.name?.[0]?.toUpperCase() || ''
       return first === letter
     })
-    if (target && rowRefs.current[target.id]) {
-      rowRefs.current[target.id].scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
+    if (!target) return
+    setSearch('')
+    setFilter('all')
+    setForceShowAll(true) // 렌더 캡에 걸려 대상 행이 아직 안 그려졌을 수 있어 캡을 풀고 기다렸다 스크롤
+    setTimeout(() => {
+      if (rowRefs.current[target.id]) rowRefs.current[target.id].scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 100)
   }
 
   function jumpToLot(lot) {
@@ -932,9 +937,10 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     setSearchOpen(false)
     // filter를 'all'로 리셋 후 스크롤
     setFilter('all')
+    setForceShowAll(true)
     setTimeout(() => {
       if (rowRefs.current[lot.id]) rowRefs.current[lot.id].scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 50)
+    }, 100)
   }
 
   const filteredLots = lots.filter(lot => {
@@ -957,9 +963,10 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     : []
 
   // 범위가 넓은 실사(예: 전체)에서 수백~수천 행을 한꺼번에 그리면 페이지가 멈춘 것처럼 느려짐 —
-  // 검색/필터 없이 볼 때는 일정 개수까지만 렌더링하고 나머지는 검색으로 찾도록 안내
+  // 검색/필터 없이 볼 때는 일정 개수까지만 렌더링하고 나머지는 검색으로 찾도록 안내.
+  // 알파벳 인덱스로 점프할 땐 대상 행이 캡 밖에 있을 수 있어 forceShowAll로 캡을 풀어준다.
   const RENDER_CAP = 300
-  const isCapped = !search && filter === 'all' && filteredLots.length > RENDER_CAP
+  const isCapped = !forceShowAll && !search && filter === 'all' && filteredLots.length > RENDER_CAP
   const visibleLots = isCapped ? filteredLots.slice(0, RENDER_CAP) : filteredLots
 
   const doneCnt = lots.filter(l => counts[l.id]?.actual_sealed != null).length
