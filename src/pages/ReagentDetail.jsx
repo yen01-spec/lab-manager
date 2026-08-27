@@ -54,10 +54,13 @@ export default function ReagentDetail() {
   const [inlineEdit, setInlineEdit] = useState(null)
 
   const [showDisposalModal, setShowDisposalModal] = useState(false)
-  const [disposalForm, setDisposalForm] = useState({ quantity: '1', reason: '' })
+  const [disposalForm, setDisposalForm] = useState({ lot_id: '', quantity: '1', reason: '' })
   const [showMoveModal, setShowMoveModal] = useState(false)
-  const [moveForm, setMoveForm] = useState({ to_location_id: '', notes: '' })
+  const [moveForm, setMoveForm] = useState({ lot_id: '', to_location_id: '', notes: '' })
+  const [showAddLotModal, setShowAddLotModal] = useState(false)
+  const [addLotForm, setAddLotForm] = useState({ lot_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
   const [locations, setLocations] = useState([])
+  const [history, setHistory] = useState([])
 
   useEffect(() => { fetchAll() }, [id])
   useEffect(() => { supabase.from('locations').select('*').order('room').then(({ data }) => data && setLocations(data)) }, [])
@@ -84,6 +87,7 @@ export default function ReagentDetail() {
       const { data: disposal } = await supabase.from('disposal_requests')
         .select('*').eq('reagent_id', id).eq('status', 'pending').maybeSingle()
       setDisposalPending(disposal || null)
+      fetchHistory()
 
       if (data.cas_no) {
         try {
@@ -112,6 +116,52 @@ export default function ReagentDetail() {
     const { data } = await supabase.from('reagent_change_requests')
       .select('*').eq('reagent_id', id).eq('status', 'pending')
     setPendingChanges(data || [])
+  }
+
+  // 위치이동/폐기/필드수정/재고변경 이력을 날짜|대상|변경내용 형식으로 통일해서 한 타임라인으로 합침
+  async function fetchHistory() {
+    const [{ data: moves }, { data: disposals }, { data: fieldChanges }, { data: reagentLots }] = await Promise.all([
+      supabase.from('location_history').select('*').eq('reagent_id', id).order('created_at', { ascending: false }).limit(30),
+      supabase.from('disposal_requests').select('*').eq('reagent_id', id).in('status', ['disposed', 'rejected']).order('created_at', { ascending: false }).limit(30),
+      supabase.from('reagent_change_requests').select('*').eq('reagent_id', id).eq('status', 'approved').order('created_at', { ascending: false }).limit(30),
+      supabase.from('reagent_lots').select('id, lot_no').eq('reagent_id', id),
+    ])
+    const lotIds = (reagentLots || []).map(l => l.id)
+    const lotNoById = new Map((reagentLots || []).map(l => [l.id, l.lot_no]))
+    const { data: logs } = lotIds.length > 0
+      ? await supabase.from('stock_logs').select('*').in('lot_id', lotIds).order('created_at', { ascending: false }).limit(30)
+      : { data: [] }
+
+    const lotLabel = (lotId, fallback) => lotId && lotNoById.has(lotId) ? `Lot ${lotNoById.get(lotId) || '(번호없음)'}` : (fallback || reagent?.name || '')
+
+    const rows = [
+      ...(moves || []).map(m => ({
+        date: m.created_at, target: lotLabel(m.lot_id, m.reagent_name),
+        desc: `위치 ${m.from_location_name || '미지정'} → ${m.to_location_name}`, actor: m.moved_by,
+      })),
+      ...(disposals || []).map(d => ({
+        date: d.created_at, target: lotLabel(d.lot_id, d.lot_no ? `Lot ${d.lot_no}` : d.reagent_name),
+        desc: d.status === 'disposed' ? `폐기 완료 (${d.reason || '-'})` : `폐기 반려 (${d.reason || '-'})`, actor: d.requested_by,
+      })),
+      ...(fieldChanges || []).map(f => ({
+        date: f.created_at, target: reagent?.name || '',
+        desc: `${FIELD_LABELS[f.field_name] || f.field_name}: ${f.old_value || '-'} → ${f.new_value}`, actor: f.requested_by,
+      })),
+      ...(logs || []).map(l => {
+        const wasEmpty = l.before_sealed === 0 && l.before_stock === 0
+        const isEmpty = l.after_sealed === 0 && l.after_stock === 0
+        const isNew = wasEmpty && !isEmpty
+        const usedUp = !wasEmpty && isEmpty
+        return {
+          date: l.created_at, target: lotLabel(l.lot_id),
+          desc: isNew ? `신규 등록 (${l.after_sealed}병/${l.after_stock}%)`
+            : usedUp ? '재고 소진 처리'
+            : `재고 수정: ${l.before_sealed}병/${l.before_stock}% → ${l.after_sealed}병/${l.after_stock}%`,
+          actor: l.user_name,
+        }
+      }),
+    ].sort((a, b) => new Date(b.date) - new Date(a.date))
+    setHistory(rows)
   }
 
   async function saveField(field, value, sourceField) {
@@ -180,30 +230,33 @@ export default function ReagentDetail() {
   }
 
   async function submitDisposal() {
+    if (!disposalForm.lot_id) { alert('폐기할 Lot을 선택해주세요'); return }
     if (!disposalForm.reason.trim()) { alert('폐기 사유를 입력해주세요'); return }
     if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
-    const firstLot = lots[0]
+    const targetLot = lots.find(l => l.id === disposalForm.lot_id)
     await supabase.from('disposal_requests').insert({
-      reagent_id: id, lot_id: firstLot?.id || null,
-      reagent_name: reagent.name, lot_no: firstLot?.lot_no || null,
+      reagent_id: id, lot_id: targetLot?.id || null,
+      reagent_name: reagent.name, lot_no: targetLot?.lot_no || null,
       quantity: disposalForm.quantity, reason: disposalForm.reason,
       requested_by: student.name, requested_by_student_id: student.student_id,
       status: 'pending',
     })
     alert('폐기 신청이 완료됐어요!')
     setShowDisposalModal(false)
-    setDisposalForm({ quantity: '1', reason: '' })
+    setDisposalForm({ lot_id: '', quantity: '1', reason: '' })
     fetchAll()
   }
 
   async function resolveDisposal(action) {
     if (!disposalPending) return
     if (action === 'confirm') {
-      await supabase.from('disposal_requests').update({ status: 'approved', approved_by_student_id: student?.student_id ?? null }).eq('id', disposalPending.id)
-      const firstLot = lots[0]
-      if (firstLot) await supabase.from('reagent_lots').update({
-        sealed_count: 0, current_stock: 0, disposal_date: new Date().toISOString().split('T')[0],
-      }).eq('id', firstLot.id)
+      await supabase.from('disposal_requests').update({
+        status: 'disposed', disposed_at: new Date().toISOString(), approved_by_student_id: student?.student_id ?? null,
+      }).eq('id', disposalPending.id)
+      const targetLotId = disposalPending.lot_id || lots[0]?.id
+      if (targetLotId) await supabase.from('reagent_lots').update({
+        sealed_count: 0, current_stock: 0, status: 'disposed', disposal_date: new Date().toISOString().split('T')[0],
+      }).eq('id', targetLotId)
     } else {
       await supabase.from('disposal_requests').update({ status: 'rejected' }).eq('id', disposalPending.id)
     }
@@ -211,18 +264,20 @@ export default function ReagentDetail() {
   }
 
   async function submitMove() {
+    if (!moveForm.lot_id) { alert('이동할 Lot을 선택해주세요'); return }
     if (!moveForm.to_location_id) { alert('이동할 위치를 선택해주세요'); return }
     if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
-    if (reagent.location_id === moveForm.to_location_id) { alert('현재 위치와 같습니다'); return }
+    const targetLot = lots.find(l => l.id === moveForm.lot_id)
+    if (targetLot?.location_id === moveForm.to_location_id) { alert('현재 위치와 같습니다'); return }
+    const fromLoc = locations.find(l => l.id === targetLot?.location_id)
     const toLoc = locations.find(l => l.id === moveForm.to_location_id)
-    const fromLocName = reagent.locations
-      ? `${reagent.locations.room}${reagent.locations.detail ? ' - ' + reagent.locations.detail : ''}` : '미지정'
+    const fromLocName = fromLoc ? `${fromLoc.room}${fromLoc.detail ? ' - ' + fromLoc.detail : ''}` : '미지정'
     const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
     if (isAdmin) {
-      await supabase.from('reagents').update({ location_id: moveForm.to_location_id }).eq('id', id)
+      await supabase.from('reagent_lots').update({ location_id: moveForm.to_location_id }).eq('id', moveForm.lot_id)
       await supabase.from('location_history').insert({
-        reagent_id: id, reagent_name: reagent.name,
-        from_location_id: reagent.location_id, from_location_name: fromLocName,
+        reagent_id: id, lot_id: moveForm.lot_id, reagent_name: reagent.name,
+        from_location_id: targetLot?.location_id || null, from_location_name: fromLocName,
         to_location_id: moveForm.to_location_id, to_location_name: toLocName,
         moved_by: student.name, notes: moveForm.notes,
       })
@@ -231,14 +286,47 @@ export default function ReagentDetail() {
       fetchAll()
     } else {
       await supabase.from('location_requests').insert({
-        reagent_id: id, reagent_name: reagent.name,
-        from_location_id: reagent.location_id, from_location_name: fromLocName,
+        reagent_id: id, lot_id: moveForm.lot_id, reagent_name: reagent.name,
+        from_location_id: targetLot?.location_id || null, from_location_name: fromLocName,
         to_location_id: moveForm.to_location_id, to_location_name: toLocName,
         requested_by: student.name, requested_by_student_id: student.student_id, notes: moveForm.notes, status: 'pending',
       })
       alert('위치 이동 신청 완료! 관리자 승인 후 처리됩니다.')
       setShowMoveModal(false)
     }
+  }
+
+  // 이미 등록된 시약(마스터)에 새로 구매한 Lot을 추가 — 재구매 시 신규 시약으로 다시 등록할 필요 없게 하는 핵심 경로
+  async function submitAddLot() {
+    if (!addLotForm.location_id) { alert('보관 위치를 선택해주세요'); return }
+    if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
+    const { data: newLot } = await supabase.from('reagent_lots').insert({
+      reagent_id: id, lot_no: addLotForm.lot_no || null,
+      sealed_count: Number(addLotForm.sealed_count) || 0, current_stock: Number(addLotForm.current_stock) || 0,
+      location_id: addLotForm.location_id, received_date: addLotForm.received_date || null,
+      expiry_date: addLotForm.expiry_date || null, status: 'active',
+    }).select().single()
+    await supabase.from('stock_logs').insert({
+      target_type: 'reagent', lot_id: newLot?.id || null, user_name: student.name,
+      before_sealed: 0, after_sealed: Number(addLotForm.sealed_count) || 0,
+      before_stock: 0, after_stock: Number(addLotForm.current_stock) || 0,
+    })
+    alert('새 Lot이 등록됐어요!')
+    setShowAddLotModal(false)
+    setAddLotForm({ lot_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
+    fetchAll()
+  }
+
+  async function setLotStatus(lot, status) {
+    if (!isAdmin) return
+    const label = { used_up: '사용완료', missing: '분실' }[status] || status
+    if (!window.confirm(`Lot ${lot.lot_no || '(번호없음)'}을(를) "${label}"(으)로 표시할까요?`)) return
+    await supabase.from('reagent_lots').update({ status, sealed_count: 0, current_stock: 0 }).eq('id', lot.id)
+    await supabase.from('stock_logs').insert({
+      target_type: 'reagent', lot_id: lot.id, user_name: student?.name || '',
+      before_sealed: lot.sealed_count, after_sealed: 0, before_stock: lot.current_stock, after_stock: 0,
+    })
+    fetchAll()
   }
 
   if (loading) return <div style={{ padding: '60px', textAlign: 'center', color: C.muted }}>불러오는 중...</div>
@@ -254,6 +342,18 @@ export default function ReagentDetail() {
     ['category', '유별/성질', reagent.category, reagent.category_source],
     ['volume', '용량', reagent.volume ? `${reagent.volume} ${reagent.unit || ''}` : '', reagent.volume_source],
   ]
+  const activeLots = lots.filter(l => l.status === 'active')
+  const LOT_STATUS_LABEL = { active: '보유중', used_up: '사용완료', disposed: '폐기', missing: '분실' }
+  const LOT_STATUS_COLOR = { active: '#00875A', used_up: C.muted, disposed: C.danger, missing: '#B7791F' }
+
+  function openDisposalModal() {
+    setDisposalForm({ lot_id: activeLots.length === 1 ? activeLots[0].id : '', quantity: '1', reason: '' })
+    setShowDisposalModal(true)
+  }
+  function openMoveModal() {
+    setMoveForm({ lot_id: activeLots.length === 1 ? activeLots[0].id : '', to_location_id: '', notes: '' })
+    setShowMoveModal(true)
+  }
 
   return (
     <div>
@@ -263,8 +363,9 @@ export default function ReagentDetail() {
         breadcrumb={['시약', reagent.name]}
         extra={
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button onClick={() => setShowDisposalModal(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: '1px solid #F3D6D6', background: '#FDECEC', fontSize: '13px', color: '#C13B3F', fontWeight: '600', cursor: 'pointer' }}>🗑️ 폐기 신청</button>
-            <button onClick={() => setShowMoveModal(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.white, fontSize: '13px', color: '#586173', cursor: 'pointer' }}>📍 위치 이동{!isAdmin && ' 신청'}</button>
+            <button onClick={() => setShowAddLotModal(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: '1px dashed #C9DAF5', background: '#F9FBFF', fontSize: '13px', color: '#1F4E96', fontWeight: '600', cursor: 'pointer' }}>📦 재고 등록</button>
+            <button onClick={openDisposalModal} disabled={activeLots.length === 0} style={{ padding: '9px 16px', borderRadius: '8px', border: '1px solid #F3D6D6', background: activeLots.length === 0 ? '#F7F7F7' : '#FDECEC', fontSize: '13px', color: activeLots.length === 0 ? C.muted : '#C13B3F', fontWeight: '600', cursor: activeLots.length === 0 ? 'default' : 'pointer' }}>🗑️ 폐기 신청</button>
+            <button onClick={openMoveModal} disabled={activeLots.length === 0} style={{ padding: '9px 16px', borderRadius: '8px', border: `1px solid ${C.border}`, background: activeLots.length === 0 ? '#F7F7F7' : C.white, fontSize: '13px', color: '#586173', cursor: activeLots.length === 0 ? 'default' : 'pointer' }}>📍 위치 이동{!isAdmin && ' 신청'}</button>
             <button onClick={() => setEditMode(v => !v)} style={{
               padding: '9px 16px', borderRadius: '8px', border: `1px solid ${editMode ? C.navy : C.border}`,
               background: editMode ? C.navy : C.white, fontSize: '13px', color: editMode ? '#fff' : '#586173',
@@ -328,44 +429,60 @@ export default function ReagentDetail() {
               {lots.map(lot => {
                 const editingSealed = inlineEdit?.lotId === lot.id && inlineEdit?.field === 'sealed_count'
                 const editingStock = inlineEdit?.lotId === lot.id && inlineEdit?.field === 'current_stock'
-                const isLow = lot.sealed_count === 0 && lot.current_stock <= 20
+                const isLow = lot.status === 'active' && lot.sealed_count === 0 && lot.current_stock <= 20
+                const lotLoc = locations.find(l => l.id === lot.location_id)
+                const canEdit = isAdmin && lot.status === 'active'
                 return (
-                  <div key={lot.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px 20px', paddingBottom: lots.length > 1 ? '12px' : 0, borderBottom: lots.length > 1 ? `1px solid ${C.borderRow}` : 'none' }}>
-                    <div>
-                      <div style={{ fontSize: '11px', color: C.muted, marginBottom: '4px' }}>미개봉 병 수</div>
-                      {editingSealed ? (
-                        <input autoFocus type="number" min="0" value={inlineEdit.value}
-                          onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                          onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(lot); if (e.key === 'Escape') setInlineEdit(null) }}
-                          onBlur={() => saveInlineEdit(lot)}
-                          style={{ width: '60px', padding: '4px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13.5px' }} />
-                      ) : (
-                        <div onClick={e => isAdmin && startInlineEdit(lot.id, 'sealed_count', lot.sealed_count, e)}
-                          style={{ fontSize: '13.5px', color: C.text, cursor: isAdmin ? 'text' : 'default' }}>{lot.sealed_count}병</div>
+                  <div key={lot.id} style={{ paddingBottom: lots.length > 1 ? '12px' : 0, borderBottom: lots.length > 1 ? `1px solid ${C.borderRow}` : 'none', opacity: lot.status === 'active' ? 1 : 0.6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '12.5px', fontWeight: '700', color: C.navy }}>Lot {lot.lot_no || '(번호 없음)'}</span>
+                      <span style={{ fontSize: '10.5px', fontWeight: '700', color: LOT_STATUS_COLOR[lot.status] || C.muted }}>
+                        {LOT_STATUS_LABEL[lot.status] || lot.status}
+                      </span>
+                      {isAdmin && lot.status === 'active' && (
+                        <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
+                          <button onClick={() => setLotStatus(lot, 'used_up')} style={{ fontSize: '10.5px', color: C.muted, background: 'none', border: `1px solid ${C.border}`, borderRadius: '5px', padding: '2px 7px', cursor: 'pointer' }}>사용완료로 표시</button>
+                          <button onClick={() => setLotStatus(lot, 'missing')} style={{ fontSize: '10.5px', color: '#B7791F', background: 'none', border: '1px solid #F0DBAE', borderRadius: '5px', padding: '2px 7px', cursor: 'pointer' }}>분실로 표시</button>
+                        </span>
                       )}
                     </div>
-                    <div style={{ background: isLow ? '#FDECEC' : 'transparent', borderRadius: '8px', padding: isLow ? '8px 10px' : 0, margin: isLow ? '-8px -10px' : 0 }}>
-                      <div style={{ fontSize: '11px', color: isLow ? '#C13B3F' : C.muted, marginBottom: '4px', fontWeight: isLow ? '600' : '400' }}>개봉 병 잔량{isLow ? ' · 부족' : ''}</div>
-                      {editingStock ? (
-                        <input autoFocus type="number" min="0" max="100" value={inlineEdit.value}
-                          onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                          onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(lot); if (e.key === 'Escape') setInlineEdit(null) }}
-                          onBlur={() => saveInlineEdit(lot)}
-                          style={{ width: '60px', padding: '4px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13.5px' }} />
-                      ) : (
-                        <div onClick={e => isAdmin && startInlineEdit(lot.id, 'current_stock', lot.current_stock, e)}
-                          style={{ fontSize: '13.5px', color: C.text, cursor: isAdmin ? 'text' : 'default' }}>{lot.current_stock}%</div>
-                      )}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px 20px' }}>
+                      <div>
+                        <div style={{ fontSize: '11px', color: C.muted, marginBottom: '4px' }}>미개봉 병 수</div>
+                        {editingSealed ? (
+                          <input autoFocus type="number" min="0" value={inlineEdit.value}
+                            onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                            onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(lot); if (e.key === 'Escape') setInlineEdit(null) }}
+                            onBlur={() => saveInlineEdit(lot)}
+                            style={{ width: '60px', padding: '4px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13.5px' }} />
+                        ) : (
+                          <div onClick={e => canEdit && startInlineEdit(lot.id, 'sealed_count', lot.sealed_count, e)}
+                            style={{ fontSize: '13.5px', color: C.text, cursor: canEdit ? 'text' : 'default' }}>{lot.sealed_count}병</div>
+                        )}
+                      </div>
+                      <div style={{ background: isLow ? '#FDECEC' : 'transparent', borderRadius: '8px', padding: isLow ? '8px 10px' : 0, margin: isLow ? '-8px -10px' : 0 }}>
+                        <div style={{ fontSize: '11px', color: isLow ? '#C13B3F' : C.muted, marginBottom: '4px', fontWeight: isLow ? '600' : '400' }}>개봉 병 잔량{isLow ? ' · 부족' : ''}</div>
+                        {editingStock ? (
+                          <input autoFocus type="number" min="0" max="100" value={inlineEdit.value}
+                            onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                            onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(lot); if (e.key === 'Escape') setInlineEdit(null) }}
+                            onBlur={() => saveInlineEdit(lot)}
+                            style={{ width: '60px', padding: '4px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13.5px' }} />
+                        ) : (
+                          <div onClick={e => canEdit && startInlineEdit(lot.id, 'current_stock', lot.current_stock, e)}
+                            style={{ fontSize: '13.5px', color: C.text, cursor: canEdit ? 'text' : 'default' }}>{lot.current_stock}%</div>
+                        )}
+                      </div>
+                      <InfoRow label="위치" value={lotLoc ? `${lotLoc.room}${lotLoc.detail ? ' · ' + lotLoc.detail : ''}` : ''} />
+                      <InfoRow label="입고일" value={lot.received_date} />
+                      <InfoRow label="개봉일" value={lot.opened_date} />
+                      <InfoRow label="유효기간" value={lot.expiry_date} />
+                      {lot.disposal_date && <InfoRow label="폐기일" value={lot.disposal_date} />}
                     </div>
-                    <InfoRow label="Lot" value={lot.lot_no} />
-                    <InfoRow label="입고일" value={lot.received_date} />
-                    <InfoRow label="개봉일" value={lot.opened_date} />
-                    <InfoRow label="유효기간" value={lot.expiry_date} />
-                    {lot.disposal_date && <InfoRow label="폐기일" value={lot.disposal_date} />}
                   </div>
                 )
               })}
-              {lots.length === 0 && <div style={{ color: C.muted, fontSize: '13px' }}>등록된 Lot이 없습니다.</div>}
+              {lots.length === 0 && <div style={{ color: C.muted, fontSize: '13px' }}>등록된 Lot이 없습니다. "📦 재고 등록"으로 추가하세요.</div>}
             </div>
           </div>
 
@@ -408,19 +525,6 @@ export default function ReagentDetail() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* 위치정보 */}
-          <div style={cardStyle}>
-            <div style={cardHeadStyle}>위치정보</div>
-            <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#EAF1FB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '18px' }}>📍</div>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: '700', color: C.navy }}>
-                  {reagent.locations ? `${reagent.locations.room}${reagent.locations.detail ? ' ' + reagent.locations.detail : ''}` : '미지정'}
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* 관리정보 */}
           <div style={cardStyle}>
             <div style={cardHeadStyle}>관리정보</div>
@@ -487,6 +591,28 @@ export default function ReagentDetail() {
         </div>
       </div>
 
+      {/* 변경이력 */}
+      {history.length > 0 && (
+        <div style={{ marginTop: '20px', ...cardStyle }}>
+          <div style={cardHeadStyle}>변경이력</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>{['날짜', '대상', '변경내용', ...(isAdmin ? ['처리자'] : [])].map(h => (
+              <th key={h} style={{ padding: '9px 20px', textAlign: 'left', fontSize: '11px', color: C.muted, fontWeight: '600', borderBottom: `1px solid ${C.border}` }}>{h}</th>
+            ))}</tr></thead>
+            <tbody>
+              {history.map((h, i) => (
+                <tr key={i}>
+                  <td style={{ padding: '9px 20px', fontSize: '11px', color: C.muted, whiteSpace: 'nowrap', borderBottom: `1px solid ${C.borderRow}` }}>{new Date(h.date).toLocaleDateString()}</td>
+                  <td style={{ padding: '9px 20px', fontSize: '12px', fontWeight: '600', color: C.navy, whiteSpace: 'nowrap', borderBottom: `1px solid ${C.borderRow}` }}>{h.target}</td>
+                  <td style={{ padding: '9px 20px', fontSize: '12px', color: C.text, borderBottom: `1px solid ${C.borderRow}` }}>{h.desc}</td>
+                  {isAdmin && <td style={{ padding: '9px 20px', fontSize: '12px', color: C.muted, borderBottom: `1px solid ${C.borderRow}` }}>{h.actor || '-'}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* 폐기 신청 모달 */}
       {showDisposalModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,42,94,0.55)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowDisposalModal(false)}>
@@ -494,6 +620,16 @@ export default function ReagentDetail() {
             <h3 style={{ margin: '0 0 4px', color: C.navy }}>🗑️ 폐기 신청</h3>
             <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{reagent.name}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {activeLots.length > 1 && (
+                <div><label style={labelStyle}>폐기할 Lot *</label>
+                  <select value={disposalForm.lot_id} onChange={e => setDisposalForm({ ...disposalForm, lot_id: e.target.value })} style={inputStyle}>
+                    <option value="">선택하세요</option>
+                    {activeLots.map(l => {
+                      const loc = locations.find(x => x.id === l.location_id)
+                      return <option key={l.id} value={l.id}>Lot {l.lot_no || '번호없음'} · {loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '위치미정'} · {l.sealed_count}병/{l.current_stock}%</option>
+                    })}
+                  </select></div>
+              )}
               <div><label style={labelStyle}>수량</label>
                 <input value={disposalForm.quantity} onChange={e => setDisposalForm({ ...disposalForm, quantity: e.target.value })} style={inputStyle} /></div>
               <div><label style={labelStyle}>폐기 사유 *</label>
@@ -517,6 +653,16 @@ export default function ReagentDetail() {
             <h3 style={{ margin: '0 0 4px', color: C.navy }}>📍 위치 이동{!isAdmin && ' 신청'}</h3>
             <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{reagent.name}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {activeLots.length > 1 && (
+                <div><label style={labelStyle}>이동할 Lot *</label>
+                  <select value={moveForm.lot_id} onChange={e => setMoveForm({ ...moveForm, lot_id: e.target.value })} style={inputStyle}>
+                    <option value="">선택하세요</option>
+                    {activeLots.map(l => {
+                      const loc = locations.find(x => x.id === l.location_id)
+                      return <option key={l.id} value={l.id}>Lot {l.lot_no || '번호없음'} · {loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '위치미정'}</option>
+                    })}
+                  </select></div>
+              )}
               <div><label style={labelStyle}>이동할 위치 *</label>
                 <select value={moveForm.to_location_id} onChange={e => setMoveForm({ ...moveForm, to_location_id: e.target.value })} style={inputStyle}>
                   <option value="">선택하세요</option>
@@ -531,6 +677,44 @@ export default function ReagentDetail() {
             <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
               <button onClick={() => setShowMoveModal(false)} style={{ ...btnGhost, flex: 1 }}>취소</button>
               <button onClick={submitMove} style={{ ...btnPrimary, flex: 1 }}>{isAdmin ? '이동' : '신청하기'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 재고 등록(새 Lot 추가) 모달 */}
+      {showAddLotModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,42,94,0.55)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowAddLotModal(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '28px', width: '420px', maxWidth: '92vw' }}>
+            <h3 style={{ margin: '0 0 4px', color: C.navy }}>📦 재고 등록</h3>
+            <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{reagent.name} — 새로 구매한 Lot을 추가해요. 시약명·CAS 등은 다시 입력할 필요 없어요.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div><label style={labelStyle}>Lot No.</label>
+                <input value={addLotForm.lot_no} onChange={e => setAddLotForm({ ...addLotForm, lot_no: e.target.value })} style={inputStyle} /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div><label style={labelStyle}>미개봉 병 수</label>
+                  <input type="number" min="0" value={addLotForm.sealed_count} onChange={e => setAddLotForm({ ...addLotForm, sealed_count: e.target.value })} style={inputStyle} /></div>
+                <div><label style={labelStyle}>개봉 병 잔량(%)</label>
+                  <input type="number" min="0" max="100" value={addLotForm.current_stock} onChange={e => setAddLotForm({ ...addLotForm, current_stock: e.target.value })} style={inputStyle} /></div>
+              </div>
+              <div><label style={labelStyle}>보관 위치 *</label>
+                <select value={addLotForm.location_id} onChange={e => setAddLotForm({ ...addLotForm, location_id: e.target.value })} style={inputStyle}>
+                  <option value="">선택하세요</option>
+                  {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+                </select></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div><label style={labelStyle}>입고일</label>
+                  <input type="date" value={addLotForm.received_date} onChange={e => setAddLotForm({ ...addLotForm, received_date: e.target.value })} style={inputStyle} /></div>
+                <div><label style={labelStyle}>유효기간</label>
+                  <input type="date" value={addLotForm.expiry_date} onChange={e => setAddLotForm({ ...addLotForm, expiry_date: e.target.value })} style={inputStyle} /></div>
+              </div>
+            </div>
+            <div style={{ fontSize: '11.5px', color: student ? C.muted : '#C13B3F', marginTop: '10px' }}>
+              {student ? `등록자: ${student.name}` : '※ 제출하려면 로그인이 필요해요'}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
+              <button onClick={() => setShowAddLotModal(false)} style={{ ...btnGhost, flex: 1 }}>취소</button>
+              <button onClick={submitAddLot} style={{ ...btnPrimary, flex: 1 }}>등록하기</button>
             </div>
           </div>
         </div>
