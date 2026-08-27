@@ -209,24 +209,29 @@ export default function Inventory() {
       purpose: startForm.purpose, zones: startForm.zones?.length ? startForm.zones : null,
     }).select().single()
     if (data) {
-      const lots = await fetchAllPages((from, to) => supabase.from('reagent_lots')
-        .select('id, reagent_id, sealed_count, current_stock, status, location_id, locations(room, detail)')
-        .eq('status', 'active').range(from, to))
+      // 구역이 지정된 경우, 전체 active Lot을 내려받아 클라이언트에서 거르지 않고
+      // 해당 구역의 location_id만 쿼리 단계에서 걸러서 가져온다(대량 DB에서 훨씬 빠름).
+      const hasZones = startForm.zones && startForm.zones.length > 0
+      const matchLocIds = hasZones
+        ? locations.filter(l => startForm.zones.some(z => l.room === z || l.detail === z)).map(l => l.id)
+        : null
+      if (hasZones && matchLocIds.length === 0) { alert('해당 구역에 등록된 위치가 없습니다.'); return }
+      const lots = await fetchAllPages((from, to) => {
+        let q = supabase.from('reagent_lots')
+          .select('id, reagent_id, sealed_count, current_stock, status, location_id')
+          .eq('status', 'active')
+        if (matchLocIds) q = q.in('location_id', matchLocIds)
+        return q.range(from, to)
+      })
       if (lots) {
-        let filtered = lots
-        if (startForm.zones && startForm.zones.length > 0) {
-          filtered = lots.filter(l => {
-            const room = l.locations?.room || ''
-            const detail = l.locations?.detail || ''
-            return startForm.zones.some(z => room === z || detail === z)
-          })
-        }
-        const rows = filtered.map(l => ({
+        const rows = lots.map(l => ({
           session_id: data.id, reagent_id: l.reagent_id, lot_id: l.id,
           book_sealed: l.sealed_count, book_stock: l.current_stock,
           book_status: l.status, book_location_id: l.location_id,
         }))
-        for (let i = 0; i < rows.length; i += 100) await supabase.from('inventory_counts').insert(rows.slice(i, i + 100))
+        const chunks = []
+        for (let i = 0; i < rows.length; i += 100) chunks.push(rows.slice(i, i + 100))
+        await Promise.all(chunks.map(c => supabase.from('inventory_counts').insert(c)))
         setActiveSession(data)
         setShowStartModal(false)
         setStartForm({ year: new Date().getFullYear(), start_date: '', created_by: '', label: '', purpose: 'comprehensive', zones: [] })
@@ -471,7 +476,11 @@ export default function Inventory() {
         {!activeSession && (
           <Card title="📋 진행 중인 실사 없음">
             <p style={{ color: C.muted, fontSize: '14px', margin: '0 0 16px' }}>현재 진행 중인 실사가 없습니다.</p>
-            {isAdmin && <button onClick={() => setShowStartModal(true)} style={btnPrimary}>🚀 실사 시작</button>}
+            {isAdmin && <button onClick={() => {
+              const today = new Date().toISOString().slice(0, 10)
+              setStartForm(f => ({ ...f, start_date: f.start_date || today, created_by: f.created_by || myName }))
+              setShowStartModal(true)
+            }} style={btnPrimary}>🚀 실사 시작</button>}
           </Card>
         )}
 
@@ -730,13 +739,12 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     const countData = await fetchAllPages((from, to) => supabase.from('inventory_counts').select('*').eq('session_id', session.id).range(from, to))
     const lotIds = (countData || []).map(c => c.lot_id)
     if (lotIds.length === 0) { setLots([]); setCounts({}); setLoading(false); return }
-    let lotData = []
-    for (let i = 0; i < lotIds.length; i += 500) {
-      const { data } = await supabase.from('reagent_lots')
-        .select('*, reagents(id, name, cas_no, company, category, hazard, volume, unit), locations(room, detail)')
-        .in('id', lotIds.slice(i, i + 500))
-      lotData = lotData.concat(data || [])
-    }
+    const idChunks = []
+    for (let i = 0; i < lotIds.length; i += 500) idChunks.push(lotIds.slice(i, i + 500))
+    const chunkResults = await Promise.all(idChunks.map(chunk => supabase.from('reagent_lots')
+      .select('*, reagents(id, name, cas_no, company, category, hazard, volume, unit), locations(room, detail)')
+      .in('id', chunk)))
+    const lotData = chunkResults.flatMap(r => r.data || [])
     if (lotData) {
       let filtered = lotData
       if (!isAdmin && myAssignments.length > 0) {
@@ -937,6 +945,12 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     ? lots.filter(l => (l.reagents?.name || '').toLowerCase().includes(search.toLowerCase())).slice(0, 20)
     : []
 
+  // 범위가 넓은 실사(예: 전체)에서 수백~수천 행을 한꺼번에 그리면 페이지가 멈춘 것처럼 느려짐 —
+  // 검색/필터 없이 볼 때는 일정 개수까지만 렌더링하고 나머지는 검색으로 찾도록 안내
+  const RENDER_CAP = 300
+  const isCapped = !search && filter === 'all' && filteredLots.length > RENDER_CAP
+  const visibleLots = isCapped ? filteredLots.slice(0, RENDER_CAP) : filteredLots
+
   const doneCnt = lots.filter(l => counts[l.id]?.actual_sealed != null).length
   const pct = lots.length > 0 ? Math.round(doneCnt / lots.length * 100) : 0
   const fieldLabels = { name: '시약명', volume: '용량', unit: '단위', category: '성상/유별', hazard: '유해위험성', cas_no: 'CAS No.', company: '회사' }
@@ -1028,6 +1042,12 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
           <NewRegistrationSummary session={session} />
         )}
 
+        {isCapped && (
+          <div style={{ background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#92400E' }}>
+            ⚠️ 범위가 넓어 {filteredLots.length}개 중 {RENDER_CAP}개만 표시하고 있어요. 원하는 시약은 검색으로 찾거나, "미입력"/"차이있음" 필터를 사용하세요.
+          </div>
+        )}
+
         {/* ── 테이블 + 알파벳 인덱스 ── */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
           <div style={{ flex: 1, background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden' }}>
@@ -1040,9 +1060,9 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                 </tr>
               </thead>
               <tbody>
-                {filteredLots.length === 0
+                {visibleLots.length === 0
                   ? <tr><td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: C.muted }}>해당하는 항목이 없습니다.</td></tr>
-                  : filteredLots.map((lot, idx) => {
+                  : visibleLots.map((lot, idx) => {
                     const count = counts[lot.id]
                     const bookSealed = count?.book_sealed ?? lot.sealed_count
                     const actualSealed = count?.actual_sealed
