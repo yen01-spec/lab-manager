@@ -410,7 +410,7 @@ useEffect(() => {
       await supabase.from('item_lots').insert({ item_id: item.id, sealed_count: 0, current_stock: 100 })
       await supabase.from('admin_logs').insert({
         admin_name: adminName, action: '물품 추가',
-        target_type: 'item', target_id: item.id,
+        target_type: 'item',
         description: `물품 추가: ${form.name}`,
       })
       alert('물품이 추가되었습니다!')
@@ -469,7 +469,7 @@ function DisposalTab({ onCountChange, student }) {
     }).eq('id', req.id)
     await supabase.from('admin_logs').insert({
       admin_name: adminName, action: '폐기 승인',
-      target_type: 'disposal', target_id: req.id,
+      target_type: 'disposal',
       description: `폐기 승인: ${req.reagent_name}`,
     })
     fetchRequests()
@@ -494,7 +494,7 @@ function DisposalTab({ onCountChange, student }) {
     await supabase.from('disposal_requests').update({ status: 'disposed', disposed_at: new Date().toISOString() }).eq('id', req.id)
     await supabase.from('admin_logs').insert({
       admin_name: adminName, action: '폐기 완료',
-      target_type: 'disposal', target_id: req.id,
+      target_type: 'disposal',
       description: `폐기 완료: ${req.reagent_name}`,
     })
     fetchRequests()
@@ -614,42 +614,65 @@ function MoveTab({ locations }) {
   async function handleSearch() {
     if (!search.trim()) return
     const { data } = await supabase.from('reagents')
-      .select('*, locations(*)').ilike('name', `%${search}%`)
+      .select('*, reagent_lots(*)').ilike('name', `%${search}%`)
     if (data) setSearchResults(data)
   }
 
   async function handleBulkSearch() {
     const { data } = await supabase.from('reagents')
-      .select('*, locations(*)')
+      .select('*, reagent_lots(*)')
       .ilike('name', `%${bulkSearch}%`)
     if (data) setBulkResults(data)
+  }
+
+  // 활성 Lot들의 위치를 표시용 문자열로: 없음/한 곳/여러 곳(상이)
+  function locText(r) {
+    const active = (r.reagent_lots || []).filter(l => l.status === 'active')
+    if (active.length === 0) return '보유 Lot 없음'
+    const locIds = new Set(active.map(l => l.location_id).filter(Boolean))
+    if (locIds.size === 0) return '미지정'
+    if (locIds.size > 1) return '위치별 상이'
+    const loc = locations.find(l => l.id === active[0].location_id)
+    return loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '미지정'
+  }
+
+  // 시약(마스터)의 활성 Lot 전부를 새 위치로 이동 — 여러 Lot이 다른 위치에 있어도 한 번에 정리하는 용도
+  async function moveLotsOfReagent(r, toLocationId, toLocName, movedByName, notesText) {
+    const activeLots = (r.reagent_lots || []).filter(l => l.status === 'active')
+    let moved = 0
+    for (const lot of activeLots) {
+      const fromLoc = locations.find(l => l.id === lot.location_id)
+      const fromLocName = fromLoc ? `${fromLoc.room}${fromLoc.detail ? ' - ' + fromLoc.detail : ''}` : '미지정'
+      await supabase.from('reagent_lots').update({ location_id: toLocationId }).eq('id', lot.id)
+      await supabase.from('location_history').insert({
+        reagent_id: r.id, lot_id: lot.id, reagent_name: r.name,
+        from_location_id: lot.location_id, from_location_name: fromLocName,
+        to_location_id: toLocationId, to_location_name: toLocName,
+        moved_by: movedByName, notes: notesText,
+      })
+      moved++
+    }
+    return moved
   }
 
   async function moveReagent() {
     if (!selectedReagent) { alert('시약을 선택해주세요'); return }
     if (!toLocationId) { alert('이동할 위치를 선택해주세요'); return }
     if (!movedBy.trim()) { alert('이동자 이름을 입력해주세요'); return }
-    if (selectedReagent.location_id === toLocationId) { alert('현재 위치와 같습니다'); return }
+    const activeLots = (selectedReagent.reagent_lots || []).filter(l => l.status === 'active')
+    if (activeLots.length === 0) { alert('보유중인(활성) Lot이 없어 이동할 수 없습니다'); return }
 
     const toLoc = locations.find(l => l.id === toLocationId)
-    const fromLocName = selectedReagent.locations
-      ? `${selectedReagent.locations.room}${selectedReagent.locations.detail ? ' - ' + selectedReagent.locations.detail : ''}`
-      : '미지정'
     const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
+    const fromLocName = locText(selectedReagent)
 
-    await supabase.from('reagents').update({ location_id: toLocationId }).eq('id', selectedReagent.id)
-    await supabase.from('location_history').insert({
-      reagent_id: selectedReagent.id, reagent_name: selectedReagent.name,
-      from_location_id: selectedReagent.location_id, from_location_name: fromLocName,
-      to_location_id: toLocationId, to_location_name: toLocName,
-      moved_by: movedBy, notes,
-    })
+    const movedCount = await moveLotsOfReagent(selectedReagent, toLocationId, toLocName, movedBy, notes)
     await supabase.from('admin_logs').insert({
       admin_name: movedBy, action: '위치 이동',
-      target_type: 'reagent', target_id: selectedReagent.id,
-      description: `${selectedReagent.name}: ${fromLocName} → ${toLocName}`,
+      target_type: 'reagent',
+      description: `${selectedReagent.name}(Lot ${movedCount}개): ${fromLocName} → ${toLocName}`,
     })
-    alert(`✅ ${selectedReagent.name} 이동 완료!\n${fromLocName} → ${toLocName}`)
+    alert(`✅ ${selectedReagent.name} 이동 완료! (Lot ${movedCount}개)\n${fromLocName} → ${toLocName}`)
     setSelectedReagent(null); setToLocationId(''); setNotes('')
     setSearch(''); setSearchResults([])
     fetchHistory()
@@ -664,24 +687,19 @@ function MoveTab({ locations }) {
     const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
     const selected = bulkResults.filter(r => checkedIds.has(r.id))
 
+    let movedLotCount = 0
+    let skippedCount = 0
     for (const r of selected) {
-      const fromLocName = r.locations
-        ? `${r.locations.room}${r.locations.detail ? ' - ' + r.locations.detail : ''}`
-        : '미지정'
-      await supabase.from('reagents').update({ location_id: bulkLocation }).eq('id', r.id)
-      await supabase.from('location_history').insert({
-        reagent_id: r.id, reagent_name: r.name,
-        from_location_id: r.location_id, from_location_name: fromLocName,
-        to_location_id: bulkLocation, to_location_name: toLocName,
-        moved_by: bulkMovedBy,
-      })
+      const n = await moveLotsOfReagent(r, bulkLocation, toLocName, bulkMovedBy, undefined)
+      if (n === 0) skippedCount++
+      movedLotCount += n
     }
     await supabase.from('admin_logs').insert({
       admin_name: bulkMovedBy, action: '다량 위치 이동',
-      target_type: 'reagent', target_id: null,
-      description: `${selected.length}개 시약 → ${toLocName}`,
+      target_type: 'reagent',
+      description: `${selected.length}개 시약(Lot ${movedLotCount}개) → ${toLocName}`,
     })
-    alert(`✅ ${selected.length}개 시약 이동 완료! → ${toLocName}`)
+    alert(`✅ ${movedLotCount}개 Lot 이동 완료! → ${toLocName}` + (skippedCount > 0 ? `\n(보유중인 Lot이 없어 ${skippedCount}개 시약은 건너뜀)` : ''))
     setCheckedIds(new Set()); setBulkLocation(''); setBulkMovedBy('')
     setBulkResults([]); setBulkSearch('')
     fetchHistory()
@@ -691,19 +709,28 @@ function MoveTab({ locations }) {
     if (!adminName.trim()) { alert('승인자 이름을 입력해주세요'); return }
     if (!window.confirm(`"${req.reagent_name}" 위치 이동을 승인하시겠습니까?\n${req.from_location_name} → ${req.to_location_name}`)) return
 
-    await supabase.from('reagents').update({ location_id: req.to_location_id }).eq('id', req.reagent_id)
+    if (req.lot_id) {
+      // 신청 시점에 특정 Lot이 지정된 경우 — 그 Lot만 이동
+      await supabase.from('reagent_lots').update({ location_id: req.to_location_id }).eq('id', req.lot_id)
+    } else {
+      // 오래된 신청(마이그레이션 이전) 등 Lot이 특정되지 않은 경우 — 해당 시약의 활성 Lot 전부 이동
+      const { data: r } = await supabase.from('reagents').select('*, reagent_lots(*)').eq('id', req.reagent_id).single()
+      if (r) await moveLotsOfReagent(r, req.to_location_id, req.to_location_name, adminName, `신청자: ${req.requested_by}`)
+    }
     await supabase.from('location_requests').update({
       status: 'approved', approved_by: adminName, approved_at: new Date().toISOString(),
     }).eq('id', req.id)
-    await supabase.from('location_history').insert({
-      reagent_id: req.reagent_id, reagent_name: req.reagent_name,
-      from_location_id: req.from_location_id, from_location_name: req.from_location_name,
-      to_location_id: req.to_location_id, to_location_name: req.to_location_name,
-      moved_by: adminName, notes: `신청자: ${req.requested_by}`,
-    })
+    if (req.lot_id) {
+      await supabase.from('location_history').insert({
+        reagent_id: req.reagent_id, lot_id: req.lot_id, reagent_name: req.reagent_name,
+        from_location_id: req.from_location_id, from_location_name: req.from_location_name,
+        to_location_id: req.to_location_id, to_location_name: req.to_location_name,
+        moved_by: adminName, notes: `신청자: ${req.requested_by}`,
+      })
+    }
     await supabase.from('admin_logs').insert({
       admin_name: adminName, action: '위치 이동 승인',
-      target_type: 'reagent', target_id: req.reagent_id,
+      target_type: 'reagent',
       description: `${req.reagent_name}: ${req.from_location_name} → ${req.to_location_name}`,
     })
     fetchRequests(); fetchHistory()
@@ -824,7 +851,7 @@ function MoveTab({ locations }) {
                   onMouseLeave={e => e.currentTarget.style.background = C.white}>
                   <span style={{ fontWeight: '600', color: C.navy }}>{r.name}</span>
                   <span style={{ color: C.muted, marginLeft: '12px', fontSize: '12px' }}>
-                    현재: {r.locations ? `${r.locations.room}${r.locations.detail ? ' - ' + r.locations.detail : ''}` : '미지정'}
+                    현재: {locText(r)}
                   </span>
                 </div>
               ))}
@@ -837,7 +864,7 @@ function MoveTab({ locations }) {
               <div>
                 <div style={{ fontWeight: '700', color: C.navy }}>{selectedReagent.name}</div>
                 <div style={{ fontSize: '12px', color: C.muted, marginTop: '2px' }}>
-                  현재: {selectedReagent.locations ? `${selectedReagent.locations.room}${selectedReagent.locations.detail ? ' - ' + selectedReagent.locations.detail : ''}` : '미지정'}
+                  현재: {locText(selectedReagent)}
                 </div>
               </div>
               <button onClick={() => setSelectedReagent(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, fontSize: '16px' }}>✕</button>
@@ -859,7 +886,7 @@ function MoveTab({ locations }) {
               background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', fontSize: '13px' }}>
               <strong style={{ color: '#276749' }}>이동 미리보기:</strong>
               <div style={{ marginTop: '4px', color: '#2D6A4F' }}>
-                {selectedReagent.locations ? `${selectedReagent.locations.room}${selectedReagent.locations.detail ? ' - ' + selectedReagent.locations.detail : ''}` : '미지정'}
+                {locText(selectedReagent)}
                 {' → '}
                 {(() => { const l = locations.find(l => l.id === toLocationId); return l ? `${l.room}${l.detail ? ' - ' + l.detail : ''}` : '' })()}
               </div>
@@ -923,7 +950,7 @@ function MoveTab({ locations }) {
                     <div style={{ flex: 1 }}>
                       <span style={{ fontWeight: '600', color: C.navy, fontSize: '13px' }}>{r.name}</span>
                       <span style={{ color: C.muted, fontSize: '12px', marginLeft: '12px' }}>
-                        {r.locations ? `${r.locations.room}${r.locations.detail ? ' - ' + r.locations.detail : ''}` : '미지정'}
+                        {locText(r)}
                       </span>
                     </div>
                   </div>
@@ -1311,10 +1338,11 @@ function ManageTab() {
     const soon = new Date(); soon.setDate(soon.getDate() + days)
     const soonStr = soon.toISOString().split('T')[0]
     const { data: exp } = await supabase.from('reagent_lots')
-      .select('*, reagents(name, locations(room, detail))')
+      .select('*, reagents(name), locations(room, detail)')
+      .eq('status', 'active')
       .lte('expiry_date', soonStr).gte('expiry_date', today).order('expiry_date')
     if (exp) setExpiring(exp)
-    const { data: rLow } = await supabase.from('reagent_lots').select('*, reagents(name)').eq('sealed_count', 0).lte('current_stock', 20)
+    const { data: rLow } = await supabase.from('reagent_lots').select('*, reagents(name)').eq('status', 'active').eq('sealed_count', 0).lte('current_stock', 20)
     if (rLow) setLowReagents(rLow)
     const { data: iLow } = await supabase.from('item_lots').select('*, items(name)').eq('sealed_count', 0).lte('current_stock', 20)
     if (iLow) setLowItems(iLow)
@@ -1335,7 +1363,7 @@ function ManageTab() {
                 const dday = Math.ceil((new Date(lot.expiry_date) - new Date()) / 86400000)
                 return <tr key={lot.id}>
                   <td style={tdStyle}>{lot.reagents?.name}</td>
-                  <td style={{ ...tdStyle, color: C.muted }}>{lot.reagents?.locations?.room}{lot.reagents?.locations?.detail ? ' - ' + lot.reagents.locations.detail : ''}</td>
+                  <td style={{ ...tdStyle, color: C.muted }}>{lot.locations?.room}{lot.locations?.detail ? ' - ' + lot.locations.detail : ''}</td>
                   <td style={{ ...tdStyle, color: C.muted }}>{lot.lot_no || '-'}</td>
                   <td style={tdStyle}>{lot.expiry_date}</td>
                   <td style={{ ...tdStyle, color: dday <= 7 ? C.danger : C.warning, fontWeight: '700' }}>D-{dday}</td>
@@ -1675,17 +1703,25 @@ export function BulkEditTab({ locations, student }) {
 
   useEffect(() => { fetchReagents() }, [])
 
+  // 대표 Lot: 활성 Lot 중 하나(없으면 null) — 이 화면은 마스터 필드 + 대표 Lot 하나만 다룸(여러 Lot 개별 일괄수정은 별도 기능)
+  function repLot(r) {
+    return (r.reagent_lots || []).find(l => l.status === 'active') || null
+  }
+  function activeLotCount(r) {
+    return (r.reagent_lots || []).filter(l => l.status === 'active').length
+  }
+
   async function fetchReagents() {
     setLoading(true)
     let query = supabase.from('reagents')
-      .select('*, reagent_lots(*), locations(*)')
+      .select('*, reagent_lots(*)')
       .neq('status', 'archived')
       .order('name')
       .range(0, 2999)
     if (companyFilter.trim()) query = query.ilike('company', `%${companyFilter.trim()}%`)
     const { data } = await query
     let filtered = data || []
-    if (roomFilter) filtered = filtered.filter(r => r.locations?.room === roomFilter)
+    if (roomFilter) filtered = filtered.filter(r => locations.find(l => l.id === repLot(r)?.location_id)?.room === roomFilter)
     setReagents(filtered)
     setLoading(false)
   }
@@ -1727,21 +1763,23 @@ export function BulkEditTab({ locations, student }) {
     if (!window.confirm(`${changedReagentCount}개 시약 · ${changedCellCount}개 항목을 저장하시겠습니까?`)) return
     setSaving(true)
     for (const [reagentId, fields] of Object.entries(edits)) {
-      const reagentFields = {}
-      if (fields.location_id !== undefined) reagentFields.location_id = fields.location_id
-      if (fields.company !== undefined) reagentFields.company = fields.company
-      if (Object.keys(reagentFields).length > 0) {
-        await supabase.from('reagents').update(reagentFields).eq('id', reagentId)
+      if (fields.company !== undefined) {
+        await supabase.from('reagents').update({ company: fields.company }).eq('id', reagentId)
       }
-      if (fields.current_stock !== undefined) {
-        const r = reagents.find(x => x.id === reagentId)
-        const firstLot = r?.reagent_lots?.[0]
-        if (firstLot) await supabase.from('reagent_lots').update({ current_stock: Number(fields.current_stock) }).eq('id', firstLot.id)
+      const r = reagents.find(x => x.id === reagentId)
+      const lot = repLot(r)
+      if (lot) {
+        const lotFields = {}
+        if (fields.location_id !== undefined) lotFields.location_id = fields.location_id
+        if (fields.current_stock !== undefined) lotFields.current_stock = Number(fields.current_stock)
+        if (Object.keys(lotFields).length > 0) {
+          await supabase.from('reagent_lots').update(lotFields).eq('id', lot.id)
+        }
       }
     }
     await supabase.from('admin_logs').insert({
       admin_name: student?.name || '', action: '시약 일괄정리',
-      target_type: 'reagent', target_id: null,
+      target_type: 'reagent',
       description: `${changedReagentCount}개 시약 · ${changedCellCount}개 항목 일괄 저장`,
     })
     setEdits({})
@@ -1806,24 +1844,31 @@ export function BulkEditTab({ locations, student }) {
               {reagents.length === 0 ? (
                 <tr><td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: C.muted }}>조건에 맞는 시약이 없습니다.</td></tr>
               ) : reagents.map(r => {
-                const firstLot = r.reagent_lots?.[0]
+                const lot = repLot(r)
+                const multiLot = activeLotCount(r) > 1
                 const edit = edits[r.id] || {}
                 return (
                   <tr key={r.id}>
                     <td style={tdStyle}><input type="checkbox" checked={checkedIds.has(r.id)} onChange={() => toggleCheck(r.id)} /></td>
-                    <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>{r.name}</td>
+                    <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>
+                      {r.name}
+                      {multiLot && <span title="활성 Lot이 여러 개 — 여기서는 그중 하나만 수정됩니다. 나머지는 시약 상세페이지에서 개별 수정하세요."
+                        style={{ marginLeft: '6px', fontSize: '10.5px', fontWeight: '700', color: '#B7791F', background: '#FDF3DD', padding: '1px 6px', borderRadius: '8px' }}>Lot {activeLotCount(r)}개</span>}
+                    </td>
                     {cols.location && (
                       <td style={{ ...tdStyle, ...(edit.location_id !== undefined ? changedStyle : {}) }}>
-                        <select value={edit.location_id ?? r.location_id ?? ''} onChange={e => clearEditIfSame(r.id, 'location_id', e.target.value, r.location_id)}
-                          style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px' }}>
-                          {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
-                        </select>
+                        {lot ? (
+                          <select value={edit.location_id ?? lot.location_id ?? ''} onChange={e => clearEditIfSame(r.id, 'location_id', e.target.value, lot.location_id)}
+                            style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px' }}>
+                            {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+                          </select>
+                        ) : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
                       </td>
                     )}
                     {cols.stock && (
                       <td style={{ ...tdStyle, ...(edit.current_stock !== undefined ? changedStyle : {}) }}>
-                        {firstLot ? (
-                          <select value={edit.current_stock ?? firstLot.current_stock} onChange={e => clearEditIfSame(r.id, 'current_stock', e.target.value, firstLot.current_stock)}
+                        {lot ? (
+                          <select value={edit.current_stock ?? lot.current_stock} onChange={e => clearEditIfSame(r.id, 'current_stock', e.target.value, lot.current_stock)}
                             style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px', width: '80px' }}>
                             {[100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 0].map(v => <option key={v} value={v}>{v}%</option>)}
                           </select>
@@ -1836,7 +1881,7 @@ export function BulkEditTab({ locations, student }) {
                           style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px', width: '110px' }} />
                       </td>
                     )}
-                    {cols.expiry && <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{firstLot?.expiry_date || '-'}</td>}
+                    {cols.expiry && <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{lot?.expiry_date || '-'}</td>}
                   </tr>
                 )
               })}
@@ -1876,7 +1921,7 @@ function ChangeRequestTab({ student }) {
     }).eq('id', req.id)
     await supabase.from('admin_logs').insert({
       admin_name: adminName, action: '변경 요청 승인',
-      target_type: 'reagent', target_id: req.reagent_id,
+      target_type: 'reagent',
       description: `${req.reagents?.name} ${req.field_name}: "${req.old_value}" → "${req.new_value}"`,
     })
     fetchRequests()

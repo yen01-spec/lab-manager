@@ -197,7 +197,7 @@ function toggleCheck(id, e, allData) {
     setShowBulkLookupModal(false)
   }
 
-  // 다량 위치 이동
+  // 다량 위치 이동 — 선택한 시약들의 활성 Lot을 전부 새 위치로 이동(Lot별 위치이동과 동일한 방식)
   async function submitBulkMove() {
     if (!bulkMoveLocation) { alert('이동할 위치를 선택해주세요'); return }
     if (!bulkMovedBy.trim()) { alert('이름을 입력해주세요'); return }
@@ -205,23 +205,30 @@ function toggleCheck(id, e, allData) {
     const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
     const selected = results.filter(r => checkedIds.has(r.id))
 
+    let movedLotCount = 0
+    let skippedCount = 0
     for (const r of selected) {
-      const fromLocName = r.locations
-        ? `${r.locations.room}${r.locations.detail ? ' - ' + r.locations.detail : ''}` : '미지정'
-      await supabase.from('reagents').update({ location_id: bulkMoveLocation }).eq('id', r.id)
-      await supabase.from('location_history').insert({
-        reagent_id: r.id, reagent_name: r.name,
-        from_location_id: r.location_id, from_location_name: fromLocName,
-        to_location_id: bulkMoveLocation, to_location_name: toLocName,
-        moved_by: bulkMovedBy,
-      })
+      const activeLots = (r.reagent_lots || []).filter(l => l.status === 'active')
+      if (activeLots.length === 0) { skippedCount++; continue }
+      for (const lot of activeLots) {
+        const fromLoc = locations.find(l => l.id === lot.location_id)
+        const fromLocName = fromLoc ? `${fromLoc.room}${fromLoc.detail ? ' - ' + fromLoc.detail : ''}` : '미지정'
+        await supabase.from('reagent_lots').update({ location_id: bulkMoveLocation }).eq('id', lot.id)
+        await supabase.from('location_history').insert({
+          reagent_id: r.id, lot_id: lot.id, reagent_name: r.name,
+          from_location_id: lot.location_id, from_location_name: fromLocName,
+          to_location_id: bulkMoveLocation, to_location_name: toLocName,
+          moved_by: bulkMovedBy,
+        })
+        movedLotCount++
+      }
     }
     await supabase.from('admin_logs').insert({
       admin_name: bulkMovedBy, action: '다량 위치 이동',
-      target_type: 'reagent', target_id: null,
-      description: `${selected.length}개 시약 → ${toLocName}`,
+      target_type: 'reagent',
+      description: `${selected.length}개 시약(Lot ${movedLotCount}개) → ${toLocName}`,
     })
-    alert(`✅ ${selected.length}개 시약 이동 완료! → ${toLocName}`)
+    alert(`✅ ${movedLotCount}개 Lot 이동 완료! → ${toLocName}` + (skippedCount > 0 ? `\n(보유중인 Lot이 없어 ${skippedCount}개 시약은 건너뜀)` : ''))
     setShowBulkMoveModal(false)
     setBulkMoveLocation('')
     setBulkMovedBy('')
