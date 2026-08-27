@@ -154,6 +154,31 @@ export default function Inventory() {
     if (activeSession && assignments.length > 0) fetchZoneProgress()
   }, [assignments])
 
+  // 다른 페이지에 갔다가 재고실사로 돌아와도 "실사 입력" 화면에 있던 걸 유지 —
+  // Inventory 컴포넌트가 라우트 이동으로 언마운트되면서 view 상태가 사라지는 문제 보정.
+  const restoredViewRef = useRef(false)
+  useEffect(() => {
+    if (restoredViewRef.current || !activeSession) return
+    let saved
+    try { saved = JSON.parse(sessionStorage.getItem('inv_count_view') || 'null') } catch { saved = null }
+    if (!saved || saved.sessionId !== activeSession.id) return
+    if (isAdmin) {
+      restoredViewRef.current = true
+      setMyAssignments([])
+      setView('count')
+    } else if (assignments.length > 0) {
+      const myZones = assignments.filter(a =>
+        (a.assigned_student_id && a.assigned_student_id === student?.student_id) ||
+        (!a.assigned_student_id && a.assigned_to === student?.name)
+      )
+      if (myZones.length > 0) {
+        restoredViewRef.current = true
+        setMyAssignments(myZones)
+        setView('count')
+      }
+    }
+  }, [activeSession, assignments, isAdmin, student])
+
   async function fetchSessions() {
     const { data } = await supabase.from('inventory_sessions').select('*').order('created_at', { ascending: false })
     if (data) {
@@ -276,6 +301,7 @@ export default function Inventory() {
     await supabase.from('inventory_sessions').update({ status: 'closed' }).eq('id', activeSession.id)
     alert('실사가 취소되었습니다.')
     setActiveSession(null)
+    sessionStorage.removeItem('inv_count_view')
     fetchSessions()
   }
 
@@ -392,6 +418,7 @@ export default function Inventory() {
     await supabase.from('inventory_sessions').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', activeSession.id)
     alert('실사가 최종 확정되었습니다!')
     setActiveSession(null)
+    sessionStorage.removeItem('inv_count_view')
     fetchSessions()
   }
 
@@ -447,6 +474,7 @@ export default function Inventory() {
     if (myZones.length === 0 && !isAdmin) { alert('배정된 구역이 없습니다. 관리자에게 문의하세요'); return }
     setMyAssignments(myZones)
     setView('count')
+    sessionStorage.setItem('inv_count_view', JSON.stringify({ sessionId: activeSession.id }))
   }
 
   const progressPct = progress.total > 0 ? Math.round(progress.done / progress.total * 100) : 0
@@ -464,7 +492,7 @@ export default function Inventory() {
       student={student}
       myAssignments={myAssignments}
       isAdmin={isAdmin}
-      onBack={() => { setView('main'); fetchProgress() }}
+      onBack={() => { setView('main'); fetchProgress(); sessionStorage.removeItem('inv_count_view') }}
     />
   )
 
@@ -700,15 +728,9 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
   const [searchOpen, setSearchOpen] = useState(false)   // ← 드롭다운 열림 여부
   const [filter, setFilter] = useState('all')
   const [saving, setSaving] = useState({})
-  const [stockPicker, setStockPicker] = useState(null)
   const [changeModal, setChangeModal] = useState(null)
   const [changeForm, setChangeForm] = useState({ field_name: 'name', new_value: '' })
-  const [abnormalModal, setAbnormalModal] = useState(null) // lot
-  const [abnormalNote, setAbnormalNote] = useState('')
-  const [disposalModal, setDisposalModal] = useState(null) // lot
-  const [disposalReason, setDisposalReason] = useState('')
-  const [locationModal, setLocationModal] = useState(null) // lot
-  const [locationChoice, setLocationChoice] = useState('')
+  const [locationPickerFor, setLocationPickerFor] = useState(null) // lot id — 위치변경 인라인 select가 열려있는 행
   const [showNewRegModal, setShowNewRegModal] = useState(false)
   const [newRegSearch, setNewRegSearch] = useState('')
   const [newRegCandidates, setNewRegCandidates] = useState([])
@@ -790,48 +812,38 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], reported_missing: next } }))
   }
 
-  function openAbnormalModal(lot) {
-    setAbnormalNote(counts[lot.id]?.abnormal_note || '')
-    setAbnormalModal(lot)
-  }
-  async function submitAbnormalNote() {
-    const existing = counts[abnormalModal.id]
+  // 클릭 -> 입력 -> 저장 -> 닫기를 반복해야 하는 모달 대신, 브라우저 프롬프트로 한 번에 기록.
+  async function recordAbnormal(lot) {
+    const existing = counts[lot.id]
     if (!existing) return
-    await supabase.from('inventory_counts').update({ abnormal_note: abnormalNote.trim() || null }).eq('id', existing.id)
-    setCounts(prev => ({ ...prev, [abnormalModal.id]: { ...prev[abnormalModal.id], abnormal_note: abnormalNote.trim() || null } }))
-    setAbnormalModal(null)
-    setAbnormalNote('')
+    const note = window.prompt('이상 여부를 기록하세요(비우고 확인하면 기록이 지워져요):', existing.abnormal_note || '')
+    if (note === null) return
+    const trimmed = note.trim() || null
+    await supabase.from('inventory_counts').update({ abnormal_note: trimmed }).eq('id', existing.id)
+    setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], abnormal_note: trimmed } }))
   }
 
   // 폐기 신청 — 실사 완료 처리 흐름과 무관하게 기존 disposal_requests 신청→승인 구조 그대로 재사용
-  function openDisposalModal(lot) {
-    setDisposalReason('')
-    setDisposalModal(lot)
-  }
-  async function submitDisposalRequest() {
+  async function requestDisposal(lot) {
     if (!myName.trim()) { alert('로그인 후 이용해주세요'); return }
-    const lot = disposalModal
+    const reason = window.prompt(`'${lot.reagents?.name}' 폐기 신청 사유(선택사항):`, '')
+    if (reason === null) return
     await supabase.from('disposal_requests').insert({
       reagent_id: lot.reagent_id, lot_id: lot.id, lot_no: lot.lot_no,
       reagent_name: lot.reagents?.name, requested_by: myName, requested_by_student_id: student?.student_id ?? null,
-      reason: disposalReason.trim() || null, status: 'pending',
+      reason: reason.trim() || null, status: 'pending',
     })
     alert('폐기 신청이 제출됐어요. 관리자 승인 후 처리됩니다.')
-    setDisposalModal(null)
-    setDisposalReason('')
   }
 
-  // 위치 변경(종합실사 전용) — 스테이징만(실사 완료 처리 시점에 location_id 반영 + location_history 기록)
-  function openLocationModal(lot) {
-    setLocationChoice(counts[lot.id]?.staged_location_id || lot.location_id || '')
-    setLocationModal(lot)
-  }
-  async function submitLocationChange() {
-    const existing = counts[locationModal.id]
-    if (!existing || !locationChoice) return
-    await supabase.from('inventory_counts').update({ staged_location_id: locationChoice }).eq('id', existing.id)
-    setCounts(prev => ({ ...prev, [locationModal.id]: { ...prev[locationModal.id], staged_location_id: locationChoice } }))
-    setLocationModal(null)
+  // 위치 변경(종합실사 전용) — 스테이징만(실사 완료 처리 시점에 location_id 반영 + location_history 기록).
+  // 클릭 시 버튼 자리에 select가 바로 나타나고, 고르는 즉시 저장돼요(별도 저장 버튼 없음).
+  async function changeLocation(lot, locationId) {
+    const existing = counts[lot.id]
+    if (!existing || !locationId) return
+    await supabase.from('inventory_counts').update({ staged_location_id: locationId }).eq('id', existing.id)
+    setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], staged_location_id: locationId } }))
+    setLocationPickerFor(null)
   }
 
   // 신규(미등록) 시약 등록 — 이름 검색으로 중복 방지 후 기존에 Lot 추가 / 신규 등록.
@@ -958,7 +970,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: C.muted }}>불러오는 중...</div>
 
   return (
-    <div onClick={() => setStockPicker(null)}>
+    <div>
       <PageBanner title="실사 입력" sub={`${session.year}년 재고 실사 · ${myName}`} breadcrumb={['홈', '재고 실사', '실사 입력']} />
 
       <div style={{ padding: '20px 40px' }}>
@@ -1116,26 +1128,26 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                             }}
                           />
                         </td>
-                        <td style={{ ...tdStyle, textAlign: 'center', position: 'relative' }} onClick={e => e.stopPropagation()}>
-                          <button onClick={() => setStockPicker(stockPicker === lot.id ? null : lot.id)} style={{
-                            width: '72px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
-                            border: `2px solid ${actualStock != null ? '#A5D6A7' : C.border}`,
-                            fontSize: '13px', fontWeight: '600', background: C.white, cursor: 'pointer',
-                          }}>
-                            {actualStock != null ? `${actualStock}%` : '%'}
-                          </button>
-                          {stockPicker === lot.id && (
-                            <div ref={el => { if (el && actualStock != null) { el.scrollTop = (actualStock / 10) * 37 - 37 } }}
-                              style={{ position: 'absolute', zIndex: 100, background: C.white, border: `1px solid ${C.border}`, borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', right: '50%', transform: 'translateX(50%)', top: '60%', width: '80px', maxHeight: '185px', overflowY: 'auto' }}>
-                              {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => (
-                                <div key={v} onClick={() => { saveCount(lot, 'actual_stock', v); setStockPicker(null) }}
-                                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', background: actualStock === v ? C.navy : 'transparent', color: actualStock === v ? '#fff' : C.text, textAlign: 'center' }}
-                                  onMouseEnter={e => { if (actualStock !== v) e.currentTarget.style.background = C.bg }}
-                                  onMouseLeave={e => { if (actualStock !== v) e.currentTarget.style.background = 'transparent' }}
-                                >{v}%</div>
-                              ))}
-                            </div>
-                          )}
+                        <td style={{ ...tdStyle, textAlign: 'center' }}>
+                          <input
+                            ref={el => inputRefs.current[`stock_${lot.id}`] = el}
+                            type="number" min="0" max="100"
+                            defaultValue={actualStock ?? ''}
+                            placeholder="%"
+                            onBlur={e => { if (e.target.value !== '') saveCount(lot, 'actual_stock', e.target.value) }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                if (e.target.value !== '') saveCount(lot, 'actual_stock', e.target.value)
+                                const nextLot = filteredLots[idx + 1]
+                                if (nextLot && inputRefs.current[`stock_${nextLot.id}`]) inputRefs.current[`stock_${nextLot.id}`].focus()
+                              }
+                            }}
+                            style={{
+                              width: '72px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
+                              border: `2px solid ${actualStock != null ? '#A5D6A7' : C.border}`,
+                              fontSize: '14px', fontWeight: '600', background: C.white,
+                            }}
+                          />
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'center', fontWeight: '700', color: diff === null ? C.muted : diff === 0 ? '#38A169' : C.danger }}>
                           {diff === null ? '-' : diff > 0 ? `+${diff}` : diff}
@@ -1156,10 +1168,19 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                             <button onClick={() => toggleMissing(lot)} style={smallBtnStyle(count?.reported_missing, '#E65100', '#FFF3E0')}>
                               {count?.reported_missing ? '미확인 취소' : '미확인 표시'}
                             </button>
-                            <button onClick={() => openAbnormalModal(lot)} style={smallBtnStyle(!!count?.abnormal_note, C.danger, '#FFEBEE')}>이상기록</button>
-                            <button onClick={() => openDisposalModal(lot)} style={smallBtnStyle()}>폐기신청</button>
+                            <button onClick={() => recordAbnormal(lot)} style={smallBtnStyle(!!count?.abnormal_note, C.danger, '#FFEBEE')}>이상기록</button>
+                            <button onClick={() => requestDisposal(lot)} style={smallBtnStyle()}>폐기신청</button>
                             {session.purpose === 'comprehensive' && (
-                              <button onClick={() => openLocationModal(lot)} style={smallBtnStyle(!!counts[lot.id]?.staged_location_id, '#1565C0', '#E3F2FD')}>위치변경</button>
+                              locationPickerFor === lot.id ? (
+                                <select autoFocus defaultValue="" onChange={e => changeLocation(lot, e.target.value)}
+                                  onBlur={() => setLocationPickerFor(null)}
+                                  style={{ fontSize: '11px', padding: '4px 6px', borderRadius: '6px', border: `1px solid ${C.navy}` }}>
+                                  <option value="" disabled>위치 선택...</option>
+                                  {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+                                </select>
+                              ) : (
+                                <button onClick={() => setLocationPickerFor(lot.id)} style={smallBtnStyle(!!counts[lot.id]?.staged_location_id, '#1565C0', '#E3F2FD')}>위치변경</button>
+                              )
                             )}
                           </div>
                         </td>
@@ -1223,71 +1244,6 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
         </div>
       )}
 
-      {abnormalModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26,42,94,0.45)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setAbnormalModal(null)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '28px', width: '420px', boxShadow: '0 24px 64px rgba(26,42,94,0.25)' }}>
-            <h3 style={{ marginTop: 0, color: C.navy }}>⚠ 이상여부 기록</h3>
-            <div style={{ fontSize: '13px', color: C.muted, marginBottom: '16px' }}>
-              시약: <strong style={{ color: C.navy }}>{abnormalModal.reagents?.name}</strong>
-            </div>
-            <div style={{ marginBottom: '20px' }}>
-              <label style={labelStyle}>이상 내용</label>
-              <textarea value={abnormalNote} onChange={e => setAbnormalNote(e.target.value)} placeholder="예: 변색, 라벨 훼손, 용기 파손 등"
-                style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} />
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={() => setAbnormalModal(null)} style={{ ...btnGhost, flex: 1 }}>취소</button>
-              <button onClick={submitAbnormalNote} style={{ ...btnPrimary, flex: 1 }}>저장</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {disposalModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26,42,94,0.45)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setDisposalModal(null)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '28px', width: '420px', boxShadow: '0 24px 64px rgba(26,42,94,0.25)' }}>
-            <h3 style={{ marginTop: 0, color: C.navy }}>🗑️ 폐기 신청</h3>
-            <div style={{ fontSize: '13px', color: C.muted, marginBottom: '16px' }}>
-              시약: <strong style={{ color: C.navy }}>{disposalModal.reagents?.name}</strong> (Lot {disposalModal.lot_no || '번호없음'})<br />
-              관리자 승인 후 폐기 처리됩니다.
-            </div>
-            <div style={{ marginBottom: '20px' }}>
-              <label style={labelStyle}>폐기 사유</label>
-              <input value={disposalReason} onChange={e => setDisposalReason(e.target.value)} placeholder="선택사항" style={inputStyle} />
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={() => setDisposalModal(null)} style={{ ...btnGhost, flex: 1 }}>취소</button>
-              <button onClick={submitDisposalRequest} style={{ ...btnPrimary, flex: 1, background: C.danger }}>신청</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {locationModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26,42,94,0.45)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setLocationModal(null)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '28px', width: '420px', boxShadow: '0 24px 64px rgba(26,42,94,0.25)' }}>
-            <h3 style={{ marginTop: 0, color: C.navy }}>📍 위치 변경</h3>
-            <div style={{ fontSize: '13px', color: C.muted, marginBottom: '16px' }}>
-              시약: <strong style={{ color: C.navy }}>{locationModal.reagents?.name}</strong><br />
-              실사 완료 처리 시점에 반영됩니다.
-            </div>
-            <div style={{ marginBottom: '20px' }}>
-              <label style={labelStyle}>새 위치 *</label>
-              <select value={locationChoice} onChange={e => setLocationChoice(e.target.value)} style={inputStyle}>
-                <option value="">선택하세요</option>
-                {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
-              </select>
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={() => setLocationModal(null)} style={{ ...btnGhost, flex: 1 }}>취소</button>
-              <button onClick={submitLocationChange} style={{ ...btnPrimary, flex: 1 }}>저장</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showNewRegModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26,42,94,0.45)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
