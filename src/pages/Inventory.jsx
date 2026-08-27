@@ -1135,7 +1135,6 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                         <td style={{ ...tdStyle, textAlign: 'center', fontWeight: '600' }}>{bookSealed}병</td>
                         <td style={{ ...tdStyle, textAlign: 'center' }}>
                           <input
-                            className="no-spinner"
                             ref={el => inputRefs.current[`sealed_${lot.id}`] = el}
                             type="number" min="0"
                             defaultValue={actualSealed ?? ''}
@@ -1157,7 +1156,6 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'center' }}>
                           <input
-                            className="no-spinner"
                             ref={el => inputRefs.current[`stock_${lot.id}`] = el}
                             type="number" min="0" max="100"
                             defaultValue={actualStock ?? ''}

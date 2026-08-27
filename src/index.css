@@ -63,13 +63,13 @@ input, select, textarea { font-family: inherit; }
   }
 }
 
-/* ── 숫자 입력칸 위아래 화살표 숨김(재고실사 실측 입력 등) ─ */
-.no-spinner::-webkit-outer-spin-button,
-.no-spinner::-webkit-inner-spin-button {
+/* ── 숫자 입력칸 위아래 화살표 전체 숨김(앱 전체 일관된 직접입력 방식 유지) ─ */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
-.no-spinner {
+input[type="number"] {
   -moz-appearance: textfield;
 }
 
