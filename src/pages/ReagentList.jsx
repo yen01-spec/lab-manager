@@ -359,7 +359,12 @@ function toggleCheck(id, e, allData) {
           {visibleCols.volume && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
           {visibleCols.stock && (
             <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
-              {lot.sealed_count}병 / {lot.current_stock}%
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ width: '36px', height: '6px', borderRadius: '3px', background: '#F0F2F6', overflow: 'hidden', flexShrink: 0 }}>
+                  <div style={{ width: `${lot.current_stock}%`, height: '100%', background: (lot.sealed_count === 0 && lot.current_stock <= 20) ? '#E5484D' : '#1E9E6A' }} />
+                </div>
+                <span>{lot.sealed_count}병 / {lot.current_stock}%</span>
+              </div>
             </td>
           )}
           {visibleCols.location && (
