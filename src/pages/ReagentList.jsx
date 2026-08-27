@@ -268,7 +268,7 @@ function toggleCheck(id, e, allData) {
     const { lotId, field, value } = inlineEdit
     const numVal = Number(value)
     if (isNaN(numVal)) { alert('숫자를 입력해주세요'); return }
-    await supabase.from('reagent_lots').update({ [field]: numVal }).eq('id', lotId)
+    await supabase.from('reagent_lots').update({ [field]: numVal, needs_review: false }).eq('id', lotId)
     await supabase.from('stock_logs').insert({
       target_type: 'reagent', lot_id: lotId, user_name: student?.name || '',
       before_sealed: lot.sealed_count,

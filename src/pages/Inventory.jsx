@@ -259,7 +259,7 @@ export default function Inventory() {
         return loc?.detail === zone || loc?.room === zone
       })
       for (const c of zoneCounts) {
-        await supabase.from('reagent_lots').update({ sealed_count: c.actual_sealed, current_stock: c.actual_stock ?? c.book_stock }).eq('id', c.lot_id)
+        await supabase.from('reagent_lots').update({ sealed_count: c.actual_sealed, current_stock: c.actual_stock ?? c.book_stock, needs_review: false }).eq('id', c.lot_id)
       }
     }
     for (const a of assignments.filter(a => a.zone === zone)) {
@@ -283,7 +283,7 @@ if (counts) {
     const { data: counts } = await supabase.from('inventory_counts').select('*').eq('session_id', activeSession.id).not('actual_sealed', 'is', null)
     if (counts) {
       for (const c of counts) {
-        await supabase.from('reagent_lots').update({ sealed_count: c.actual_sealed, current_stock: c.actual_stock ?? c.book_stock }).eq('id', c.lot_id)
+        await supabase.from('reagent_lots').update({ sealed_count: c.actual_sealed, current_stock: c.actual_stock ?? c.book_stock, needs_review: false }).eq('id', c.lot_id)
       }
     }
     await supabase.from('inventory_sessions').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', activeSession.id)

@@ -82,7 +82,7 @@ export default function Home() {
     } else if (item.type === 'disposal') {
       const req = item.raw
       await supabase.from('disposal_requests').update({ status: 'approved', approved_by_student_id: student?.student_id ?? null }).eq('id', req.id)
-      if (req.lot_id) await supabase.from('reagent_lots').update({ sealed_count: 0, current_stock: 0 }).eq('id', req.lot_id)
+      if (req.lot_id) await supabase.from('reagent_lots').update({ sealed_count: 0, current_stock: 0, needs_review: false }).eq('id', req.lot_id)
     } else if (item.type === 'location') {
       const req = item.raw
       await supabase.from('reagents').update({ location_id: req.to_location_id }).eq('id', req.reagent_id)

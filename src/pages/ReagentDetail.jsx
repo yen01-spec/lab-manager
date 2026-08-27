@@ -255,7 +255,7 @@ export default function ReagentDetail() {
       }).eq('id', disposalPending.id)
       const targetLotId = disposalPending.lot_id || lots[0]?.id
       if (targetLotId) await supabase.from('reagent_lots').update({
-        sealed_count: 0, current_stock: 0, status: 'disposed', disposal_date: new Date().toISOString().split('T')[0],
+        sealed_count: 0, current_stock: 0, status: 'disposed', disposal_date: new Date().toISOString().split('T')[0], needs_review: false,
       }).eq('id', targetLotId)
     } else {
       await supabase.from('disposal_requests').update({ status: 'rejected' }).eq('id', disposalPending.id)
@@ -321,7 +321,7 @@ export default function ReagentDetail() {
     if (!isAdmin) return
     const label = { used_up: '사용완료', missing: '분실' }[status] || status
     if (!window.confirm(`Lot ${lot.lot_no || '(번호없음)'}을(를) "${label}"(으)로 표시할까요?`)) return
-    await supabase.from('reagent_lots').update({ status, sealed_count: 0, current_stock: 0 }).eq('id', lot.id)
+    await supabase.from('reagent_lots').update({ status, sealed_count: 0, current_stock: 0, needs_review: false }).eq('id', lot.id)
     await supabase.from('stock_logs').insert({
       target_type: 'reagent', lot_id: lot.id, user_name: student?.name || '',
       before_sealed: lot.sealed_count, after_sealed: 0, before_stock: lot.current_stock, after_stock: 0,

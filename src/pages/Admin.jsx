@@ -487,6 +487,7 @@ function DisposalTab({ onCountChange, student }) {
         await supabase.from('reagent_lots').update({
           sealed_count: newSealed,
           disposal_date: new Date().toISOString().split('T')[0],
+          needs_review: false,
           ...(fullyGone ? { status: 'disposed', current_stock: 0 } : {}),
         }).eq('id', req.lot_id)
       }
@@ -1771,7 +1772,7 @@ export function BulkEditTab({ locations, student }) {
       if (lot) {
         const lotFields = {}
         if (fields.location_id !== undefined) lotFields.location_id = fields.location_id
-        if (fields.current_stock !== undefined) lotFields.current_stock = Number(fields.current_stock)
+        if (fields.current_stock !== undefined) { lotFields.current_stock = Number(fields.current_stock); lotFields.needs_review = false }
         if (Object.keys(lotFields).length > 0) {
           await supabase.from('reagent_lots').update(lotFields).eq('id', lot.id)
         }
