@@ -32,7 +32,10 @@ export default function ReagentList() {
   const [search, setSearch] = useState(() => searchParams.get('q') || '')
   const [locationFilter, setLocationFilter] = useState('')
   const [companyFilter, setCompanyFilter] = useState('')
-  const [visibleCols, setVisibleCols] = useState({ lot: false, expiry: false, category: false, ghs: false, status: false })
+  const [visibleCols, setVisibleCols] = useState({
+    casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
+    lot: false, expiry: false, category: false, ghs: false, status: false,
+  })
   const [results, setResults] = useState([])
   const [totalCount, setTotalCount] = useState(0)
   const alphabetRefs = useRef({})
@@ -329,7 +332,9 @@ function toggleCheck(id, e, allData) {
     )
   }
 
-  const COLS = 8
+  const COLS = 2 // 체크박스 + 시약명 (항상 표시)
+    + (visibleCols.casNo ? 1 : 0) + (visibleCols.company ? 1 : 0) + (visibleCols.volume ? 1 : 0)
+    + (visibleCols.stock ? 1 : 0) + (visibleCols.location ? 1 : 0) + (visibleCols.lastConfirmed ? 1 : 0)
     + (visibleCols.lot ? 1 : 0) + (visibleCols.expiry ? 1 : 0)
     + (visibleCols.category ? 1 : 0) + (visibleCols.ghs ? 1 : 0) + (visibleCols.status ? 1 : 0)
 
@@ -379,11 +384,18 @@ function toggleCheck(id, e, allData) {
             {isLow && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
               color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
           </td>
-          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{r.cas_no || '-'}</td>
-          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '110px', borderRight: `1px solid ${C.borderRow}` }} title={r.company || ''}>{r.company || '-'}</td>
-          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
-            {r.volume ? `${r.volume}${r.unit}` : '-'}
-          </td>
+          {visibleCols.casNo && (
+            <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{r.cas_no || '-'}</td>
+          )}
+          {visibleCols.company && (
+            <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '110px', borderRight: `1px solid ${C.borderRow}` }} title={r.company || ''}>{r.company || '-'}</td>
+          )}
+          {visibleCols.volume && (
+            <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
+              {r.volume ? `${r.volume}${r.unit}` : '-'}
+            </td>
+          )}
+          {visibleCols.stock && (
           <td style={{ ...tdStyle, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }} onClick={e => e.stopPropagation()}>
             {firstLot ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -422,10 +434,13 @@ function toggleCheck(id, e, allData) {
               </div>
             ) : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
           </td>
+          )}
+          {visibleCols.location && (
           <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px', borderRight: `1px solid ${C.borderRow}` }}
             title={loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : ''}>
             {loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
           </td>
+          )}
           {visibleCols.lot && (
             <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{firstLot?.lot_no || '-'}</td>
           )}
@@ -446,9 +461,11 @@ function toggleCheck(id, e, allData) {
                 : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
             </td>
           )}
-          <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted, whiteSpace: 'nowrap', borderRight: visibleCols.status ? `1px solid ${C.borderRow}` : undefined }}>
-            {r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString() : '-'}
-          </td>
+          {visibleCols.lastConfirmed && (
+            <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted, whiteSpace: 'nowrap', borderRight: visibleCols.status ? `1px solid ${C.borderRow}` : undefined }}>
+              {r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString() : '-'}
+            </td>
+          )}
           {visibleCols.status && (
             <td style={tdStyle}>
               {isLow
@@ -471,12 +488,17 @@ function toggleCheck(id, e, allData) {
                 style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
             </th>
             {[
-              '시약명', 'CAS No.', '회사', '용량', '재고', '위치',
+              '시약명',
+              ...(visibleCols.casNo ? ['CAS No.'] : []),
+              ...(visibleCols.company ? ['회사'] : []),
+              ...(visibleCols.volume ? ['용량'] : []),
+              ...(visibleCols.stock ? ['재고'] : []),
+              ...(visibleCols.location ? ['위치'] : []),
               ...(visibleCols.lot ? ['Lot No.'] : []),
               ...(visibleCols.expiry ? ['유효기간'] : []),
               ...(visibleCols.category ? ['성상'] : []),
               ...(visibleCols.ghs ? ['GHS'] : []),
-              '최근확인',
+              ...(visibleCols.lastConfirmed ? ['최근확인'] : []),
               ...(visibleCols.status ? ['상태'] : []),
             ].map(h => (
               <th key={h} style={{ ...thStyle, borderRight: `1px solid ${C.borderRow}` }}>{h}</th>
@@ -520,11 +542,21 @@ function toggleCheck(id, e, allData) {
                           {rowsForName.length}병 · 위치별 보기
                         </span>
                       </td>
-                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
-                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
-                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
-                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
-                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      {visibleCols.casNo && (
+                        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      )}
+                      {visibleCols.company && (
+                        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      )}
+                      {visibleCols.volume && (
+                        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      )}
+                      {visibleCols.stock && (
+                        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      )}
+                      {visibleCols.location && (
+                        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
+                      )}
                       {visibleCols.lot && (
                         <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>-</td>
                       )}
@@ -541,7 +573,9 @@ function toggleCheck(id, e, allData) {
                             : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
                         </td>
                       )}
-                      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: visibleCols.status ? `1px solid ${C.borderRow}` : undefined }}>-</td>
+                      {visibleCols.lastConfirmed && (
+                        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: visibleCols.status ? `1px solid ${C.borderRow}` : undefined }}>-</td>
+                      )}
                       {visibleCols.status && (
                         <td style={{ ...tdStyle, color: C.muted, fontSize: '12px' }}>-</td>
                       )}
@@ -607,8 +641,8 @@ function toggleCheck(id, e, allData) {
             background: C.white, color: C.text, border: `1px solid ${C.border}`,
             padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
             fontSize: '13px', fontWeight: '600', flexShrink: 0,
-          }}>📋 목록으로 일괄 조회</button>
-          <button onClick={() => { if (!student) { alert('로그인 후 이용해주세요'); return } setShowMadeModal(true) }} style={{
+          }}>📋 시약 일괄 검색</button>
+          <button onClick={() => setShowMadeModal(true)} style={{
             background: '#F9FBFF', color: '#1F4E96', border: `1px dashed #C9DAF5`,
             padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
             fontSize: '13px', fontWeight: '600', flexShrink: 0,
@@ -633,7 +667,26 @@ function toggleCheck(id, e, allData) {
 
         {/* 표시 열 선택 (기본 열 + 선택 열) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '2px 4px 12px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '11.5px', color: C.muted }}>기본: 시약명 · CAS · 제조사 · 규격 · 재고 · 위치 · 최근확인</span>
+          <span style={{ fontSize: '11.5px', color: C.muted }}>시약명(고정)</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleCols.casNo} onChange={() => setVisibleCols(v => ({ ...v, casNo: !v.casNo }))} />CAS
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleCols.company} onChange={() => setVisibleCols(v => ({ ...v, company: !v.company }))} />제조사
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleCols.volume} onChange={() => setVisibleCols(v => ({ ...v, volume: !v.volume }))} />규격
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleCols.stock} onChange={() => setVisibleCols(v => ({ ...v, stock: !v.stock }))} />재고
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleCols.location} onChange={() => setVisibleCols(v => ({ ...v, location: !v.location }))} />위치
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleCols.lastConfirmed} onChange={() => setVisibleCols(v => ({ ...v, lastConfirmed: !v.lastConfirmed }))} />최근확인
+          </label>
+          <div style={{ width: '1px', alignSelf: 'stretch', background: C.border }} />
           <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
             <input type="checkbox" checked={visibleCols.lot} onChange={() => setVisibleCols(v => ({ ...v, lot: !v.lot }))} />Lot No.
           </label>
@@ -776,7 +829,7 @@ function toggleCheck(id, e, allData) {
             width: '760px', maxWidth: '95vw', maxHeight: '86vh', overflowY: 'auto',
             boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
           }}>
-            <h3 style={{ margin: '0 0 4px', color: C.navy }}>📋 시약 일괄조회</h3>
+            <h3 style={{ margin: '0 0 4px', color: C.navy }}>📋 시약 일괄 검색</h3>
             <p style={{ margin: '0 0 16px', color: C.muted, fontSize: '12.5px' }}>
               필요한 시약명을 한 줄에 하나씩 붙여넣으면 목록에 있는지, 위치와 잔량이 어떤지 한번에 확인할 수 있어요.
             </p>

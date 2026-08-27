@@ -43,10 +43,10 @@ export default function ReagentDetail() {
   const [pendingChanges, setPendingChanges] = useState([])
   const [confirmedByName, setConfirmedByName] = useState('')
   const [registeredByName, setRegisteredByName] = useState('')
-  const [stockHistory, setStockHistory] = useState([])
   const [disposalPending, setDisposalPending] = useState(null)
   const [loading, setLoading] = useState(true)
   const [uploadingMsds, setUploadingMsds] = useState(false)
+  const [activeInventorySession, setActiveInventorySession] = useState(null)
 
   const [editMode, setEditMode] = useState(false)
   const [editingField, setEditingField] = useState(null)
@@ -54,15 +54,17 @@ export default function ReagentDetail() {
   const [inlineEdit, setInlineEdit] = useState(null)
 
   const [showDisposalModal, setShowDisposalModal] = useState(false)
-  const [disposalForm, setDisposalForm] = useState({ quantity: '1', reason: '', requested_by: '' })
-  const [showStockModal, setShowStockModal] = useState(false)
-  const [stockForm, setStockForm] = useState({ action: 'out', quantity: '', unit: '', user_name: '', notes: '' })
+  const [disposalForm, setDisposalForm] = useState({ quantity: '1', reason: '' })
   const [showMoveModal, setShowMoveModal] = useState(false)
-  const [moveForm, setMoveForm] = useState({ to_location_id: '', requested_by: '', notes: '' })
+  const [moveForm, setMoveForm] = useState({ to_location_id: '', notes: '' })
   const [locations, setLocations] = useState([])
 
   useEffect(() => { fetchAll() }, [id])
   useEffect(() => { supabase.from('locations').select('*').order('room').then(({ data }) => data && setLocations(data)) }, [])
+  useEffect(() => {
+    supabase.from('inventory_sessions').select('*').in('status', ['active', 'paused']).limit(1)
+      .then(({ data }) => setActiveInventorySession(data?.[0] || null))
+  }, [])
 
   async function fetchAll() {
     const { data } = await supabase.from('reagents')
@@ -70,9 +72,6 @@ export default function ReagentDetail() {
     if (data) {
       setReagent(data)
       setLots(data.reagent_lots || [])
-      const { data: history } = await supabase.from('stock_history')
-        .select('*').eq('reagent_id', id).order('created_at', { ascending: false }).limit(20)
-      if (history) setStockHistory(history)
       fetchPendingChanges()
       if (data.confirmed_by) {
         const { data: cs } = await supabase.from('students').select('name').eq('student_id', data.confirmed_by).maybeSingle()
@@ -122,10 +121,11 @@ export default function ReagentDetail() {
       await supabase.from('reagents').update(updateData).eq('id', id)
       setReagent(prev => ({ ...prev, [field]: value, ...(sourceField ? { [sourceField]: 'manual' } : {}) }))
     } else {
+      if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
       await supabase.from('reagent_change_requests').insert({
         reagent_id: id, field_name: field,
         old_value: String(reagent[field] ?? ''), new_value: String(value),
-        requested_by: student?.name || '', requested_by_student_id: student?.student_id ?? null,
+        requested_by: student.name, requested_by_student_id: student.student_id,
         status: 'pending',
       })
       alert('수정 신청 완료! 관리자 승인 후 반영됩니다.')
@@ -180,19 +180,19 @@ export default function ReagentDetail() {
   }
 
   async function submitDisposal() {
-    if (!disposalForm.requested_by.trim()) { alert('신청자 이름을 입력해주세요'); return }
     if (!disposalForm.reason.trim()) { alert('폐기 사유를 입력해주세요'); return }
+    if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
     const firstLot = lots[0]
     await supabase.from('disposal_requests').insert({
       reagent_id: id, lot_id: firstLot?.id || null,
       reagent_name: reagent.name, lot_no: firstLot?.lot_no || null,
       quantity: disposalForm.quantity, reason: disposalForm.reason,
-      requested_by: disposalForm.requested_by, requested_by_student_id: student?.student_id ?? null,
+      requested_by: student.name, requested_by_student_id: student.student_id,
       status: 'pending',
     })
     alert('폐기 신청이 완료됐어요!')
     setShowDisposalModal(false)
-    setDisposalForm({ quantity: '1', reason: '', requested_by: '' })
+    setDisposalForm({ quantity: '1', reason: '' })
     fetchAll()
   }
 
@@ -210,38 +210,9 @@ export default function ReagentDetail() {
     fetchAll()
   }
 
-  async function submitStock() {
-    if (!stockForm.user_name.trim()) { alert('이름을 입력해주세요'); return }
-    if (!stockForm.quantity) { alert('수량을 입력해주세요'); return }
-    const firstLot = lots[0]
-    if (!firstLot) { alert('Lot 정보가 없습니다'); return }
-    const qty = Number(stockForm.quantity)
-    let newSealed = firstLot.sealed_count
-    let newStock = firstLot.current_stock
-    if (stockForm.action === 'in') newSealed = firstLot.sealed_count + qty
-    else if (stockForm.action === 'out') newStock = Math.max(0, firstLot.current_stock - qty)
-    else if (stockForm.action === 'open') {
-      newSealed = Math.max(0, firstLot.sealed_count - 1)
-      newStock = 100
-      await supabase.from('reagent_lots').update({ opened_date: new Date().toISOString().split('T')[0] }).eq('id', firstLot.id)
-    }
-    await supabase.from('reagent_lots').update({ sealed_count: newSealed, current_stock: newStock }).eq('id', firstLot.id)
-    await supabase.from('stock_history').insert({
-      reagent_id: id, lot_id: firstLot.id,
-      reagent_name: reagent.name, action: stockForm.action,
-      quantity: qty, unit: stockForm.unit || reagent.unit || '',
-      before_stock: firstLot.current_stock, after_stock: newStock,
-      user_name: stockForm.user_name, notes: stockForm.notes,
-    })
-    alert('기록되었습니다!')
-    setShowStockModal(false)
-    setStockForm({ action: 'out', quantity: '', unit: '', user_name: '', notes: '' })
-    fetchAll()
-  }
-
   async function submitMove() {
-    if (!moveForm.requested_by.trim()) { alert('이름을 입력해주세요'); return }
     if (!moveForm.to_location_id) { alert('이동할 위치를 선택해주세요'); return }
+    if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
     if (reagent.location_id === moveForm.to_location_id) { alert('현재 위치와 같습니다'); return }
     const toLoc = locations.find(l => l.id === moveForm.to_location_id)
     const fromLocName = reagent.locations
@@ -253,7 +224,7 @@ export default function ReagentDetail() {
         reagent_id: id, reagent_name: reagent.name,
         from_location_id: reagent.location_id, from_location_name: fromLocName,
         to_location_id: moveForm.to_location_id, to_location_name: toLocName,
-        moved_by: moveForm.requested_by, notes: moveForm.notes,
+        moved_by: student.name, notes: moveForm.notes,
       })
       alert(`✅ 위치 이동 완료!\n${fromLocName} → ${toLocName}`)
       setShowMoveModal(false)
@@ -263,7 +234,7 @@ export default function ReagentDetail() {
         reagent_id: id, reagent_name: reagent.name,
         from_location_id: reagent.location_id, from_location_name: fromLocName,
         to_location_id: moveForm.to_location_id, to_location_name: toLocName,
-        requested_by: moveForm.requested_by, notes: moveForm.notes, status: 'pending',
+        requested_by: student.name, requested_by_student_id: student.student_id, notes: moveForm.notes, status: 'pending',
       })
       alert('위치 이동 신청 완료! 관리자 승인 후 처리됩니다.')
       setShowMoveModal(false)
@@ -293,14 +264,15 @@ export default function ReagentDetail() {
         extra={
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button onClick={() => setShowDisposalModal(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: '1px solid #F3D6D6', background: '#FDECEC', fontSize: '13px', color: '#C13B3F', fontWeight: '600', cursor: 'pointer' }}>🗑️ 폐기 신청</button>
-            <button onClick={() => setShowStockModal(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.white, fontSize: '13px', color: '#586173', cursor: 'pointer' }}>📦 입출고</button>
             <button onClick={() => setShowMoveModal(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.white, fontSize: '13px', color: '#586173', cursor: 'pointer' }}>📍 위치 이동{!isAdmin && ' 신청'}</button>
-            <button onClick={() => { if (!student) { alert('로그인 후 이용해주세요'); return } setEditMode(v => !v) }} style={{
+            <button onClick={() => setEditMode(v => !v)} style={{
               padding: '9px 16px', borderRadius: '8px', border: `1px solid ${editMode ? C.navy : C.border}`,
               background: editMode ? C.navy : C.white, fontSize: '13px', color: editMode ? '#fff' : '#586173',
               cursor: 'pointer', fontWeight: '600',
             }}>✏️ {editMode ? '수정 완료' : isAdmin ? '정보 수정' : '수정 신청'}</button>
-            <button onClick={() => { if (!student) { alert('로그인 후 이용해주세요'); return } confirmReagent() }} style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: C.blue, fontSize: '13px', color: '#fff', fontWeight: '600', cursor: 'pointer' }}>✓ 정보 맞음 · 확인만 하기</button>
+            {activeInventorySession && (
+              <button onClick={() => { if (!student) { alert('로그인 후 이용해주세요'); return } confirmReagent() }} style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: C.blue, fontSize: '13px', color: '#fff', fontWeight: '600', cursor: 'pointer' }}>✓ 정보 맞음 · 확인만 하기</button>
+            )}
           </div>
         }
       />
@@ -309,6 +281,7 @@ export default function ReagentDetail() {
       {editMode && !isAdmin && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#FBF0DF', border: '1px solid #F0DBAE', borderRadius: '10px', padding: '11px 16px', marginBottom: '18px', fontSize: '12.5px', color: '#8A5A16' }}>
           ⚠️ 노란 배경으로 표시된 항목은 <b>수정 제안이 대기중</b>이에요. 관리자가 최종반영해야 실제로 바뀝니다. 값을 입력하고 포커스를 옮기면 신청이 접수돼요.
+          {!student && <span> <b>제출하려면 로그인이 필요해요.</b></span>}
         </div>
       )}
 
@@ -514,32 +487,6 @@ export default function ReagentDetail() {
         </div>
       </div>
 
-      {stockHistory.length > 0 && (
-        <div style={{ marginTop: '20px', ...cardStyle }}>
-          <div style={cardHeadStyle}>입출고 이력</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr>{['일시', '구분', '수량', ...(isAdmin ? ['담당자'] : []), '메모'].map(h => (
-              <th key={h} style={{ padding: '9px 20px', textAlign: 'left', fontSize: '11px', color: C.muted, fontWeight: '600', borderBottom: `1px solid ${C.border}` }}>{h}</th>
-            ))}</tr></thead>
-            <tbody>
-              {stockHistory.map(h => (
-                <tr key={h.id}>
-                  <td style={{ padding: '9px 20px', fontSize: '11px', color: C.muted, borderBottom: `1px solid ${C.borderRow}` }}>{new Date(h.created_at).toLocaleDateString()}</td>
-                  <td style={{ padding: '9px 20px', borderBottom: `1px solid ${C.borderRow}` }}>
-                    <span style={{ background: h.action === 'in' ? '#E6F5EE' : h.action === 'open' ? '#EAF1FB' : '#FDECEC', color: h.action === 'in' ? '#1A8757' : h.action === 'open' ? '#1F4E96' : '#C13B3F', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700' }}>
-                      {h.action === 'in' ? '입고' : h.action === 'open' ? '개봉' : '출고'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '9px 20px', fontSize: '12px', borderBottom: `1px solid ${C.borderRow}` }}>{h.quantity}{h.unit}</td>
-                  {isAdmin && <td style={{ padding: '9px 20px', fontSize: '12px', borderBottom: `1px solid ${C.borderRow}` }}>{h.user_name}</td>}
-                  <td style={{ padding: '9px 20px', fontSize: '12px', color: C.muted, borderBottom: `1px solid ${C.borderRow}` }}>{h.notes || '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
       {/* 폐기 신청 모달 */}
       {showDisposalModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,42,94,0.55)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowDisposalModal(false)}>
@@ -547,53 +494,17 @@ export default function ReagentDetail() {
             <h3 style={{ margin: '0 0 4px', color: C.navy }}>🗑️ 폐기 신청</h3>
             <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{reagent.name}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div><label style={labelStyle}>신청자 이름 *</label>
-                <input value={disposalForm.requested_by} onChange={e => setDisposalForm({ ...disposalForm, requested_by: e.target.value })} style={inputStyle} /></div>
               <div><label style={labelStyle}>수량</label>
                 <input value={disposalForm.quantity} onChange={e => setDisposalForm({ ...disposalForm, quantity: e.target.value })} style={inputStyle} /></div>
               <div><label style={labelStyle}>폐기 사유 *</label>
                 <textarea value={disposalForm.reason} rows={3} onChange={e => setDisposalForm({ ...disposalForm, reason: e.target.value })} style={{ ...inputStyle, resize: 'vertical' }} /></div>
             </div>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+            <div style={{ fontSize: '11.5px', color: student ? C.muted : '#C13B3F', marginTop: '10px' }}>
+              {student ? `신청자: ${student.name}` : '※ 제출하려면 로그인이 필요해요'}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
               <button onClick={() => setShowDisposalModal(false)} style={{ ...btnGhost, flex: 1 }}>취소</button>
               <button onClick={submitDisposal} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.danger, color: '#fff', cursor: 'pointer', fontWeight: '700' }}>신청하기</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 입출고 모달 */}
-      {showStockModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,42,94,0.55)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowStockModal(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '28px', width: '420px', maxWidth: '92vw' }}>
-            <h3 style={{ margin: '0 0 4px', color: C.navy }}>📦 입출고 기록</h3>
-            <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{reagent.name}</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {[['out', '📤 사용/출고'], ['in', '📥 입고'], ['open', '🔓 개봉']].map(([val, label]) => (
-                  <button key={val} onClick={() => setStockForm({ ...stockForm, action: val })} style={{
-                    flex: 1, padding: '8px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-                    background: stockForm.action === val ? C.navy : C.bg, color: stockForm.action === val ? '#fff' : C.text,
-                    border: `1px solid ${stockForm.action === val ? C.navy : C.border}`,
-                  }}>{label}</button>
-                ))}
-              </div>
-              {stockForm.action !== 'open' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
-                  <div><label style={labelStyle}>{stockForm.action === 'in' ? '입고 수량' : '사용량'}</label>
-                    <input value={stockForm.quantity} onChange={e => setStockForm({ ...stockForm, quantity: e.target.value })} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>단위</label>
-                    <input value={stockForm.unit} onChange={e => setStockForm({ ...stockForm, unit: e.target.value })} placeholder="mL, g" style={inputStyle} /></div>
-                </div>
-              )}
-              <div><label style={labelStyle}>이름 *</label>
-                <input value={stockForm.user_name} onChange={e => setStockForm({ ...stockForm, user_name: e.target.value })} style={inputStyle} /></div>
-              <div><label style={labelStyle}>메모</label>
-                <input value={stockForm.notes} onChange={e => setStockForm({ ...stockForm, notes: e.target.value })} style={inputStyle} /></div>
-            </div>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
-              <button onClick={() => setShowStockModal(false)} style={{ ...btnGhost, flex: 1 }}>취소</button>
-              <button onClick={submitStock} style={{ ...btnPrimary, flex: 1 }}>기록하기</button>
             </div>
           </div>
         </div>
@@ -611,12 +522,13 @@ export default function ReagentDetail() {
                   <option value="">선택하세요</option>
                   {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
                 </select></div>
-              <div><label style={labelStyle}>{isAdmin ? '이동자' : '신청자'} 이름 *</label>
-                <input value={moveForm.requested_by} onChange={e => setMoveForm({ ...moveForm, requested_by: e.target.value })} style={inputStyle} /></div>
               <div><label style={labelStyle}>메모</label>
                 <input value={moveForm.notes} onChange={e => setMoveForm({ ...moveForm, notes: e.target.value })} style={inputStyle} /></div>
             </div>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+            <div style={{ fontSize: '11.5px', color: student ? C.muted : '#C13B3F', marginTop: '10px' }}>
+              {student ? `${isAdmin ? '이동자' : '신청자'}: ${student.name}` : '※ 제출하려면 로그인이 필요해요'}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
               <button onClick={() => setShowMoveModal(false)} style={{ ...btnGhost, flex: 1 }}>취소</button>
               <button onClick={submitMove} style={{ ...btnPrimary, flex: 1 }}>{isAdmin ? '이동' : '신청하기'}</button>
             </div>
