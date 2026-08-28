@@ -241,7 +241,7 @@ export default function Inventory() {
       if (hasZones && matchLocIds.length === 0) { alert('해당 구역에 등록된 위치가 없습니다.'); return }
       const lots = await fetchAllPages((from, to) => {
         let q = supabase.from('reagent_lots')
-          .select('id, reagent_id, sealed_count, current_stock, status, location_id')
+          .select('id, reagent_id, sealed_count, current_stock, status, location_id, reagents(name, cas_no, company, hazard, category, volume, unit)')
           .eq('status', 'active')
         if (matchLocIds) q = q.in('location_id', matchLocIds)
         return q.range(from, to)
@@ -251,6 +251,10 @@ export default function Inventory() {
           session_id: data.id, reagent_id: l.reagent_id, lot_id: l.id,
           book_sealed: l.sealed_count, book_stock: l.current_stock,
           book_status: l.status, book_location_id: l.location_id,
+          book_reagent_fields: {
+            name: l.reagents?.name ?? '', cas_no: l.reagents?.cas_no ?? '', company: l.reagents?.company ?? '',
+            hazard: l.reagents?.hazard ?? '', category: l.reagents?.category ?? '', volume: l.reagents?.volume ?? '', unit: l.reagents?.unit ?? '',
+          },
         }))
         const chunks = []
         for (let i = 0; i < rows.length; i += 100) chunks.push(rows.slice(i, i + 100))
@@ -315,7 +319,7 @@ export default function Inventory() {
       if (zoneCountIds.length === 0) { alert('초기화할 입력값이 없습니다.'); return }
       await supabase.from('inventory_counts').update({
         actual_sealed: null, actual_stock: null, counted_by: null, counted_at: null,
-        reported_missing: false, abnormal_note: null, staged_location_id: null,
+        reported_missing: false, abnormal_note: null, staged_location_id: null, staged_reagent_fields: null,
       }).in('id', zoneCountIds)
     }
     for (const a of assignments.filter(a => a.zone === zone)) {
@@ -329,8 +333,27 @@ export default function Inventory() {
   // pending_confirm:true(2단계 최종 반영 전까지 화면에 연한 배경으로 표시) + 이력(stock_logs/location_history) 기록.
   async function applyCounts(counts) {
     const lowIds = []
+    const processedReagentFields = new Set() // reagent_id — 같은 시약의 Lot이 여럿이어도 정보 반영은 1회만
     for (const c of counts) {
       const actorLabel = `[실사] ${c.counted_by || activeSession.created_by}`
+      if (c.staged_reagent_fields && !processedReagentFields.has(c.reagent_id)) {
+        processedReagentFields.add(c.reagent_id)
+        const book = c.book_reagent_fields || {}
+        const changed = {}
+        for (const [field, value] of Object.entries(c.staged_reagent_fields)) {
+          if (value !== (book[field] ?? '')) changed[field] = value
+        }
+        if (Object.keys(changed).length > 0) {
+          await supabase.from('reagents').update({ ...changed, pending_confirm: true }).eq('id', c.reagent_id)
+          for (const [field, value] of Object.entries(changed)) {
+            await supabase.from('reagent_change_requests').insert({
+              reagent_id: c.reagent_id, field_name: field,
+              old_value: String(book[field] ?? ''), new_value: String(value),
+              requested_by: actorLabel, status: 'approved',
+            })
+          }
+        }
+      }
       if (!c.is_new_registration) {
         const afterSealed = c.actual_sealed
         const afterStock = c.actual_stock ?? c.book_stock
@@ -376,7 +399,7 @@ export default function Inventory() {
     if (!window.confirm(`'${zone}' 구역 실사를 완료 처리하시겠습니까?\n해당 구역의 실측 수량이 재고에 반영됩니다(검토 대기 상태로 표시).`)) return
     const counts = await fetchAllPages((from, to) => supabase.from('inventory_counts')
       .select('*').eq('session_id', activeSession.id)
-      .or('actual_sealed.not.is.null,is_new_registration.eq.true').range(from, to))
+      .or('actual_sealed.not.is.null,is_new_registration.eq.true,staged_reagent_fields.not.is.null').range(from, to))
     if (counts) {
       const zoneCounts = counts.filter(c => {
         const loc = locations.find(l => l.id === c.book_location_id)
@@ -394,7 +417,7 @@ export default function Inventory() {
   async function completeSession() {
     if (!window.confirm('남은 미완료분을 포함해 실사를 완료 처리하시겠습니까?\n실측 수량이 재고에 반영됩니다(검토 대기 상태로 표시).')) return
     const counts = await fetchAllPages((from, to) => supabase.from('inventory_counts').select('*').eq('session_id', activeSession.id)
-      .or('actual_sealed.not.is.null,is_new_registration.eq.true').range(from, to))
+      .or('actual_sealed.not.is.null,is_new_registration.eq.true,staged_reagent_fields.not.is.null').range(from, to))
     if (counts) await applyCounts(counts)
     await supabase.from('inventory_assignments').update({ completed_at: new Date().toISOString() }).eq('session_id', activeSession.id).is('completed_at', null)
     fetchAssignments(); fetchProgress()
@@ -405,12 +428,18 @@ export default function Inventory() {
   // 있으므로 pending_confirm만 끄고 세션을 completed로 닫는다(재기록 없음).
   async function finalizeSession() {
     if (!window.confirm('모든 변경사항을 최종 DB에 반영하시겠습니까?\n반영 후에는 구역별 되돌리기가 불가능합니다.')) return
-    const counts = await fetchAllPages((from, to) => supabase.from('inventory_counts').select('lot_id').eq('session_id', activeSession.id)
-      .or('actual_sealed.not.is.null,is_new_registration.eq.true').range(from, to))
+    const counts = await fetchAllPages((from, to) => supabase.from('inventory_counts').select('lot_id, reagent_id').eq('session_id', activeSession.id)
+      .or('actual_sealed.not.is.null,is_new_registration.eq.true,staged_reagent_fields.not.is.null').range(from, to))
     const lotIds = [...new Set((counts || []).map(c => c.lot_id))]
+    const reagentIds = [...new Set((counts || []).map(c => c.reagent_id))]
     if (lotIds.length > 0) {
       for (let i = 0; i < lotIds.length; i += 200) {
         await supabase.from('reagent_lots').update({ pending_confirm: false }).in('id', lotIds.slice(i, i + 200))
+      }
+    }
+    if (reagentIds.length > 0) {
+      for (let i = 0; i < reagentIds.length; i += 200) {
+        await supabase.from('reagents').update({ pending_confirm: false }).in('id', reagentIds.slice(i, i + 200))
       }
     }
     await supabase.from('inventory_sessions').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', activeSession.id)
@@ -432,7 +461,12 @@ export default function Inventory() {
         const loc = locations.find(l => l.id === c.book_location_id)
         return loc?.detail === zone || loc?.room === zone
       })
+      const revertedReagentFields = new Set() // reagent_id — 같은 시약의 Lot이 여럿이어도 정보 되돌리기는 1회만
       for (const c of zoneCounts) {
+        if (c.staged_reagent_fields && c.book_reagent_fields && !c.is_new_registration && !revertedReagentFields.has(c.reagent_id)) {
+          revertedReagentFields.add(c.reagent_id)
+          await supabase.from('reagents').update({ ...c.book_reagent_fields, pending_confirm: false }).eq('id', c.reagent_id)
+        }
         if (c.is_new_registration) {
           const { data: lotRow } = await supabase.from('reagent_lots').select('reagent_id').eq('id', c.lot_id).single()
           await supabase.from('inventory_counts').delete().eq('id', c.id)
@@ -826,6 +860,19 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], staged_location_id: locationId || null } }))
   }
 
+  // 시약 기본정보(시약명/CAS/회사/용량/단위/성상/유해정보) 실사 중 수정 — 잔량/미개봉과 같은
+  // 스테이징 방식: inventory_counts.staged_reagent_fields에 모아뒀다가 구역 완료 처리(1단계)
+  // 시점에 reagents에 반영 + pending_confirm(검토대기 표시).
+  async function saveReagentField(lot, field, value) {
+    const existing = counts[lot.id]
+    if (!existing) return
+    const book = existing.book_reagent_fields || {}
+    if (value === (existing.staged_reagent_fields?.[field] ?? book[field] ?? '')) return
+    const nextStaged = { ...(existing.staged_reagent_fields || {}), [field]: value }
+    await supabase.from('inventory_counts').update({ staged_reagent_fields: nextStaged }).eq('id', existing.id)
+    setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], staged_reagent_fields: nextStaged } }))
+  }
+
   // 신규(미등록) 시약 등록 — 이름 검색으로 중복 방지 후 기존에 Lot 추가 / 신규 등록.
   // 즉시 reagents/reagent_lots에 반영(진짜 생성)하고, 이번 세션 inventory_counts에도
   // 바로 편입시켜 진행률에 포함 + "완료" 상태로 시작(실사에서 방금 실측한 값이므로).
@@ -960,6 +1007,37 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
   const pct = lots.length > 0 ? Math.round(doneCnt / lots.length * 100) : 0
   const fieldLabels = { name: '시약명', volume: '용량', unit: '단위', category: '성상/유별', hazard: '유해위험성', cas_no: 'CAS No.', company: '회사' }
 
+  // 시약 기본정보 열 — 잔량/미개봉과 같은 방식으로 Tab/Enter 이동하며 직접입력, 장부값과 다르면 파란 테두리.
+  function fieldInputCell(lot, idx, field, width = 90) {
+    const c = counts[lot.id]
+    const book = c?.book_reagent_fields || {}
+    const staged = c?.staged_reagent_fields || {}
+    const bookVal = book[field] ?? lot.reagents?.[field] ?? ''
+    const current = field in staged ? staged[field] : bookVal
+    const changed = field in staged && staged[field] !== bookVal
+    return (
+      <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+        <input
+          ref={el => inputRefs.current[`${field}_${lot.id}`] = el}
+          defaultValue={current}
+          onBlur={e => saveReagentField(lot, field, e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              saveReagentField(lot, field, e.target.value)
+              const nextLot = visibleLots[idx + 1]
+              if (nextLot && inputRefs.current[`${field}_${nextLot.id}`]) inputRefs.current[`${field}_${nextLot.id}`].focus()
+            }
+          }}
+          style={{
+            width: `${width}px`, padding: '5px 8px', borderRadius: '6px',
+            border: `1px solid ${changed ? '#1565C0' : C.border}`,
+            fontSize: '12px', background: C.white,
+          }}
+        />
+      </td>
+    )
+  }
+
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: C.muted }}>불러오는 중...</div>
 
   return (
@@ -1066,19 +1144,19 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
 
         {/* ── 테이블 + 알파벳 인덱스 ── */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-          <div style={{ flex: 1, background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{ flex: 1, background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflowX: 'auto', overflowY: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['시약명', '위치', 'Lot No.', '장부(미개봉)', '실측(미개봉)', '잔량(%)', '미확인', '이상기록', '위치변경',
+                  {['시약명', 'CAS No.', '회사', '용량', '단위', '성상/유별', '유해위험성', '위치', 'Lot No.', '장부(미개봉)', '실측(미개봉)', '잔량(%)', '미확인', '이상기록', '위치변경',
                     ...(isAdmin ? ['입력자'] : ['입력일']), '조치'].map(h => (
-                    <th key={h} style={thStyle}>{h}</th>
+                    <th key={h} style={{ ...thStyle, whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {visibleLots.length === 0
-                  ? <tr><td colSpan={11} style={{ padding: '32px', textAlign: 'center', color: C.muted }}>해당하는 항목이 없습니다.</td></tr>
+                  ? <tr><td colSpan={17} style={{ padding: '32px', textAlign: 'center', color: C.muted }}>해당하는 항목이 없습니다.</td></tr>
                   : visibleLots.map((lot, idx) => {
                     const count = counts[lot.id]
                     const bookSealed = count?.book_sealed ?? lot.sealed_count
@@ -1099,14 +1177,37 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                     return (
                       <tr key={lot.id} ref={el => rowRefs.current[lot.id] = el}
                         style={{ background: rowBg }}>
-                        <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px' }}>
-                          {lot.reagents?.name || '-'}
-                          {count?.reported_missing && <span style={{ marginLeft: '5px', fontSize: '10px', color: '#E65100', fontWeight: '700' }}>미확인</span>}
-                          {count?.abnormal_note && <span title={count.abnormal_note} style={{ marginLeft: '5px', fontSize: '10px', color: C.danger, fontWeight: '700' }}>⚠ 이상</span>}
-                          <div style={{ fontSize: '11px', color: C.muted, fontWeight: '400' }}>
-                            {[lot.reagents?.cas_no, lot.reagents?.company].filter(Boolean).join(' · ') || '기준정보 없음'}
+                        <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
+                            <input
+                              ref={el => inputRefs.current[`name_${lot.id}`] = el}
+                              defaultValue={counts[lot.id]?.staged_reagent_fields?.name ?? counts[lot.id]?.book_reagent_fields?.name ?? lot.reagents?.name ?? ''}
+                              onBlur={e => saveReagentField(lot, 'name', e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  saveReagentField(lot, 'name', e.target.value)
+                                  const nextLot = visibleLots[idx + 1]
+                                  if (nextLot && inputRefs.current[`name_${nextLot.id}`]) inputRefs.current[`name_${nextLot.id}`].focus()
+                                }
+                              }}
+                              style={{
+                                width: '150px', padding: '5px 8px', borderRadius: '6px', fontWeight: '600', color: C.navy,
+                                border: `1px solid ${counts[lot.id]?.staged_reagent_fields?.name && counts[lot.id].staged_reagent_fields.name !== (counts[lot.id]?.book_reagent_fields?.name ?? lot.reagents?.name ?? '') ? '#1565C0' : C.border}`,
+                                fontSize: '13px', background: C.white,
+                              }}
+                            />
+                            <div>
+                              {count?.reported_missing && <span style={{ fontSize: '10px', color: '#E65100', fontWeight: '700' }}>미확인</span>}
+                              {count?.abnormal_note && <span title={count.abnormal_note} style={{ marginLeft: '4px', fontSize: '10px', color: C.danger, fontWeight: '700' }}>⚠ 이상</span>}
+                            </div>
                           </div>
                         </td>
+                        {fieldInputCell(lot, idx, 'cas_no', 100)}
+                        {fieldInputCell(lot, idx, 'company', 100)}
+                        {fieldInputCell(lot, idx, 'volume', 70)}
+                        {fieldInputCell(lot, idx, 'unit', 55)}
+                        {fieldInputCell(lot, idx, 'category', 90)}
+                        {fieldInputCell(lot, idx, 'hazard', 110)}
                         <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>
                           {displayLocation?.room || '-'}
                           {displayLocation?.detail && ` · ${displayLocation.detail}`}

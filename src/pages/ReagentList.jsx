@@ -412,7 +412,7 @@ function toggleCheck(id, e, allData) {
       const avgStock = activeLots.length > 0
         ? Math.round(activeLots.reduce((s, l) => s + l.current_stock, 0) / activeLots.length) : 0
       const isLow = activeLots.some(l => l.sealed_count === 0 && l.current_stock <= 20)
-      const hasPendingConfirm = activeLots.some(l => l.pending_confirm)
+      const hasPendingConfirm = r.pending_confirm || activeLots.some(l => l.pending_confirm)
       const ghsList = getGhsEmojis(r.hazard)
       const isChecked = checkedIds.has(r.id)
       const isPicked = pickedIds.has(r.id)

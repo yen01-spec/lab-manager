@@ -21,7 +21,7 @@ function getGhsEmojis(hazard) {
 }
 
 const FIELD_LABELS = {
-  cas_no: 'CAS 번호', company: '제조사', category: '유별/성질', volume: '용량',
+  name: '시약명', cas_no: 'CAS 번호', company: '제조사', category: '유별/성질', volume: '용량', unit: '단위', hazard: '유해정보',
   manager: '담당자', msds_url: 'MSDS URL', notes: '비고',
 }
 
@@ -392,7 +392,12 @@ export default function ReagentDetail() {
 
           {/* 기본정보 */}
           <div style={cardStyle}>
-            <div style={cardHeadStyle}>기본정보</div>
+            <div style={{ ...cardHeadStyle, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              기본정보
+              {reagent?.pending_confirm && (
+                <span title="실사 반영됨 · 최종 확정 대기 중" style={{ fontSize: '10px', fontWeight: '700', color: '#1565C0', background: '#E3F2FD', padding: '1px 6px', borderRadius: '8px' }}>검토대기</span>
+              )}
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px', padding: '18px 20px' }}>
               {fieldRows.map(([field, label, value, source]) => {
                 const pending = pendingChanges.find(p => p.field_name === field)
