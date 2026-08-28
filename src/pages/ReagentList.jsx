@@ -3,6 +3,7 @@ import { useOutletContext, useSearchParams, useNavigate } from 'react-router-dom
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
 import { exportReagents, exportPickedReagents } from '../exportUtils'
+import ReagentAutocomplete from '../components/ReagentAutocomplete'
 
 const GHS_MAP = [
   { keywords: ['인화', '발화', '가연', 'flammable', 'flame'],        emoji: '🔥', label: '인화성' },
@@ -95,7 +96,7 @@ export default function ReagentList() {
     let query = supabase.from('reagents')
       .select('*, reagent_lots(*), locations(*)', { count: 'exact' })
       .neq('status', 'archived')
-    if (search.trim()) query = query.ilike('name', `%${search.trim()}%`)
+    if (search.trim()) query = query.or(`name.ilike.%${search.trim()}%,cas_no.ilike.%${search.trim()}%`)
     if (locationFilter) query = query.eq('location_id', locationFilter)
     if (companyFilter) query = query.eq('company', companyFilter)
     const { data, count } = await query.range(0, 4999)
@@ -641,11 +642,13 @@ function toggleCheck(id, e, allData) {
           display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '16px',
         }}>
           <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '200px' }}>
-            <input value={search}
-              onChange={e => setSearch(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && fetchResults()}
-              placeholder="시약 이름으로 검색..."
-              style={{ ...inputStyle, flex: 1 }} />
+            <ReagentAutocomplete
+              value={search}
+              onChange={setSearch}
+              onSelect={r => navigate(`/reagents/${r.id}`)}
+              onEnter={() => fetchResults()}
+              placeholder="시약 이름 또는 CAS No.로 검색..."
+              inputStyle={{ ...inputStyle, width: '100%' }} />
             <button onClick={() => fetchResults()} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>검색</button>
           </div>
           <select value={locationFilter} onChange={e => setLocationFilter(e.target.value)} style={{ ...inputStyle, width: 'auto', maxWidth: '160px' }}>

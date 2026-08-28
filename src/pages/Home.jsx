@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, Icon, PageBanner, inputStyle } from '../design'
+import ReagentAutocomplete from '../components/ReagentAutocomplete'
 
 const QUICK_MENU = [
   { to: '/reagents/list',    label: '시약 검색',   sub: '위치·잔량 바로 확인',     icon: 'science'   },
@@ -177,14 +178,15 @@ export default function Home() {
         {/* 통합 검색 */}
         <div style={{ textAlign: 'center', padding: '10px 0 6px' }}>
           <div style={{ fontSize: 19, fontWeight: 700, color: C.navyDeep, marginBottom: 14 }}>시약명, CAS 번호, 위치로 검색하세요</div>
-          <div style={{ maxWidth: 620, margin: '0 auto', position: 'relative' }}>
-            <Icon name="search" size={17} color={C.muted} style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)' }} />
-            <input
+          <div style={{ maxWidth: 620, margin: '0 auto', position: 'relative', display: 'flex' }}>
+            <Icon name="search" size={17} color={C.muted} style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', zIndex: 1 }} />
+            <ReagentAutocomplete
               value={search}
-              onChange={e => setSearch(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && submitSearch()}
+              onChange={setSearch}
+              onSelect={r => navigate(`/reagents/${r.id}`)}
+              onEnter={submitSearch}
               placeholder="예) Acetone, 67-64-1, 303-1 A-2"
-              style={{ ...inputStyle, padding: '13px 16px 13px 42px', borderRadius: 12, fontSize: 14, boxShadow: '0 1px 3px rgba(16,24,40,.06)' }}
+              inputStyle={{ ...inputStyle, width: '100%', padding: '13px 16px 13px 42px', borderRadius: 12, fontSize: 14, boxShadow: '0 1px 3px rgba(16,24,40,.06)' }}
             />
           </div>
         </div>

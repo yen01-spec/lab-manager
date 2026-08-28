@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { useOutletContext, useLocation } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, Modal, inputStyle, btnPrimary, btnGhost, thStyle, tdStyle } from '../design'
 import { exportPurchaseRequestForm } from '../exportUtils'
+import ReagentAutocomplete from '../components/ReagentAutocomplete'
 
 let uidCounter = 0
 function newId() { uidCounter += 1; return `local-${uidCounter}` }
@@ -22,19 +23,6 @@ function move(list, id, dir) {
   return copy
 }
 
-function highlightMatch(text, query) {
-  if (!query.trim()) return text
-  const idx = text.toLowerCase().indexOf(query.trim().toLowerCase())
-  if (idx === -1) return text
-  return (
-    <>
-      {text.slice(0, idx)}
-      <b style={{ color: C.blueDark }}>{text.slice(idx, idx + query.trim().length)}</b>
-      {text.slice(idx + query.trim().length)}
-    </>
-  )
-}
-
 export default function PurchaseRequest() {
   const { student } = useOutletContext?.() || {}
   const routerLocation = useLocation()
@@ -44,54 +32,14 @@ export default function PurchaseRequest() {
     return [emptyReagentItem()]
   })
   const [goodsItems, setGoodsItems] = useState([emptyGoodsItem()])
-  const [activeRow, setActiveRow] = useState(null)
-  const [rowOptions, setRowOptions] = useState([])
-  const [highlightIdx, setHighlightIdx] = useState(-1)
-  const debounceRef = useRef(null)
-  const requestIdRef = useRef(0)
   const [saving, setSaving] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
 
-  function handleNameInput(id, value) {
+  function updateReagentName(id, value) {
     setReagentItems(items => items.map(it => it.id === id ? { ...it, name: value, reagent_id: null } : it))
-    setActiveRow(id)
-    setHighlightIdx(-1)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (!value.trim()) { setRowOptions([]); return }
-    const myRequestId = ++requestIdRef.current
-    debounceRef.current = setTimeout(async () => {
-      const { data } = await supabase.from('reagents').select('id, name, company, cas_no').ilike('name', `%${value}%`).limit(8)
-      if (requestIdRef.current === myRequestId) setRowOptions(data || [])
-    }, 200)
   }
-  function handleFocusRow(id) {
-    setActiveRow(id)
-    setRowOptions([])
-    setHighlightIdx(-1)
-  }
-  function selectRowOption(id, r) {
+  function selectReagentOption(id, r) {
     setReagentItems(items => items.map(it => it.id === id ? { ...it, reagent_id: r.id, name: r.name, company: r.company || '', cas_no: r.cas_no || '' } : it))
-    setActiveRow(null)
-    setRowOptions([])
-    setHighlightIdx(-1)
-  }
-  function closeDropdownSoon(id) {
-    setTimeout(() => setActiveRow(prev => (prev === id ? null : prev)), 150)
-  }
-  function handleNameKeyDown(id, e) {
-    if (rowOptions.length === 0 || activeRow !== id) return
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setHighlightIdx(i => Math.min(i + 1, rowOptions.length - 1))
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setHighlightIdx(i => Math.max(i - 1, 0))
-    } else if (e.key === 'Enter' && highlightIdx >= 0) {
-      e.preventDefault()
-      selectRowOption(id, rowOptions[highlightIdx])
-    } else if (e.key === 'Escape') {
-      setActiveRow(null); setRowOptions([])
-    }
   }
 
   function addReagentBlank() { setReagentItems(items => [...items, emptyReagentItem()]) }
@@ -192,28 +140,13 @@ export default function PurchaseRequest() {
                   <tr key={it.id}>
                     <td style={{ ...tdStyle, textAlign: 'center', color: C.muted }}>{idx + 1}</td>
                     <td style={{ ...tdStyle, position: 'relative' }}>
-                      <input
+                      <ReagentAutocomplete
                         value={it.name}
-                        onChange={e => handleNameInput(it.id, e.target.value)}
-                        onFocus={() => handleFocusRow(it.id)}
-                        onBlur={() => closeDropdownSoon(it.id)}
-                        onKeyDown={e => handleNameKeyDown(it.id, e)}
-                        placeholder="시약명 입력 (자동 검색)"
-                        style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', minWidth: '160px' }} />
+                        onChange={v => updateReagentName(it.id, v)}
+                        onSelect={r => selectReagentOption(it.id, r)}
+                        placeholder="시약명 또는 CAS No. 입력 (자동 검색)"
+                        inputStyle={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', minWidth: '160px' }} />
                       {it.reagent_id && <span style={{ fontSize: '9.5px', color: '#1F4E96', background: '#EAF1FB', padding: '1px 6px', borderRadius: '5px', marginTop: '2px', display: 'inline-block' }}>목록에서 담김</span>}
-                      {activeRow === it.id && rowOptions.length > 0 && (
-                        <div style={{ position: 'absolute', top: '100%', left: 8, zIndex: 100, background: C.white, border: `1px solid ${C.border}`, borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', width: '260px', maxHeight: '220px', overflowY: 'auto' }}>
-                          {rowOptions.map((r, i) => (
-                            <div key={r.id} onMouseDown={() => selectRowOption(it.id, r)}
-                              onMouseEnter={e => { e.currentTarget.style.background = C.blueTint }}
-                              onMouseLeave={e => { e.currentTarget.style.background = i === highlightIdx ? C.blueTint : C.white }}
-                              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', borderBottom: `1px solid ${C.border}`, background: i === highlightIdx ? C.blueTint : C.white }}>
-                              <div style={{ fontWeight: '600' }}>{highlightMatch(r.name, it.name)}</div>
-                              <div style={{ fontSize: '11px', color: C.muted }}>{r.company || '-'} · {r.cas_no || '-'}</div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </td>
                     <td style={tdStyle}><input value={it.company} onChange={e => updateReagentItem(it.id, 'company', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '90px' }} /></td>
                     <td style={tdStyle}><input value={it.cas_no} onChange={e => updateReagentItem(it.id, 'cas_no', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '90px' }} /></td>
