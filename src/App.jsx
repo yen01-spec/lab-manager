@@ -11,6 +11,7 @@ import Admin from './pages/Admin'
 import Inventory from './pages/Inventory'
 import NoticeDetail from './pages/NoticeDetail'
 import PurchaseRequest from './pages/PurchaseRequest'
+import PurchaseRequestList from './pages/PurchaseRequestList'
 import BulkEdit from './pages/BulkEdit'
 import ReagentDetail from './pages/ReagentDetail'
 
@@ -39,6 +40,7 @@ function App() {
         <Route path="items" element={<Items />} />
         <Route path="requests" element={<Requests />} />
         <Route path="purchase-request" element={<PurchaseRequest />} />
+        <Route path="purchase-request/list" element={<PurchaseRequestList />} />
         <Route path="admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
         <Route path="inventory" element={<Inventory />} />
         <Route path="notices" element={<Notices />} />

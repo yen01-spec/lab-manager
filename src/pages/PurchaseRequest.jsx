@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { useOutletContext, useLocation } from 'react-router-dom'
+import { useOutletContext, useLocation, useNavigate } from 'react-router-dom'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { supabase } from '../supabase'
@@ -36,6 +36,7 @@ function move(list, id, dir) {
 export default function PurchaseRequest() {
   const { student } = useOutletContext?.() || {}
   const routerLocation = useLocation()
+  const navigate = useNavigate()
   const [reagentItems, setReagentItems] = useState(() => {
     const prefill = routerLocation.state?.prefillReagentItems
     if (prefill && prefill.length > 0) return prefill.map(it => ({ ...it, id: newId() }))
@@ -143,11 +144,12 @@ export default function PurchaseRequest() {
 
   return (
     <div>
-      <PageBanner title="구매요청서 작성" sub="Purchase Request" breadcrumb={['홈', '구매요청서']} />
+      <PageBanner title="구매요청서 작성" sub="Purchase Request" breadcrumb={['홈', '구매요청서']}
+        extra={<button onClick={() => navigate('/purchase-request/list')} style={{ ...btnGhost, padding: '9px 16px' }}>📋 요청 목록 보기</button>} />
       <div style={{ padding: '20px 40px' }} ref={printRef}>
 
         <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#EAF1FB', border: '1px solid #C9DAF5', borderRadius: '10px', padding: '10px 16px', marginBottom: '20px', fontSize: '12px', color: '#1F4E96' }}>
-          ℹ️ 시약명 칸에 입력하면 기존 목록에서 자동으로 찾아줘요 — 선택하면 정보가 채워지고, 없는 시약이면 그냥 입력한 이름 그대로 담겨요. 별표(*) 항목은 필수, 나머지는 원하는 제품이 정해진 경우에만 채워주세요. 승인/발주 상태는 추적하지 않아요.
+          ℹ️ 시약명 칸에 입력하면 기존 목록에서 자동으로 찾아줘요 — 선택하면 정보가 채워지고, 없는 시약이면 그냥 입력한 이름 그대로 담겨요. 별표(*) 항목은 필수, 나머지는 원하는 제품이 정해진 경우에만 채워주세요. 제출 후 승인/발주 상태는 "요청 목록 보기"에서 확인할 수 있어요.
         </div>
 
         {/* 시약 항목 */}
@@ -156,72 +158,106 @@ export default function PurchaseRequest() {
           <span style={{ fontSize: '11.5px', color: C.muted, background: '#EEF2FB', padding: '2px 9px', borderRadius: '999px', fontWeight: '600' }}>{validReagentItems.length}건</span>
         </div>
 
-        <Card noPadding style={{ marginBottom: '24px' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1400px' }}>
-              <thead>
-                <tr>
-                  {['No.', '시약명*', 'CAS No.*', '성상*', '필요용량*', '사용처*', '구매목적*',
-                    '회사', 'Cat No.', '규격', '수량', '단가', '총가격', '비고', ''].map(h => (
-                    <th key={h} style={{ ...thStyle, borderLeft: h === '회사' ? `2px solid ${C.border}` : undefined }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {reagentItems.map((it, idx) => {
-                  const isCustomState = it.state !== '액체' && it.state !== '고체'
-                  return (
-                  <tr key={it.id}>
-                    <td style={{ ...tdStyle, textAlign: 'center', color: C.muted }}>{idx + 1}</td>
-                    <td style={{ ...tdStyle, position: 'relative' }}>
-                      <ReagentAutocomplete
-                        value={it.name}
-                        onChange={v => updateReagentName(it.id, v)}
-                        onSelect={r => selectReagentOption(it.id, r)}
-                        placeholder="시약명 또는 CAS No. 입력 (자동 검색)"
-                        inputStyle={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', minWidth: '160px' }} />
-                      {it.reagent_id && <span style={{ fontSize: '9.5px', color: '#1F4E96', background: '#EAF1FB', padding: '1px 6px', borderRadius: '5px', marginTop: '2px', display: 'inline-block' }}>목록에서 담김</span>}
-                    </td>
-                    <td style={tdStyle}><input value={it.cas_no} onChange={e => updateReagentItem(it.id, 'cas_no', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '90px' }} /></td>
-                    <td style={tdStyle}>
-                      <select value={isCustomState ? '직접입력' : it.state} onChange={e => updateReagentItem(it.id, 'state', e.target.value === '직접입력' ? '' : e.target.value)}
-                        style={{ ...inputStyle, padding: '5px 6px', fontSize: '12.5px', width: '80px' }}>
-                        <option>액체</option><option>고체</option><option>직접입력</option>
-                      </select>
-                      {isCustomState && (
-                        <input value={it.state} onChange={e => updateReagentItem(it.id, 'state', e.target.value)} placeholder="직접 입력"
-                          style={{ ...inputStyle, padding: '4px 6px', fontSize: '11.5px', width: '80px', marginTop: '4px' }} />
-                      )}
-                    </td>
-                    <td style={tdStyle}><input value={it.needed_amount} onChange={e => updateReagentItem(it.id, 'needed_amount', e.target.value)} placeholder="500mL 이상" style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '90px' }} /></td>
-                    <td style={tdStyle}><input value={it.usage_place} onChange={e => updateReagentItem(it.id, 'usage_place', e.target.value)} placeholder="예) 유기합성 실험" style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', minWidth: '110px' }} /></td>
-                    <td style={tdStyle}><input value={it.purchase_reason} onChange={e => updateReagentItem(it.id, 'purchase_reason', e.target.value)} placeholder="예) 재고 소진" style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', minWidth: '100px' }} /></td>
-                    <td style={{ ...tdStyle, borderLeft: `2px solid ${C.border}` }}><input value={it.company} onChange={e => updateReagentItem(it.id, 'company', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '90px' }} /></td>
-                    <td style={tdStyle}><input value={it.cat_no} onChange={e => updateReagentItem(it.id, 'cat_no', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '90px' }} /></td>
-                    <td style={tdStyle}><input value={it.spec} onChange={e => updateReagentItem(it.id, 'spec', e.target.value)} placeholder="500 mL" style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '80px' }} /></td>
-                    <td style={tdStyle}><input value={it.quantity} onChange={e => updateReagentItem(it.id, 'quantity', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '50px' }} /></td>
-                    <td style={tdStyle}><input value={it.unit_price} onChange={e => updateReagentItem(it.id, 'unit_price', e.target.value)} placeholder="원" style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '80px' }} /></td>
-                    <td style={{ ...tdStyle, fontWeight: '700', color: C.navy, whiteSpace: 'nowrap' }}>{totalOf(it).toLocaleString()}원</td>
-                    <td style={tdStyle}><input value={it.note} onChange={e => updateReagentItem(it.id, 'note', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', minWidth: '100px' }} /></td>
-                    <td className="no-print" style={{ ...tdStyle, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                      <button onClick={() => moveReagentItem(it.id, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', color: idx === 0 ? '#D5D9E0' : C.muted, cursor: idx === 0 ? 'default' : 'pointer', fontSize: '13px', padding: '2px' }}>▲</button>
-                      <button onClick={() => moveReagentItem(it.id, 1)} disabled={idx === reagentItems.length - 1} style={{ background: 'none', border: 'none', color: idx === reagentItems.length - 1 ? '#D5D9E0' : C.muted, cursor: idx === reagentItems.length - 1 ? 'default' : 'pointer', fontSize: '13px', padding: '2px' }}>▼</button>
-                      <button onClick={() => removeReagentItem(it.id)} style={{ background: 'none', border: 'none', color: C.danger, cursor: 'pointer', fontSize: '14px', padding: '2px' }}>✕</button>
-                    </td>
-                  </tr>
-                )})}
-                <tr>
-                  <td colSpan={12} style={{ ...tdStyle, textAlign: 'right', fontWeight: '700', color: C.textSub, background: C.bg }}>합계</td>
-                  <td style={{ ...tdStyle, background: C.bg, fontWeight: '700', color: C.blueDark, whiteSpace: 'nowrap' }}>{reagentTotal.toLocaleString()}원</td>
-                  <td colSpan={2} style={{ background: C.bg }}></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div className="no-print" style={{ padding: '10px 14px', borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ marginBottom: '24px' }}>
+          {reagentItems.map((it, idx) => {
+            const isCustomState = it.state !== '액체' && it.state !== '고체'
+            const fieldLabel = { fontSize: '10.5px', color: C.muted, marginBottom: '3px', fontWeight: '600' }
+            const fieldBox = { display: 'flex', flexDirection: 'column', flex: 1, minWidth: '110px' }
+            return (
+              <div key={it.id} style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', padding: '14px 16px', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '12px', color: C.muted, fontWeight: '700' }}>#{idx + 1}</span>
+                  <span style={{ fontSize: '11px', fontWeight: '700', color: C.navy }}>필수 입력</span>
+                  <span className="no-print" style={{ marginLeft: 'auto', display: 'flex', gap: '2px' }}>
+                    <button onClick={() => moveReagentItem(it.id, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', color: idx === 0 ? '#D5D9E0' : C.muted, cursor: idx === 0 ? 'default' : 'pointer', fontSize: '13px', padding: '2px' }}>▲</button>
+                    <button onClick={() => moveReagentItem(it.id, 1)} disabled={idx === reagentItems.length - 1} style={{ background: 'none', border: 'none', color: idx === reagentItems.length - 1 ? '#D5D9E0' : C.muted, cursor: idx === reagentItems.length - 1 ? 'default' : 'pointer', fontSize: '13px', padding: '2px' }}>▼</button>
+                    <button onClick={() => removeReagentItem(it.id)} style={{ background: 'none', border: 'none', color: C.danger, cursor: 'pointer', fontSize: '14px', padding: '2px' }}>✕</button>
+                  </span>
+                </div>
+
+                {/* 1행: 필수 입력 */}
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                  <div style={{ ...fieldBox, minWidth: '180px' }}>
+                    <label style={fieldLabel}>시약명 *</label>
+                    <ReagentAutocomplete
+                      value={it.name}
+                      onChange={v => updateReagentName(it.id, v)}
+                      onSelect={r => selectReagentOption(it.id, r)}
+                      placeholder="시약명 또는 CAS No. 입력 (자동 검색)"
+                      inputStyle={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                    {it.reagent_id && <span style={{ fontSize: '9.5px', color: '#1F4E96', background: '#EAF1FB', padding: '1px 6px', borderRadius: '5px', marginTop: '3px', display: 'inline-block', alignSelf: 'flex-start' }}>목록에서 담김</span>}
+                  </div>
+                  <div style={fieldBox}>
+                    <label style={fieldLabel}>CAS No. *</label>
+                    <input value={it.cas_no} onChange={e => updateReagentItem(it.id, 'cas_no', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                  </div>
+                  <div style={fieldBox}>
+                    <label style={fieldLabel}>성상 *</label>
+                    <select value={isCustomState ? '직접입력' : it.state} onChange={e => updateReagentItem(it.id, 'state', e.target.value === '직접입력' ? '' : e.target.value)}
+                      style={{ ...inputStyle, padding: '6px 6px', fontSize: '12.5px' }}>
+                      <option>액체</option><option>고체</option><option>직접입력</option>
+                    </select>
+                    {isCustomState && (
+                      <input value={it.state} onChange={e => updateReagentItem(it.id, 'state', e.target.value)} placeholder="직접 입력"
+                        style={{ ...inputStyle, padding: '4px 6px', fontSize: '11.5px', marginTop: '4px' }} />
+                    )}
+                  </div>
+                  <div style={fieldBox}>
+                    <label style={fieldLabel}>필요용량 *</label>
+                    <input value={it.needed_amount} onChange={e => updateReagentItem(it.id, 'needed_amount', e.target.value)} placeholder="500mL 이상" style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                  </div>
+                  <div style={fieldBox}>
+                    <label style={fieldLabel}>사용처 *</label>
+                    <input value={it.usage_place} onChange={e => updateReagentItem(it.id, 'usage_place', e.target.value)} placeholder="예) 유기합성 실험" style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                  </div>
+                  <div style={fieldBox}>
+                    <label style={fieldLabel}>구매목적 *</label>
+                    <input value={it.purchase_reason} onChange={e => updateReagentItem(it.id, 'purchase_reason', e.target.value)} placeholder="예) 재고 소진" style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                  </div>
+                </div>
+
+                {/* 2행: 원하는 제품이 있는 경우 */}
+                <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: '10px' }}>
+                  <div style={{ fontSize: '10.5px', fontWeight: '700', color: C.muted, marginBottom: '8px' }}>원하는 제품이 있는 경우</div>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div style={{ ...fieldBox, minWidth: '110px' }}>
+                      <label style={fieldLabel}>회사</label>
+                      <input value={it.company} onChange={e => updateReagentItem(it.id, 'company', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                    </div>
+                    <div style={{ ...fieldBox, minWidth: '110px' }}>
+                      <label style={fieldLabel}>Cat No.</label>
+                      <input value={it.cat_no} onChange={e => updateReagentItem(it.id, 'cat_no', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                    </div>
+                    <div style={{ ...fieldBox, minWidth: '90px' }}>
+                      <label style={fieldLabel}>규격</label>
+                      <input value={it.spec} onChange={e => updateReagentItem(it.id, 'spec', e.target.value)} placeholder="500 mL" style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                    </div>
+                    <div style={{ ...fieldBox, minWidth: '60px', maxWidth: '70px' }}>
+                      <label style={fieldLabel}>수량</label>
+                      <input value={it.quantity} onChange={e => updateReagentItem(it.id, 'quantity', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                    </div>
+                    <div style={{ ...fieldBox, minWidth: '90px' }}>
+                      <label style={fieldLabel}>단가</label>
+                      <input value={it.unit_price} onChange={e => updateReagentItem(it.id, 'unit_price', e.target.value)} placeholder="원" style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                    </div>
+                    <div style={{ ...fieldBox, minWidth: '140px' }}>
+                      <label style={fieldLabel}>비고</label>
+                      <input value={it.note} onChange={e => updateReagentItem(it.id, 'note', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                    </div>
+                    <div style={{ marginLeft: 'auto', textAlign: 'right', paddingBottom: '7px' }}>
+                      <div style={{ fontSize: '10.5px', color: C.muted }}>총가격</div>
+                      <div style={{ fontSize: '14px', fontWeight: '700', color: C.navy }}>{totalOf(it).toLocaleString()}원</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+          <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 4px' }}>
+            <span style={{ fontSize: '12.5px', fontWeight: '700', color: C.textSub }}>시약 합계: <span style={{ color: C.blueDark }}>{reagentTotal.toLocaleString()}원</span></span>
             <button onClick={addReagentBlank} style={{ background: '#F9FBFF', color: '#1F4E96', border: '1px dashed #C9DAF5', padding: '7px 14px', borderRadius: '7px', cursor: 'pointer', fontSize: '12px' }}>+ 시약 행 추가</button>
           </div>
-        </Card>
+        </div>
 
         {/* 물품 항목 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
