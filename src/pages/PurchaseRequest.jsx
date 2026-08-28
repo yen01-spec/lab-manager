@@ -44,7 +44,6 @@ export default function PurchaseRequest() {
   })
   const [goodsItems, setGoodsItems] = useState([emptyGoodsItem()])
   const [saving, setSaving] = useState(false)
-  const [showOptionalCols, setShowOptionalCols] = useState(false)
   const printRef = useRef(null)
 
   function updateReagentName(id, value) {
@@ -131,15 +130,10 @@ export default function PurchaseRequest() {
     setSaving(true)
     const log = await saveToDb()
     if (!log) { setSaving(false); return }
-    // 숨겨져있는 "원하는 제품이 있는 경우" 열도 PDF엔 다 나오도록 캡처 직전에 펼쳤다가 되돌린다.
-    const prevShowOptional = showOptionalCols
-    setShowOptionalCols(true)
-    await new Promise(r => setTimeout(r, 50))
     const canvas = await html2canvas(printRef.current, {
       scale: 2, backgroundColor: '#ffffff',
       ignoreElements: el => el.classList?.contains('no-print'),
     })
-    setShowOptionalCols(prevShowOptional)
     const imgData = canvas.toDataURL('image/png')
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [canvas.width, canvas.height] })
     pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height)
@@ -153,6 +147,9 @@ export default function PurchaseRequest() {
       <PageBanner title="구매요청서 작성" sub="Purchase Request" breadcrumb={['홈', '구매요청서']}
         extra={<button onClick={() => navigate('/purchase-request/list')} style={{ ...btnGhost, padding: '9px 16px' }}>📋 요청 목록 보기</button>} />
       <div style={{ padding: '20px 40px' }} ref={printRef}>
+        <datalist id="reagent-state-options">
+          <option value="액체" /><option value="고체" />
+        </datalist>
 
         <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#EAF1FB', border: '1px solid #C9DAF5', borderRadius: '10px', padding: '10px 16px', marginBottom: '20px', fontSize: '12px', color: '#1F4E96' }}>
           ℹ️ 시약명 칸에 입력하면 기존 목록에서 자동으로 찾아줘요 — 선택하면 정보가 채워지고, 없는 시약이면 그냥 입력한 이름 그대로 담겨요. 별표(*) 항목은 필수, 나머지는 원하는 제품이 정해진 경우에만 채워주세요. 제출 후 승인/발주 상태는 "요청 목록 보기"에서 확인할 수 있어요.
@@ -162,26 +159,21 @@ export default function PurchaseRequest() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
           <span style={{ fontSize: '15px', fontWeight: '700', color: C.navy }}>🧪 시약 항목</span>
           <span style={{ fontSize: '11.5px', color: C.muted, background: '#EEF2FB', padding: '2px 9px', borderRadius: '999px', fontWeight: '600' }}>{validReagentItems.length}건</span>
-          <label className="no-print" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: C.muted, cursor: 'pointer' }}>
-            <input type="checkbox" checked={showOptionalCols} onChange={e => setShowOptionalCols(e.target.checked)} />
-            원하는 제품이 있는 경우 항목 보기
-          </label>
         </div>
 
         <Card noPadding style={{ marginBottom: '24px' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: showOptionalCols ? '1400px' : '900px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1400px' }}>
               <thead>
                 <tr>
                   {['No.', '시약명 *', 'CAS No. *', '성상 *', '필요용량 *', '사용처 *', '구매목적 *',
-                    ...(showOptionalCols ? ['회사', 'Cat No.', '규격', '수량', '단가', '총가격', '비고'] : []), ''].map(h => (
+                    '회사', 'Cat No.', '규격', '수량', '단가', '총가격', '비고', ''].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {reagentItems.map((it, idx) => {
-                  const isCustomState = it.state !== '액체' && it.state !== '고체'
                   return (
                     <tr key={it.id}>
                       <td style={{ ...tdStyle, textAlign: 'center', color: C.muted }}>{idx + 1}</td>
@@ -196,27 +188,20 @@ export default function PurchaseRequest() {
                       </td>
                       <td style={tdStyle}><input value={it.cas_no} onChange={e => updateReagentItem(it.id, 'cas_no', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '90px' }} /></td>
                       <td style={tdStyle}>
-                        <select value={isCustomState ? '직접입력' : it.state} onChange={e => updateReagentItem(it.id, 'state', e.target.value === '직접입력' ? '' : e.target.value)}
-                          style={{ ...inputStyle, padding: '5px 6px', fontSize: '12.5px', width: '80px' }}>
-                          <option>액체</option><option>고체</option><option>직접입력</option>
-                        </select>
-                        {isCustomState && (
-                          <input value={it.state} onChange={e => updateReagentItem(it.id, 'state', e.target.value)} placeholder="직접 입력"
-                            style={{ ...inputStyle, padding: '4px 6px', fontSize: '11.5px', width: '80px', marginTop: '4px' }} />
-                        )}
+                        <input value={it.state} onChange={e => updateReagentItem(it.id, 'state', e.target.value)} placeholder="액체/고체 등"
+                          list="reagent-state-options"
+                          style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '80px' }} />
                       </td>
                       <td style={tdStyle}><input value={it.needed_amount} onChange={e => updateReagentItem(it.id, 'needed_amount', e.target.value)} placeholder="500mL 이상" style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '90px' }} /></td>
                       <td style={tdStyle}><input value={it.usage_place} onChange={e => updateReagentItem(it.id, 'usage_place', e.target.value)} placeholder="예) 유기합성 실험" style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', minWidth: '110px' }} /></td>
                       <td style={tdStyle}><input value={it.purchase_reason} onChange={e => updateReagentItem(it.id, 'purchase_reason', e.target.value)} placeholder="예) 재고 소진" style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', minWidth: '100px' }} /></td>
-                      {showOptionalCols && (<>
-                        <td style={tdStyle}><input value={it.company} onChange={e => updateReagentItem(it.id, 'company', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '90px' }} /></td>
-                        <td style={tdStyle}><input value={it.cat_no} onChange={e => updateReagentItem(it.id, 'cat_no', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '90px' }} /></td>
-                        <td style={tdStyle}><input value={it.spec} onChange={e => updateReagentItem(it.id, 'spec', e.target.value)} placeholder="500 mL" style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '80px' }} /></td>
-                        <td style={tdStyle}><input value={it.quantity} onChange={e => updateReagentItem(it.id, 'quantity', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '50px' }} /></td>
-                        <td style={tdStyle}><input value={it.unit_price} onChange={e => updateReagentItem(it.id, 'unit_price', e.target.value)} placeholder="원" style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '80px' }} /></td>
-                        <td style={{ ...tdStyle, fontWeight: '700', color: C.navy, whiteSpace: 'nowrap' }}>{totalOf(it).toLocaleString()}원</td>
-                        <td style={tdStyle}><input value={it.note} onChange={e => updateReagentItem(it.id, 'note', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', minWidth: '100px' }} /></td>
-                      </>)}
+                      <td style={tdStyle}><input value={it.company} onChange={e => updateReagentItem(it.id, 'company', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '90px' }} /></td>
+                      <td style={tdStyle}><input value={it.cat_no} onChange={e => updateReagentItem(it.id, 'cat_no', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '90px' }} /></td>
+                      <td style={tdStyle}><input value={it.spec} onChange={e => updateReagentItem(it.id, 'spec', e.target.value)} placeholder="500 mL" style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '80px' }} /></td>
+                      <td style={tdStyle}><input value={it.quantity} onChange={e => updateReagentItem(it.id, 'quantity', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '50px' }} /></td>
+                      <td style={tdStyle}><input value={it.unit_price} onChange={e => updateReagentItem(it.id, 'unit_price', e.target.value)} placeholder="원" style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', width: '80px' }} /></td>
+                      <td style={{ ...tdStyle, fontWeight: '700', color: C.navy, whiteSpace: 'nowrap' }}>{totalOf(it).toLocaleString()}원</td>
+                      <td style={tdStyle}><input value={it.note} onChange={e => updateReagentItem(it.id, 'note', e.target.value)} style={{ ...inputStyle, padding: '5px 8px', fontSize: '12.5px', minWidth: '100px' }} /></td>
                       <td className="no-print" style={{ ...tdStyle, textAlign: 'center', whiteSpace: 'nowrap' }}>
                         <button onClick={() => moveReagentItem(it.id, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', color: idx === 0 ? '#D5D9E0' : C.muted, cursor: idx === 0 ? 'default' : 'pointer', fontSize: '13px', padding: '2px' }}>▲</button>
                         <button onClick={() => moveReagentItem(it.id, 1)} disabled={idx === reagentItems.length - 1} style={{ background: 'none', border: 'none', color: idx === reagentItems.length - 1 ? '#D5D9E0' : C.muted, cursor: idx === reagentItems.length - 1 ? 'default' : 'pointer', fontSize: '13px', padding: '2px' }}>▼</button>
@@ -229,8 +214,8 @@ export default function PurchaseRequest() {
             </table>
           </div>
           <div className="no-print" style={{ padding: '10px 14px', borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12.5px', fontWeight: '700', color: C.textSub }}>시약 합계: <span style={{ color: C.blueDark }}>{reagentTotal.toLocaleString()}원</span></span>
             <button onClick={addReagentBlank} style={{ background: '#F9FBFF', color: '#1F4E96', border: '1px dashed #C9DAF5', padding: '7px 14px', borderRadius: '7px', cursor: 'pointer', fontSize: '12px' }}>+ 시약 행 추가</button>
+            <span style={{ fontSize: '12.5px', fontWeight: '700', color: C.textSub }}>시약 합계: <span style={{ color: C.blueDark }}>{reagentTotal.toLocaleString()}원</span></span>
           </div>
         </Card>
 
@@ -273,8 +258,8 @@ export default function PurchaseRequest() {
             </table>
           </div>
           <div className="no-print" style={{ padding: '10px 14px', borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12.5px', fontWeight: '700', color: C.textSub }}>배송비 합계: {shippingTotal.toLocaleString()}원 · 물품 합계: <span style={{ color: C.blueDark }}>{goodsTotal.toLocaleString()}원</span></span>
             <button onClick={addGoodsItem} style={{ background: '#F9FBFF', color: '#1F4E96', border: '1px dashed #C9DAF5', padding: '7px 14px', borderRadius: '7px', cursor: 'pointer', fontSize: '12px' }}>+ 물품 행 추가</button>
+            <span style={{ fontSize: '12.5px', fontWeight: '700', color: C.textSub }}>배송비 합계: {shippingTotal.toLocaleString()}원 · 물품 합계: <span style={{ color: C.blueDark }}>{goodsTotal.toLocaleString()}원</span></span>
           </div>
         </Card>
 
