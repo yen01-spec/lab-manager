@@ -178,26 +178,27 @@ export function exportPurchaseRequestForm(reagentItems, goodsItems, requesterNam
   const wb = XLSX.utils.book_new()
 
   if (reagentItems.length > 0) {
-    const header = ['No.', '시약명', '회사', 'CAS No.', 'Cat No.', '성상', '규격', '수량', '단가', '총가격', '용도', '비고']
+    const header = ['No.', '시약명', 'CAS No.', '성상', '필요용량', '사용처', '구매목적', '회사', 'Cat No.', '규격', '수량', '단가', '총가격', '비고']
     const rows = reagentItems.map((it, i) => [
-      i + 1, it.name, it.company, it.cas_no, it.cat_no, it.state, it.spec, it.quantity,
-      it.unit_price, (Number(it.unit_price) || 0) * (Number(it.quantity) || 0), it.purpose, it.note,
+      i + 1, it.name, it.cas_no, it.state, it.needed_amount, it.usage_place, it.purchase_reason,
+      it.company, it.cat_no, it.spec, it.quantity, it.unit_price,
+      (Number(it.unit_price) || 0) * (Number(it.quantity) || 0), it.note,
     ])
     const totalPrice = reagentItems.reduce((s, it) => s + (Number(it.unit_price) || 0) * (Number(it.quantity) || 0), 0)
-    rows.push(['', '', '', '', '', '', '', '합계', '', totalPrice, '', ''])
+    rows.push(['', '', '', '', '', '', '', '', '', '', '합계', '', totalPrice, ''])
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
     ws['!cols'] = header.map((h, i) => ({ wch: Math.max(h.length + 2, ...rows.map(r => String(r[i] ?? '').length + 2)) }))
     XLSX.utils.book_append_sheet(wb, ws, '시약')
   }
 
   if (goodsItems.length > 0) {
-    const header = ['No.', '제품명', '규격', '수량', '단가', '배송비', '총가격', '비고', '링크', '용도']
+    const header = ['No.', '제품명', 'Cat No.', '규격', '수량', '단가', '배송비', '총가격', '용도', '비고', '링크']
     const rows = goodsItems.map((it, i) => [
-      i + 1, it.name, it.spec, it.quantity, it.unit_price, it.shipping_fee, it.total_price, it.note, it.link, it.purpose,
+      i + 1, it.name, it.cat_no, it.spec, it.quantity, it.unit_price, it.shipping_fee, it.total_price, it.purpose, it.note, it.link,
     ])
     const totalPrice = goodsItems.reduce((s, it) => s + (Number(it.total_price) || 0), 0)
     const totalShipping = goodsItems.reduce((s, it) => s + (Number(it.shipping_fee) || 0), 0)
-    rows.push(['', '', '', '', '합계', totalShipping, totalPrice, '', '', ''])
+    rows.push(['', '', '', '', '합계', totalShipping, totalPrice, '', '', '', ''])
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
     ws['!cols'] = header.map((h, i) => ({ wch: Math.max(h.length + 2, ...rows.map(r => String(r[i] ?? '').length + 2)) }))
     XLSX.utils.book_append_sheet(wb, ws, '물품')
