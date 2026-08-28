@@ -44,16 +44,7 @@ export default function PurchaseRequest() {
   })
   const [goodsItems, setGoodsItems] = useState([emptyGoodsItem()])
   const [saving, setSaving] = useState(false)
-  const [expandedOptionalIds, setExpandedOptionalIds] = useState(new Set())
   const printRef = useRef(null)
-
-  function toggleOptional(id) {
-    setExpandedOptionalIds(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
 
   function updateReagentName(id, value) {
     setReagentItems(items => items.map(it => it.id === id ? { ...it, name: value, reagent_id: null } : it))
@@ -139,15 +130,10 @@ export default function PurchaseRequest() {
     setSaving(true)
     const log = await saveToDb()
     if (!log) { setSaving(false); return }
-    // 접혀있는 "원하는 제품이 있는 경우" 항목도 PDF엔 다 나오도록 캡처 직전에 전부 펼쳤다가 되돌린다.
-    const prevExpanded = expandedOptionalIds
-    setExpandedOptionalIds(new Set(reagentItems.map(it => it.id)))
-    await new Promise(r => setTimeout(r, 50))
     const canvas = await html2canvas(printRef.current, {
       scale: 2, backgroundColor: '#ffffff',
       ignoreElements: el => el.classList?.contains('no-print'),
     })
-    setExpandedOptionalIds(prevExpanded)
     const imgData = canvas.toDataURL('image/png')
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [canvas.width, canvas.height] })
     pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height)
@@ -181,7 +167,6 @@ export default function PurchaseRequest() {
               <div key={it.id} style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', padding: '14px 16px', marginBottom: '10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                   <span style={{ fontSize: '12.5px', color: C.navy, fontWeight: '700' }}>No.{idx + 1}</span>
-                  <span style={{ fontSize: '11px', fontWeight: '700', color: C.muted }}>필수 입력</span>
                   <span className="no-print" style={{ marginLeft: 'auto', display: 'flex', gap: '2px' }}>
                     <button onClick={() => moveReagentItem(it.id, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', color: idx === 0 ? '#D5D9E0' : C.muted, cursor: idx === 0 ? 'default' : 'pointer', fontSize: '13px', padding: '2px' }}>▲</button>
                     <button onClick={() => moveReagentItem(it.id, 1)} disabled={idx === reagentItems.length - 1} style={{ background: 'none', border: 'none', color: idx === reagentItems.length - 1 ? '#D5D9E0' : C.muted, cursor: idx === reagentItems.length - 1 ? 'default' : 'pointer', fontSize: '13px', padding: '2px' }}>▼</button>
@@ -189,8 +174,7 @@ export default function PurchaseRequest() {
                   </span>
                 </div>
 
-                {/* 1행: 필수 입력 */}
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                   <div style={{ ...fieldBox, minWidth: '180px' }}>
                     <label style={fieldLabel}>시약명 *</label>
                     <ReagentAutocomplete
@@ -228,50 +212,34 @@ export default function PurchaseRequest() {
                     <label style={fieldLabel}>구매목적 *</label>
                     <input value={it.purchase_reason} onChange={e => updateReagentItem(it.id, 'purchase_reason', e.target.value)} placeholder="예) 재고 소진" style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
                   </div>
-                </div>
-
-                {/* 2행: 원하는 제품이 있는 경우 — 기본은 접혀있고 클릭하면 펼침 */}
-                <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: '10px' }}>
-                  <button className="no-print" onClick={() => toggleOptional(it.id)} style={{
-                    background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                    display: 'flex', alignItems: 'center', gap: '6px', marginBottom: expandedOptionalIds.has(it.id) ? '8px' : 0,
-                  }}>
-                    <span style={{ fontSize: '11px', color: C.muted }}>{expandedOptionalIds.has(it.id) ? '▾' : '▸'}</span>
-                    <span style={{ fontSize: '10.5px', fontWeight: '700', color: C.muted }}>원하는 제품이 있는 경우</span>
-                    {totalOf(it) > 0 && <span style={{ fontSize: '11px', fontWeight: '700', color: C.blueDark }}>· {totalOf(it).toLocaleString()}원</span>}
-                  </button>
-                  {expandedOptionalIds.has(it.id) && (
-                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                      <div style={{ ...fieldBox, minWidth: '110px' }}>
-                        <label style={fieldLabel}>회사</label>
-                        <input value={it.company} onChange={e => updateReagentItem(it.id, 'company', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
-                      </div>
-                      <div style={{ ...fieldBox, minWidth: '110px' }}>
-                        <label style={fieldLabel}>Cat No.</label>
-                        <input value={it.cat_no} onChange={e => updateReagentItem(it.id, 'cat_no', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
-                      </div>
-                      <div style={{ ...fieldBox, minWidth: '90px' }}>
-                        <label style={fieldLabel}>규격</label>
-                        <input value={it.spec} onChange={e => updateReagentItem(it.id, 'spec', e.target.value)} placeholder="500 mL" style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
-                      </div>
-                      <div style={{ ...fieldBox, minWidth: '60px', maxWidth: '70px' }}>
-                        <label style={fieldLabel}>수량</label>
-                        <input value={it.quantity} onChange={e => updateReagentItem(it.id, 'quantity', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
-                      </div>
-                      <div style={{ ...fieldBox, minWidth: '90px' }}>
-                        <label style={fieldLabel}>단가</label>
-                        <input value={it.unit_price} onChange={e => updateReagentItem(it.id, 'unit_price', e.target.value)} placeholder="원" style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
-                      </div>
-                      <div style={{ ...fieldBox, minWidth: '140px' }}>
-                        <label style={fieldLabel}>비고</label>
-                        <input value={it.note} onChange={e => updateReagentItem(it.id, 'note', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
-                      </div>
-                      <div style={{ marginLeft: 'auto', textAlign: 'right', paddingBottom: '7px' }}>
-                        <div style={{ fontSize: '10.5px', color: C.muted }}>총가격</div>
-                        <div style={{ fontSize: '14px', fontWeight: '700', color: C.navy }}>{totalOf(it).toLocaleString()}원</div>
-                      </div>
-                    </div>
-                  )}
+                  <div style={{ ...fieldBox, minWidth: '110px' }}>
+                    <label style={fieldLabel}>회사</label>
+                    <input value={it.company} onChange={e => updateReagentItem(it.id, 'company', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                  </div>
+                  <div style={{ ...fieldBox, minWidth: '110px' }}>
+                    <label style={fieldLabel}>Cat No.</label>
+                    <input value={it.cat_no} onChange={e => updateReagentItem(it.id, 'cat_no', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                  </div>
+                  <div style={{ ...fieldBox, minWidth: '90px' }}>
+                    <label style={fieldLabel}>규격</label>
+                    <input value={it.spec} onChange={e => updateReagentItem(it.id, 'spec', e.target.value)} placeholder="500 mL" style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                  </div>
+                  <div style={{ ...fieldBox, minWidth: '60px', maxWidth: '70px' }}>
+                    <label style={fieldLabel}>수량</label>
+                    <input value={it.quantity} onChange={e => updateReagentItem(it.id, 'quantity', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                  </div>
+                  <div style={{ ...fieldBox, minWidth: '90px' }}>
+                    <label style={fieldLabel}>단가</label>
+                    <input value={it.unit_price} onChange={e => updateReagentItem(it.id, 'unit_price', e.target.value)} placeholder="원" style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                  </div>
+                  <div style={{ ...fieldBox, minWidth: '140px' }}>
+                    <label style={fieldLabel}>비고</label>
+                    <input value={it.note} onChange={e => updateReagentItem(it.id, 'note', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '12.5px' }} />
+                  </div>
+                  <div style={{ marginLeft: 'auto', textAlign: 'right', paddingBottom: '7px' }}>
+                    <div style={{ fontSize: '10.5px', color: C.muted }}>총가격</div>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: C.navy }}>{totalOf(it).toLocaleString()}원</div>
+                  </div>
                 </div>
               </div>
             )
