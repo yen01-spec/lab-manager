@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useOutletContext } from 'react-router-dom'
+import { useParams, useOutletContext, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../design'
 
@@ -36,6 +36,7 @@ function InfoRow({ label, value, sourceBadge }) {
 
 export default function ReagentDetail() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const { isAdmin, student } = useOutletContext?.() || {}
 
   const [reagent, setReagent] = useState(null)
@@ -89,11 +90,36 @@ export default function ReagentDetail() {
       setDisposalPending(disposal || null)
       fetchHistory()
 
-      if (data.cas_no) {
+      let casForLookup = data.cas_no
+      if (!casForLookup && data.name) {
+        // CAS 번호가 비어있으면 PubChem에서 시약명으로 CID를 찾고, 그 동의어 목록에서 CAS 형식 값을 추출
+        try {
+          const cidRes = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(data.name)}/cids/JSON`)
+          if (cidRes.ok) {
+            const cidData = await cidRes.json()
+            const cid = cidData?.IdentifierList?.CID?.[0]
+            if (cid) {
+              const synRes = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/synonyms/JSON`)
+              if (synRes.ok) {
+                const synData = await synRes.json()
+                const syns = synData?.InformationList?.Information?.[0]?.Synonym || []
+                const foundCas = syns.find(s => /^\d{2,7}-\d{2}-\d$/.test(s))
+                if (foundCas) {
+                  casForLookup = foundCas
+                  await supabase.from('reagents').update({ cas_no: foundCas, cas_source: 'auto_ghs' }).eq('id', id)
+                  setReagent(prev => ({ ...prev, cas_no: foundCas, cas_source: 'auto_ghs' }))
+                }
+              }
+            }
+          }
+        } catch { /* PubChem 조회 실패 시 무시 — CAS 없이 계속 진행 */ }
+      }
+
+      if (casForLookup) {
         try {
           const GHS_KEY = 'e9bf2e5bc508d370a9660687c34a6730eae5237e78bad04e08f66705be15d597'
           const ghsRes = await fetch(
-            `https://apis.data.go.kr/B552584/kecoapi/ncisghs/ghsList?serviceKey=${GHS_KEY}&searchGubun=2&searchNm=${encodeURIComponent(data.cas_no)}&pageNo=1&numOfRows=1&returnType=JSON`
+            `https://apis.data.go.kr/B552584/kecoapi/ncisghs/ghsList?serviceKey=${GHS_KEY}&searchGubun=2&searchNm=${encodeURIComponent(casForLookup)}&pageNo=1&numOfRows=1&returnType=JSON`
           )
           if (ghsRes.ok) {
             const ghsData = await ghsRes.json()
@@ -104,6 +130,10 @@ export default function ReagentDetail() {
               const isYudok = first.sbstnTypeUnqno ? first.sbstnTypeUnqno.split('^')[0] : ''
               const hazard = first.hrmflnList ? first.hrmflnList.map(h => h.hrmflnClsfArtclNm).join(', ') : ''
               setReagent(prev => ({ ...prev, hazard: prev.hazard || hazard, ghs_live: { korName, isYudok, hazard } }))
+              if (!data.hazard && hazard) {
+                await supabase.from('reagents').update({ hazard, hazard_source: 'auto_ghs' }).eq('id', id)
+                setReagent(prev => ({ ...prev, hazard, hazard_source: 'auto_ghs' }))
+              }
             }
           }
         } catch { /* GHS 조회 실패 시 무시 — DB 값만 표시 */ }
@@ -183,6 +213,23 @@ export default function ReagentDetail() {
       fetchPendingChanges()
     }
     setEditingField(null)
+  }
+
+  async function archiveReagent() {
+    if (!isAdmin) return
+    const stillActive = lots.filter(l => l.status === 'active')
+    if (stillActive.length > 0) {
+      alert('활성 재고(Lot)가 남아있어 삭제할 수 없습니다. 모든 Lot을 폐기/사용완료 처리한 뒤 다시 시도해주세요.')
+      return
+    }
+    if (!window.confirm(`"${reagent.name}"을(를) 시약 마스터 목록에서 삭제할까요?\n(데이터는 삭제되지 않고 보관 처리되어 이력은 유지되지만, 목록에는 더 이상 표시되지 않습니다.)`)) return
+    await supabase.from('reagents').update({ status: 'archived' }).eq('id', id)
+    await supabase.from('admin_logs').insert({
+      admin_name: student?.name || '관리자', action: '시약 종류 삭제',
+      target_type: 'reagent',
+      description: `시약 종류 삭제(보관 처리): ${reagent.name}`,
+    })
+    navigate('/reagents/list')
   }
 
   async function confirmReagent() {
@@ -342,6 +389,7 @@ export default function ReagentDetail() {
     ['company', '제조사', reagent.company, reagent.company_source],
     ['category', '유별/성질', reagent.category, reagent.category_source],
     ['volume', '용량', reagent.volume ? `${reagent.volume} ${reagent.unit || ''}` : '', reagent.volume_source],
+    ['hazard', '유해정보', reagent.hazard, reagent.hazard_source],
   ]
   const activeLots = lots.filter(l => l.status === 'active')
   const LOT_STATUS_LABEL = { active: '보유중', used_up: '사용완료', disposed: '폐기', missing: '분실' }
@@ -374,6 +422,9 @@ export default function ReagentDetail() {
             }}>✏️ {editMode ? '수정 완료' : isAdmin ? '정보 수정' : '수정 신청'}</button>
             {activeInventorySession && (
               <button onClick={() => { if (!student) { alert('로그인 후 이용해주세요'); return } confirmReagent() }} style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: C.blue, fontSize: '13px', color: '#fff', fontWeight: '600', cursor: 'pointer' }}>✓ 정보 맞음 · 확인만 하기</button>
+            )}
+            {isAdmin && (
+              <button onClick={archiveReagent} title="활성 재고가 없을 때만 삭제할 수 있어요" style={{ padding: '9px 16px', borderRadius: '8px', border: '1px solid #F3D6D6', background: C.white, fontSize: '13px', color: '#C13B3F', cursor: 'pointer' }}>🗑 시약 종류 삭제</button>
             )}
           </div>
         }
@@ -419,6 +470,9 @@ export default function ReagentDetail() {
                       <div style={{ fontSize: '13.5px', color: C.text, cursor: editMode ? 'text' : 'default' }}
                         onClick={() => { if (editMode) { setEditingField(field); setEditingValue(value || '') } }}>
                         {value || '-'}
+                        {source === 'auto_ghs' && (
+                          <span title="국가유해물질정보 자동조회로 채워졌어요" style={{ marginLeft: '6px', fontSize: '9.5px', color: C.muted, background: '#F3F4F6', padding: '1px 6px', borderRadius: '8px' }}>🔎 MSDS 자동조회</span>
+                        )}
                         {pending && <span style={{ marginLeft: '6px', fontSize: '11px', color: '#8A5A16' }}>→ {pending.new_value}</span>}
                       </div>
                     )}
@@ -526,6 +580,9 @@ export default function ReagentDetail() {
                     🔍 CAS 번호로 MSDS 검색
                   </a>
                 )}
+                <a href="https://msds.kosha.or.kr/MSDSInfo/kcic/msdssearch.do" target="_blank" rel="noreferrer" style={{ fontSize: '11.5px', color: C.muted }}>
+                  🔍 안전보건공단(KOSHA) MSDS 검색{reagent.cas_no ? ` — CAS ${reagent.cas_no} 검색` : ''}
+                </a>
                 {isAdmin && (
                   <label style={{ fontSize: '11.5px', color: C.blue, cursor: uploadingMsds ? 'default' : 'pointer' }}>
                     {uploadingMsds ? '업로드 중...' : (reagent.msds_url ? '📤 파일 교체' : '📤 MSDS 파일 업로드')}

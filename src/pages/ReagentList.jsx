@@ -33,7 +33,6 @@ export default function ReagentList() {
   const [search, setSearch] = useState(() => searchParams.get('q') || '')
   const [locationFilter, setLocationFilter] = useState('')
   const [companyFilter, setCompanyFilter] = useState('')
-  const [includeEmptyStock, setIncludeEmptyStock] = useState(false)
   const [visibleCols, setVisibleCols] = useState({
     casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
     lot: false, expiry: false, category: false, ghs: false, status: false,
@@ -624,10 +623,9 @@ function toggleCheck(id, e, allData) {
 
   const rooms = [...new Set(locations.map(l => l.room))]
 
-  // 보유중(active) Lot이 하나도 없는 시약은 기본적으로 숨김 — "재고 0 포함"을 켜면 노출
-  const displayResults = includeEmptyStock
-    ? results
-    : results.filter(r => (r.reagent_lots || []).some(l => l.status === 'active'))
+  // 시약 종류(마스터)는 보유중인 Lot이 하나도 없어도(전부 폐기/사용완료) 목록에서 사라지지 않고
+  // "보유 0병"으로 계속 표시됨 — 다시 구매해서 재고를 등록할 때 신규 등록할 필요가 없도록
+  const displayResults = results
 
   return (
     <div>
@@ -733,10 +731,6 @@ function toggleCheck(id, e, allData) {
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
             <input type="checkbox" checked={visibleCols.status} onChange={() => setVisibleCols(v => ({ ...v, status: !v.status }))} />상태
-          </label>
-          <div style={{ width: '1px', alignSelf: 'stretch', background: C.border }} />
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={includeEmptyStock} onChange={() => setIncludeEmptyStock(v => !v)} />재고 0 포함
           </label>
         </div>
 
