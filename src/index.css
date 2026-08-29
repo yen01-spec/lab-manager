@@ -73,20 +73,15 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* ── 좁은 표 안 입력칸: 포커스하면 넓게 확장(입력 중인 글씨를 볼 수 있게) ──
-   부모 td는 position:relative여야 함(구매요청서 등에서 사용) */
-.wide-on-focus {
-  transition: none;
-}
-.wide-on-focus:focus {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 50;
-  width: 260px !important;
-  max-width: 60vw;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-  background: #fff;
+/* ── 좁은 표 안 입력칸: 글자가 많아지면 옆 칸을 가리지 않고 줄바꿈되며
+   칸 높이가 늘어남(가로로 넓어지는 대신 세로로 늘어남). JS에서 입력마다
+   scrollHeight로 height를 다시 계산해줌(autoGrow) */
+textarea.autosize-cell {
+  resize: none;
+  overflow: hidden;
+  font-family: inherit;
+  line-height: 1.4;
+  display: block;
 }
 
 /* ── 스크롤바 ─────────────────────────────────────────── */

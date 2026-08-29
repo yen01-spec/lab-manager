@@ -53,16 +53,26 @@ export default function ReagentAutocomplete({
       if (e.key === 'Escape') { setOpen(false); return }
       if (e.key === 'Enter' && highlightIdx >= 0) { e.preventDefault(); select(options[highlightIdx]); return }
     }
-    if (e.key === 'Enter' && onEnter) onEnter()
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (onEnter) onEnter()
+    }
+  }
+
+  function handleInput(e) {
+    e.target.style.height = 'auto'
+    e.target.style.height = e.target.scrollHeight + 'px'
+    handleChange(e.target.value)
   }
 
   return (
     <div style={{ position: 'relative', flex: 1 }}>
-      <input
+      <textarea
         ref={inputRef}
-        className={className}
+        className={`autosize-cell ${className || ''}`}
+        rows={1}
         value={value}
-        onChange={e => handleChange(e.target.value)}
+        onChange={handleInput}
         onFocus={() => { if (options.length > 0) setOpen(true) }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         onKeyDown={handleKeyDown}
