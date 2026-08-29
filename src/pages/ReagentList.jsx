@@ -118,8 +118,12 @@ export default function ReagentList() {
     }
   }
 
+  // 표시 열 체크박스를 기본값으로 되돌림(기존의 검색어/위치/제조사 초기화 기능을 대체)
   function resetFilters() {
-    setSearch(''); setLocationFilter(''); setCompanyFilter('')
+    setVisibleCols({
+      casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
+      lot: false, expiry: false, category: false, ghs: false, status: false,
+    })
   }
 
   // 편집 모드 토글
@@ -333,24 +337,29 @@ function toggleCheck(id, e, allData) {
   // 카드(overflow:hidden) 밖에 형제로 렌더링해야 position:sticky가 실제로 뷰포트 기준으로 붙는다
   const AlphabetIndex = ({ data }) => {
     if (editMode) return null
+    const BASE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
     const availableLetters = new Set(data.map(r => r.name[0].toUpperCase()))
+    // A~Z는 항상 표시(없으면 연하게, 있으면 J처럼 진하게) — 그 외 문자(숫자·한글 등)는
+    // 실제 목록에 있을 때만 동적으로 추가되고, 사라지면 인덱스에서도 같이 사라짐.
+    const extra = [...availableLetters].filter(l => !BASE.includes(l)).sort((a, b) => a.localeCompare(b, 'ko'))
+    const allLetters = [...BASE, ...extra]
     return (
       <div style={{
-        width: '18px', flexShrink: 0, marginLeft: '4px',
+        width: '22px', flexShrink: 0, marginLeft: '4px',
         position: 'sticky', top: '96px',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
       }}>
-        {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => (
+        {allLetters.map(letter => (
           <button key={letter} onClick={() => scrollToLetter(letter)}
             disabled={!availableLetters.has(letter)} style={{
-              width: '18px', height: '14px', border: 'none', background: 'transparent',
+              width: '22px', height: '18px', border: 'none', background: 'transparent',
               cursor: availableLetters.has(letter) ? 'pointer' : 'default',
-              color: availableLetters.has(letter) ? C.muted : '#E2E5EA',
-              fontSize: '9px', fontWeight: availableLetters.has(letter) ? '700' : '400', padding: 0,
-              transition: 'color 0.1s',
+              color: availableLetters.has(letter) ? C.navy : '#D5D9E0',
+              fontSize: '11px', fontWeight: availableLetters.has(letter) ? '700' : '400', padding: 0,
+              transition: 'color 0.1s, background 0.1s', borderRadius: '4px',
             }}
-            onMouseEnter={e => { if (availableLetters.has(letter)) e.currentTarget.style.color = C.blue }}
-            onMouseLeave={e => { if (availableLetters.has(letter)) e.currentTarget.style.color = C.muted }}
+            onMouseEnter={e => { if (availableLetters.has(letter)) { e.currentTarget.style.color = C.white; e.currentTarget.style.background = C.blue } }}
+            onMouseLeave={e => { if (availableLetters.has(letter)) { e.currentTarget.style.color = C.navy; e.currentTarget.style.background = 'transparent' } }}
           >{letter}</button>
         ))}
       </div>
@@ -671,10 +680,6 @@ function toggleCheck(id, e, allData) {
             <option value="">전체 제조사</option>
             {companies.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <button onClick={resetFilters} style={{
-            background: 'none', border: `1px solid ${C.border}`, borderRadius: '6px',
-            padding: '9px 14px', cursor: 'pointer', fontSize: '13px', color: C.muted, flexShrink: 0,
-          }}>필터 초기화</button>
           <button onClick={() => { setShowBulkLookupModal(true); setBulkLookupResults(null) }} style={{
             background: C.white, color: C.text, border: `1px solid ${C.border}`,
             padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
@@ -740,6 +745,10 @@ function toggleCheck(id, e, allData) {
           <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
             <input type="checkbox" checked={visibleCols.status} onChange={() => setVisibleCols(v => ({ ...v, status: !v.status }))} />상태
           </label>
+          <button onClick={resetFilters} style={{
+            background: 'none', border: `1px solid ${C.border}`, borderRadius: '6px',
+            padding: '4px 10px', cursor: 'pointer', fontSize: '11.5px', color: C.muted,
+          }}>필터 초기화</button>
         </div>
 
         {/* 편집 모드 액션 바 */}

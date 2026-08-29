@@ -59,7 +59,7 @@ export default function ReagentDetail() {
   const [showMoveModal, setShowMoveModal] = useState(false)
   const [moveForm, setMoveForm] = useState({ lot_id: '', to_location_id: '', notes: '' })
   const [showAddLotModal, setShowAddLotModal] = useState(false)
-  const [addLotForm, setAddLotForm] = useState({ lot_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
+  const [addLotForm, setAddLotForm] = useState({ lot_no: '', cat_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
   const [locations, setLocations] = useState([])
   const [history, setHistory] = useState([])
 
@@ -349,7 +349,7 @@ export default function ReagentDetail() {
     if (!addLotForm.location_id) { alert('보관 위치를 선택해주세요'); return }
     if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
     const { data: newLot } = await supabase.from('reagent_lots').insert({
-      reagent_id: id, lot_no: addLotForm.lot_no || null,
+      reagent_id: id, lot_no: addLotForm.lot_no || null, cat_no: addLotForm.cat_no || null,
       sealed_count: Number(addLotForm.sealed_count) || 0, current_stock: Number(addLotForm.current_stock) || 0,
       location_id: addLotForm.location_id, received_date: addLotForm.received_date || null,
       expiry_date: addLotForm.expiry_date || null, status: 'active',
@@ -361,7 +361,7 @@ export default function ReagentDetail() {
     })
     alert('새 Lot이 등록됐어요!')
     setShowAddLotModal(false)
-    setAddLotForm({ lot_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
+    setAddLotForm({ lot_no: '', cat_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
     fetchAll()
   }
 
@@ -542,6 +542,7 @@ export default function ReagentDetail() {
                         )}
                       </div>
                       <InfoRow label="위치" value={lotLoc ? `${lotLoc.room}${lotLoc.detail ? ' · ' + lotLoc.detail : ''}` : ''} />
+                      <InfoRow label="Cat No." value={lot.cat_no} />
                       <InfoRow label="입고일" value={lot.received_date} />
                       <InfoRow label="개봉일" value={lot.opened_date} />
                       <InfoRow label="유효기간" value={lot.expiry_date} />
@@ -585,7 +586,7 @@ export default function ReagentDetail() {
                 </a>
                 {isAdmin && (
                   <label style={{ fontSize: '11.5px', color: C.blue, cursor: uploadingMsds ? 'default' : 'pointer' }}>
-                    {uploadingMsds ? '업로드 중...' : (reagent.msds_url ? '📤 파일 교체' : '📤 MSDS 파일 업로드')}
+                    {uploadingMsds ? '업로드 중...' : (reagent.msds_url ? '📤 제조사 MSDS 파일 교체' : '📤 제조사 MSDS 파일 업로드')}
                     <input type="file" accept="application/pdf" disabled={uploadingMsds}
                       onChange={e => uploadMsds(e.target.files[0])} style={{ display: 'none' }} />
                   </label>
@@ -760,8 +761,12 @@ export default function ReagentDetail() {
             <h3 style={{ margin: '0 0 4px', color: C.navy }}>📦 재고 등록</h3>
             <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{reagent.name} — 새로 구매한 Lot을 추가해요. 시약명·CAS 등은 다시 입력할 필요 없어요.</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div><label style={labelStyle}>Lot No.</label>
-                <input value={addLotForm.lot_no} onChange={e => setAddLotForm({ ...addLotForm, lot_no: e.target.value })} style={inputStyle} /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div><label style={labelStyle}>Lot No.</label>
+                  <input value={addLotForm.lot_no} onChange={e => setAddLotForm({ ...addLotForm, lot_no: e.target.value })} style={inputStyle} /></div>
+                <div><label style={labelStyle}>Cat No.</label>
+                  <input value={addLotForm.cat_no} onChange={e => setAddLotForm({ ...addLotForm, cat_no: e.target.value })} style={inputStyle} /></div>
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <div><label style={labelStyle}>미개봉 병 수</label>
                   <input type="number" min="0" value={addLotForm.sealed_count} onChange={e => setAddLotForm({ ...addLotForm, sealed_count: e.target.value })} style={inputStyle} /></div>

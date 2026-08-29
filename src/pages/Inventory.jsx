@@ -130,6 +130,7 @@ export default function Inventory() {
   const [showStartModal, setShowStartModal] = useState(false)
   const [assignForm, setAssignForm] = useState({ zone: '', assigned_to: '' })
   const [progress, setProgress] = useState({ total: 0, done: 0 })
+  const [myCountedCount, setMyCountedCount] = useState(0) // ← 내가 이번 세션에서 이미 입력한 게 있는지("이어서 진행" 문구 판단용)
   const [zoneProgress, setZoneProgress] = useState({})
   const [pausing, setPausing] = useState(false)
 
@@ -202,6 +203,11 @@ export default function Inventory() {
     const { count: total } = await supabase.from('inventory_counts').select('*', { count: 'exact', head: true }).eq('session_id', activeSession.id)
     const { count: done } = await supabase.from('inventory_counts').select('*', { count: 'exact', head: true }).eq('session_id', activeSession.id).not('actual_sealed', 'is', null)
     setProgress({ total: total || 0, done: done || 0 })
+    if (student?.student_id) {
+      const { count: mine } = await supabase.from('inventory_counts').select('*', { count: 'exact', head: true })
+        .eq('session_id', activeSession.id).eq('counted_by_student_id', student.student_id)
+      setMyCountedCount(mine || 0)
+    }
   }
 
   async function fetchZoneProgress() {
@@ -271,9 +277,23 @@ export default function Inventory() {
 
   async function addAssignment() {
     if (!assignForm.zone || !assignForm.assigned_to.trim()) { alert('구역과 담당자를 입력해주세요'); return }
-    const exists = assignments.find(a => a.zone === assignForm.zone && a.assigned_to === assignForm.assigned_to)
+    const name = assignForm.assigned_to.trim()
+    const exists = assignments.find(a => a.zone === assignForm.zone && a.assigned_to === name)
     if (exists) { alert('이미 배정된 담당자입니다'); return }
-    await supabase.from('inventory_assignments').insert({ session_id: activeSession.id, zone: assignForm.zone, assigned_to: assignForm.assigned_to })
+    // 이름만으로는 동명이인을 구분 못하므로, 학번을 같이 저장해서 정확히 그 학생과 매칭되게 함
+    const { data: matches } = await supabase.from('students').select('student_id, name').eq('name', name)
+    let assignedStudentId = null
+    if (matches && matches.length === 1) {
+      assignedStudentId = matches[0].student_id
+    } else if (matches && matches.length > 1) {
+      const picked = window.prompt(`"${name}"인 학생이 ${matches.length}명 있어요. 배정할 학생의 학번을 입력해주세요:\n${matches.map(m => `- ${m.student_id}`).join('\n')}`)
+      if (picked === null) return
+      const found = matches.find(m => m.student_id === picked.trim())
+      if (!found) { alert('입력한 학번과 일치하는 학생이 없습니다. 다시 시도해주세요.'); return }
+      assignedStudentId = found.student_id
+    }
+    // matches가 0건이면(등록 안 된 이름 등) 학번 없이 이름만으로 배정 — 기존 방식 그대로 유지
+    await supabase.from('inventory_assignments').insert({ session_id: activeSession.id, zone: assignForm.zone, assigned_to: name, assigned_student_id: assignedStudentId })
     setAssignForm({ ...assignForm, assigned_to: '' })
     fetchAssignments()
   }
@@ -615,7 +635,7 @@ export default function Inventory() {
                   ) : (
                     <span style={{ fontSize: '13.5px', color: C.muted }}>로그인 후 이용해주세요</span>
                   )}
-                  <button onClick={enterCounting} style={btnPrimary}>📝 실사 입력 시작</button>
+                  <button onClick={enterCounting} style={btnPrimary}>{myCountedCount > 0 ? '📝 실사 이어서 진행' : '📝 실사 입력 시작'}</button>
                 </div>
               )}
             </Card>
@@ -797,6 +817,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
   const searchInputRef = useRef(null)
   const searchBoxRef = useRef(null)   // ← 후보 드롭다운 바깥 클릭 감지용
   const comparePanelInputRef = useRef(null)
+  const completeButtonRef = useRef(null)
   const searchDebounceRef = useRef(null)
   const savedMsgTimerRef = useRef(null)
 
@@ -1043,6 +1064,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
 
   function saveComparePanel() {
     if (!compareLot) return
+    if (!window.confirm(`'${compareLot.reagents?.name}' 정보를 확인 완료하시겠습니까?`)) return
     const count = counts[compareLot.id]
     const bookSealed = count?.book_sealed ?? compareLot.sealed_count
     const value = comparePanelInputRef.current?.value
@@ -1276,7 +1298,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                       <div style={{ fontSize: '11px', color: C.muted }}>실측 수량(미개봉)</div>
                       {compareLot ? (
                         <input key={compareLot.id} ref={comparePanelInputRef} type="number" min="0" defaultValue={count?.actual_sealed ?? bookSealed}
-                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveComparePanel() } }}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); completeButtonRef.current?.focus() } }}
                           style={{ ...inputStyle, width: '90px', padding: '5px 8px', marginTop: '2px' }} />
                       ) : (
                         <input disabled placeholder="-" style={{ ...disabledBoxStyle, width: '90px' }} />
@@ -1284,7 +1306,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', marginTop: '14px' }}>
-                    <button onClick={saveComparePanel} disabled={!compareLot} style={{ ...btnPrimary, padding: '7px 16px', fontSize: '13px', opacity: compareLot ? 1 : 0.4, cursor: compareLot ? 'pointer' : 'default' }}>완료 (Enter)</button>
+                    <button ref={completeButtonRef} onClick={saveComparePanel} disabled={!compareLot} style={{ ...btnPrimary, padding: '7px 16px', fontSize: '13px', opacity: compareLot ? 1 : 0.4, cursor: compareLot ? 'pointer' : 'default' }}>완료</button>
                   </div>
                 </>
               )
@@ -1371,9 +1393,14 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
         )}
 
         {/* ── 테이블 + 알파벳 인덱스 ── */}
+        {/* 시약 목록 화면과 행 높이를 맞추기 위해 이 표 안의 셀/입력칸 패딩만 좁게(className으로 스코프) */}
+        <style>{`
+          .inv-count-table td { padding: 4px 8px !important; }
+          .inv-count-table input, .inv-count-table select { padding: 3px 6px !important; margin-top: 0 !important; font-size: 12.5px !important; }
+        `}</style>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
           <div style={{ flex: 1, background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflowX: 'auto', overflowY: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table className="inv-count-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
                   {['시약명', 'CAS No.', '회사', '용량', '단위', '성상/유별', '유해위험성', '위치', 'Lot No.', '장부(미개봉)', '실측(미개봉)', '잔량(%)', '상태', '미확인', '이상기록', '위치변경',
@@ -1653,8 +1680,11 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
 }
 
 // 관리자용 — 이번 실사에서 새로 등록된 시약 모아보기(1단계 완료 처리 전 검토용)
+// 신규 등록된 시약이, 이번 실사에서 다른 위치에 "미확인" 처리된 시약과 이름이 같으면
+// "혹시 그게 잘못 보관돼서 여기서 새로 등록된 거 아닐까?"를 관리자가 알아챌 수 있게 표시.
 function NewRegistrationSummary({ session }) {
   const [rows, setRows] = useState([])
+  const [missingByName, setMissingByName] = useState(new Map()) // 시약명 -> 원래 있어야 했던 위치명
   async function fetchRows() {
     const { data } = await supabase.from('inventory_counts')
       .select('*, reagents(name), reagent_lots(lot_no)')
@@ -1662,17 +1692,34 @@ function NewRegistrationSummary({ session }) {
       .order('counted_at', { ascending: false })
     setRows(data || [])
   }
-  useEffect(() => { fetchRows() }, [session.id])
+  async function fetchMissing() {
+    const [{ data: missing }, { data: locs }] = await Promise.all([
+      supabase.from('inventory_counts').select('reagents(name), book_location_id')
+        .eq('session_id', session.id).eq('reported_missing', true),
+      supabase.from('locations').select('id, room, detail'),
+    ])
+    const locById = new Map((locs || []).map(l => [l.id, `${l.room}${l.detail ? ' · ' + l.detail : ''}`]))
+    const map = new Map()
+    ;(missing || []).forEach(m => {
+      if (m.reagents?.name) map.set(m.reagents.name, locById.get(m.book_location_id) || '다른 위치')
+    })
+    setMissingByName(map)
+  }
+  useEffect(() => { fetchRows(); fetchMissing() }, [session.id])
   if (rows.length === 0) return null
   return (
     <div style={{ background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '10px', padding: '12px 16px', marginBottom: '16px' }}>
       <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400E', marginBottom: '6px' }}>🆕 이번 실사에서 새로 등록된 시약 ({rows.length}건)</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-        {rows.map(r => (
-          <span key={r.id} style={{ fontSize: '12px', background: C.white, border: '1px solid #F0DBAE', borderRadius: '20px', padding: '3px 10px', color: '#92400E' }}>
-            {r.reagents?.name} (Lot {r.reagent_lots?.lot_no || '번호없음'})
-          </span>
-        ))}
+        {rows.map(r => {
+          const originalLoc = missingByName.get(r.reagents?.name)
+          return (
+            <span key={r.id} title={originalLoc ? `같은 이름의 시약이 "${originalLoc}"에서 미확인(분실) 처리됨 — 잘못 보관돼서 여기서 새로 등록된 걸 수도 있어요` : undefined}
+              style={{ fontSize: '12px', background: C.white, border: `1px solid ${originalLoc ? C.danger : '#F0DBAE'}`, borderRadius: '20px', padding: '3px 10px', color: originalLoc ? C.danger : '#92400E', fontWeight: originalLoc ? '700' : '400' }}>
+              {r.reagents?.name} (Lot {r.reagent_lots?.lot_no || '번호없음'}){originalLoc && ` ⚠️ ${originalLoc}에서 미확인됨`}
+            </span>
+          )
+        })}
       </div>
     </div>
   )
