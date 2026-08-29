@@ -73,6 +73,22 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+/* ── 좁은 표 안 입력칸: 포커스하면 넓게 확장(입력 중인 글씨를 볼 수 있게) ──
+   부모 td는 position:relative여야 함(구매요청서 등에서 사용) */
+.wide-on-focus {
+  transition: none;
+}
+.wide-on-focus:focus {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  width: 260px !important;
+  max-width: 60vw;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  background: #fff;
+}
+
 /* ── 스크롤바 ─────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

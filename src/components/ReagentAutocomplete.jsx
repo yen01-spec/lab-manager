@@ -17,7 +17,7 @@ function highlightPrefix(text, query) {
 }
 
 export default function ReagentAutocomplete({
-  value, onChange, onSelect, onEnter, placeholder, inputStyle: inputStyleProp, inputRef,
+  value, onChange, onSelect, onEnter, placeholder, inputStyle: inputStyleProp, inputRef, className,
 }) {
   const [options, setOptions] = useState([])
   const [open, setOpen] = useState(false)
@@ -60,6 +60,7 @@ export default function ReagentAutocomplete({
     <div style={{ position: 'relative', flex: 1 }}>
       <input
         ref={inputRef}
+        className={className}
         value={value}
         onChange={e => handleChange(e.target.value)}
         onFocus={() => { if (options.length > 0) setOpen(true) }}
