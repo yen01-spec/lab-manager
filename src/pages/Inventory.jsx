@@ -1180,14 +1180,46 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
             ) : (() => {
               const count = compareLot ? counts[compareLot.id] : null
               const bookSealed = compareLot ? (count?.book_sealed ?? compareLot.sealed_count) : null
+              const book = count?.book_reagent_fields || {}
+              const staged = count?.staged_reagent_fields || {}
+              const disabledBoxStyle = { ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px', background: C.bg, color: C.muted }
+
+              // 시약명/CAS/회사도 실측값처럼 담당자가 직접 확인해서 고칠 수 있는 입력칸으로 표시(단, "-" 텍스트가 아니라 네모 입력칸)
+              function panelMasterField(field, width) {
+                const bookVal = compareLot ? (book[field] ?? compareLot.reagents?.[field] ?? '') : ''
+                const current = field in staged ? staged[field] : bookVal
+                return compareLot ? (
+                  <input key={`${compareLot.id}_${field}`} defaultValue={current}
+                    onBlur={e => saveReagentField(compareLot, field, e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveReagentField(compareLot, field, e.target.value) } }}
+                    style={{ ...inputStyle, width: `${width}px`, padding: '5px 8px', marginTop: '2px', fontSize: '13px' }} />
+                ) : (
+                  <input disabled placeholder="-" style={{ ...disabledBoxStyle, width: `${width}px` }} />
+                )
+              }
+
               return (
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px 20px', fontSize: '13px' }}>
-                    <div><div style={{ fontSize: '11px', color: C.muted }}>시약명</div><div style={{ fontWeight: '600', color: C.navy }}>{compareLot?.reagents?.name || '-'}</div></div>
-                    <div><div style={{ fontSize: '11px', color: C.muted }}>CAS No.</div><div>{compareLot?.reagents?.cas_no || '-'}</div></div>
-                    <div><div style={{ fontSize: '11px', color: C.muted }}>회사</div><div>{compareLot?.reagents?.company || '-'}</div></div>
-                    <div><div style={{ fontSize: '11px', color: C.muted }}>위치</div><div>{compareLot ? `${compareLot.locations?.room || '-'}${compareLot.locations?.detail ? ' · ' + compareLot.locations.detail : ''}` : '-'}</div></div>
-                    <div><div style={{ fontSize: '11px', color: C.muted }}>장부 수량(미개봉)</div><div>{compareLot ? `${bookSealed}병` : '-'}</div></div>
+                    <div><div style={{ fontSize: '11px', color: C.muted }}>시약명</div>{panelMasterField('name', 160)}</div>
+                    <div><div style={{ fontSize: '11px', color: C.muted }}>CAS No.</div>{panelMasterField('cas_no', 130)}</div>
+                    <div><div style={{ fontSize: '11px', color: C.muted }}>회사</div>{panelMasterField('company', 130)}</div>
+                    <div>
+                      <div style={{ fontSize: '11px', color: C.muted }}>위치</div>
+                      {compareLot ? (
+                        <select value={counts[compareLot.id]?.staged_location_id ?? compareLot.location_id ?? ''} onChange={e => changeLocation(compareLot, e.target.value)}
+                          style={{ ...inputStyle, width: '150px', padding: '5px 8px', marginTop: '2px', fontSize: '13px' }}>
+                          <option value="">(위치 없음)</option>
+                          {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+                        </select>
+                      ) : (
+                        <select disabled style={{ ...disabledBoxStyle, width: '150px' }}><option>-</option></select>
+                      )}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '11px', color: C.muted }}>장부 수량(미개봉)</div>
+                      <input disabled value={compareLot ? `${bookSealed}병` : ''} placeholder="-" style={{ ...disabledBoxStyle, width: '90px' }} />
+                    </div>
                     <div>
                       <div style={{ fontSize: '11px', color: C.muted }}>실측 수량(미개봉)</div>
                       {compareLot ? (
@@ -1195,11 +1227,11 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveComparePanel() } }}
                           style={{ ...inputStyle, width: '90px', padding: '5px 8px', marginTop: '2px' }} />
                       ) : (
-                        <input disabled placeholder="-" style={{ ...inputStyle, width: '90px', padding: '5px 8px', marginTop: '2px', background: C.bg, color: C.muted }} />
+                        <input disabled placeholder="-" style={{ ...disabledBoxStyle, width: '90px' }} />
                       )}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', marginTop: '14px' }}>
                     <button onClick={saveComparePanel} disabled={!compareLot} style={{ ...btnPrimary, padding: '7px 16px', fontSize: '13px', opacity: compareLot ? 1 : 0.4, cursor: compareLot ? 'pointer' : 'default' }}>완료 (Enter)</button>
                   </div>
                 </>
