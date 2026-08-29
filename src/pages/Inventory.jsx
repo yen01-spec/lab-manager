@@ -791,6 +791,11 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
   const inputRefs = useRef({})
   const rowRefs = useRef({})       // ← 알파벳 인덱스용 행 ref
   const searchRef = useRef(null)   // ← 드롭다운 외부 클릭 감지
+  const searchInputRef = useRef(null)
+  // 실제로 병을 무작위 순서로 꺼내며 검색해서 확인하는 게 실제 작업 방식이라(목록 순서대로가 아님),
+  // 검색으로 찾아간 항목은 확인 후 "다음 표 행"이 아니라 "검색창"으로 되돌아가야 함.
+  // 표를 직접 클릭해서 순서대로 훑을 때는(예: 미입력 목록 마지막 정리) 기존처럼 다음 행으로 이동.
+  const cameFromSearchRef = useRef(null)
 
   useEffect(() => { fetchLots(); fetchLocations() }, [])
 
@@ -864,8 +869,14 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     // 고쳐 쓴 값을 지워서 빈 칸이 되면 장부값으로 되돌린 것으로 보고 그 값을 저장
     if (sealedEl) saveCount(lot, 'actual_sealed', sealedEl.value !== '' ? sealedEl.value : bookSealed)
     if (stockEl) saveCount(lot, 'actual_stock', stockEl.value !== '' ? stockEl.value : bookStock)
-    const nextLot = currentList[idx + 1]
-    if (nextLot && inputRefs.current[`sealed_${nextLot.id}`]) inputRefs.current[`sealed_${nextLot.id}`].focus()
+    if (cameFromSearchRef.current === lot.id) {
+      // 검색해서 찾아온 항목이면 실제 작업 순서(무작위)에 맞게 검색창으로 되돌아가 바로 다음 병을 입력할 수 있게 함
+      cameFromSearchRef.current = null
+      setTimeout(() => { searchInputRef.current?.focus() }, 0)
+    } else {
+      const nextLot = currentList[idx + 1]
+      if (nextLot && inputRefs.current[`sealed_${nextLot.id}`]) inputRefs.current[`sealed_${nextLot.id}`].focus()
+    }
   }
 
   // 미확인(분실) 표시 — 스테이징만(실사 완료 처리 시점에 reagent_lots.status='missing'으로 반영)
@@ -1006,9 +1017,12 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     setFilter('all')
     const idx = lots.findIndex(l => l.id === lot.id)
     setCapStart(Math.max(0, idx - 20))
+    cameFromSearchRef.current = lot.id
     setTimeout(() => {
       if (rowRefs.current[lot.id]) rowRefs.current[lot.id].scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 100)
+      const sealedEl = inputRefs.current[`sealed_${lot.id}`]
+      if (sealedEl) { sealedEl.focus(); sealedEl.select() }
+    }, 150)
   }
 
   // 지금 실사 중인 시약장(위치) 하나로 화면을 좁혀서 보는 필터 — 관리자/담당자 구분 없이
@@ -1023,7 +1037,10 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     }
   })
 
-  const filteredLots = lots.filter(lot => {
+  // 위치 필터가 걸려 있으면 검색도 그 범위 안에서만 — 지금 서 있는 시약장과 무관한 결과가 뜨지 않게
+  const locationScopedLots = locationFilter ? lots.filter(l => l.location_id === locationFilter) : lots
+
+  const filteredLots = locationScopedLots.filter(lot => {
     const name = lot.reagents?.name?.toLowerCase() || ''
     const matchSearch = !search || name.includes(search.toLowerCase())
     const count = counts[lot.id]
@@ -1034,13 +1051,18 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     const stockDiff = count?.actual_stock != null ? Math.abs(count.actual_stock - bookStock) : 0
     if (filter === 'undone' && isDone) return false
     if (filter === 'diff' && sealedDiff === 0 && stockDiff === 0) return false
-    if (locationFilter && lot.location_id !== locationFilter) return false
     return matchSearch
   })
 
-  // 드롭다운 후보 — 검색어 있을 때만
+  // 드롭다운 후보 — 검색어 있을 때만. 실제로 병을 무작위로 꺼내며 라벨의 시약명/CAS/Lot 번호
+  // 중 뭐가 보이든 그걸로 바로 찾을 수 있어야 하므로 셋 다 검색 대상에 포함(위치 필터 범위 안에서).
   const dropdownLots = search.trim()
-    ? lots.filter(l => (l.reagents?.name || '').toLowerCase().includes(search.toLowerCase())).slice(0, 20)
+    ? locationScopedLots.filter(l => {
+        const term = search.toLowerCase()
+        return (l.reagents?.name || '').toLowerCase().includes(term)
+          || (l.reagents?.cas_no || '').toLowerCase().includes(term)
+          || (l.lot_no || '').toLowerCase().includes(term)
+      }).slice(0, 20)
     : []
 
   // 범위가 넓은 실사(예: 전체)에서 수백~수천 행을 한꺼번에 그리면 페이지가 멈춘 것처럼 느려짐 —
@@ -1109,10 +1131,14 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
           {/* ── 드롭다운 검색 ── */}
           <div ref={searchRef} style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
             <input
+              ref={searchInputRef}
               value={search}
               onChange={e => { setSearch(e.target.value); setSearchOpen(true) }}
               onFocus={() => setSearchOpen(true)}
-              placeholder="시약명 검색 또는 선택..."
+              onKeyDown={e => {
+                if (e.key === 'Enter' && dropdownLots.length > 0) { e.preventDefault(); jumpToLot(dropdownLots[0]) }
+              }}
+              placeholder="시약명 / CAS / Lot No. 검색 후 Enter"
               style={{ ...inputStyle, width: '220px' }}
             />
             {searchOpen && dropdownLots.length > 0 && (
