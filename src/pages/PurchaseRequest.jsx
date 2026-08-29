@@ -265,13 +265,13 @@ export default function PurchaseRequest() {
                 </Field>
               </div>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '18px 0 4px', paddingTop: '14px', borderTop: `1px solid ${C.border}`, fontSize: '13px', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '18px 0 10px', paddingTop: '14px', borderTop: `1px solid ${C.border}`, fontSize: '13px', cursor: 'pointer' }}>
                 <input type="checkbox" checked={wantsProduct} onChange={e => setWantsProduct(e.target.checked)} />
                 원하는 제품이 있어요
+                <span style={{ fontSize: '11.5px', color: C.muted, fontWeight: '400' }}>체크 시에만 아래 제품 정보 입력 (선택)</span>
               </label>
               {wantsProduct && (
                 <>
-                  <div style={{ fontSize: '11.5px', color: C.muted, marginBottom: '10px' }}>체크 시에만 아래 제품 정보 입력 (선택)</div>
                   <div style={{ ...fieldGridStyle, background: C.bg, borderRadius: '8px', padding: '14px' }}>
                     <Field label="제조사">
                       <input value={reagentDraft.company} onChange={e => updateReagentDraft('company', e.target.value)}
@@ -438,11 +438,13 @@ export default function PurchaseRequest() {
             <div>
               <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>요청자: {student?.name || '-'} {student?.student_id ? `(${student.student_id})` : ''}</div>
               <div style={{ fontSize: '11px', color: C.muted }}>{new Date().toLocaleDateString('ko-KR')} 작성 · 시약 {reagentItems.length}건 · 물품 {goodsItems.length}건</div>
-              <div className="no-print" style={{ fontSize: '11px', color: C.blue, marginTop: '4px' }}>📎 시약 목록과 물품 목록이 하나의 파일로 함께 내보내집니다</div>
             </div>
-            <div className="no-print" style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={handleExportExcel} disabled={saving} style={{ ...btnGhost, padding: '10px 18px', opacity: saving ? 0.6 : 1 }}>📊 Excel로 내보내기</button>
-              <button onClick={handleDownloadPdf} disabled={saving} style={{ ...btnPrimary, padding: '10px 18px', opacity: saving ? 0.6 : 1 }}>📄 PDF로 저장</button>
+            <div className="no-print" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+              <div style={{ fontSize: '11px', color: C.blue }}>📎 시약 목록과 물품 목록이 하나의 파일로 함께 내보내집니다</div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={handleExportExcel} disabled={saving} style={{ ...btnGhost, padding: '10px 18px', opacity: saving ? 0.6 : 1 }}>📊 Excel로 내보내기</button>
+                <button onClick={handleDownloadPdf} disabled={saving} style={{ ...btnPrimary, padding: '10px 18px', opacity: saving ? 0.6 : 1 }}>📄 PDF로 저장</button>
+              </div>
             </div>
           </div>
         </Card>
