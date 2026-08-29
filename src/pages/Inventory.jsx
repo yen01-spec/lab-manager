@@ -708,13 +708,25 @@ export default function Inventory() {
                 <button onClick={() => setZoneMode('select')} style={{ padding: '6px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', border: `1px solid ${zoneMode === 'select' ? C.navy : C.border}`, background: zoneMode === 'select' ? C.navy : C.white, color: zoneMode === 'select' ? '#fff' : C.text }}>구역 선택</button>
               </div>
               {zoneMode === 'select' && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '10px', background: C.bg, borderRadius: '8px' }}>
-                  {rooms.map(r => (
-                    <button key={r} onClick={() => {
-                      const cur = startForm.zones || []
-                      setStartForm({ ...startForm, zones: cur.includes(r) ? cur.filter(z => z !== r) : [...cur, r] })
-                    }} style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', border: `1px solid ${(startForm.zones || []).includes(r) ? C.navy : C.border}`, background: (startForm.zones || []).includes(r) ? C.navy : C.white, color: (startForm.zones || []).includes(r) ? '#fff' : C.text, fontWeight: (startForm.zones || []).includes(r) ? '700' : '400' }}>{r}</button>
-                  ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: C.bg, borderRadius: '8px', maxHeight: '260px', overflowY: 'auto' }}>
+                  {rooms.map(r => {
+                    const locsInRoom = locations.filter(l => l.room === r)
+                    // 세부 위치(시약장)가 하나뿐이거나 없으면 방 이름 자체를 하나의 구역으로 취급
+                    const zoneTokens = locsInRoom.length > 0 ? [...new Set(locsInRoom.map(l => l.detail || l.room))] : [r]
+                    return (
+                      <div key={r}>
+                        <div style={{ fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '4px' }}>{r}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {zoneTokens.map(z => (
+                            <button key={z} onClick={() => {
+                              const cur = startForm.zones || []
+                              setStartForm({ ...startForm, zones: cur.includes(z) ? cur.filter(x => x !== z) : [...cur, z] })
+                            }} style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', border: `1px solid ${(startForm.zones || []).includes(z) ? C.navy : C.border}`, background: (startForm.zones || []).includes(z) ? C.navy : C.white, color: (startForm.zones || []).includes(z) ? '#fff' : C.text, fontWeight: (startForm.zones || []).includes(z) ? '700' : '400' }}>{z}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -743,10 +755,10 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)   // ← 드롭다운 열림 여부
   const [filter, setFilter] = useState('all')
+  const [locationFilter, setLocationFilter] = useState('')
   const [capStart, setCapStart] = useState(0) // 렌더 캡 윈도우 시작 인덱스 — 알파벳 인덱스 점프 시 이동
   const [saving, setSaving] = useState({})
-  const [changeModal, setChangeModal] = useState(null)
-  const [changeForm, setChangeForm] = useState({ field_name: 'name', new_value: '' })
+  const [disposingLotId, setDisposingLotId] = useState(null)
   const [showNewRegModal, setShowNewRegModal] = useState(false)
   const [newRegSearch, setNewRegSearch] = useState('')
   const [newRegCandidates, setNewRegCandidates] = useState([])
@@ -819,6 +831,18 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     setSaving(prev => ({ ...prev, [lot.id]: false }))
   }
 
+  // 실측/잔량 입력칸은 장부값이 이미 채워진 채로 시작 — 병을 확인해서 장부랑 같으면
+  // 아무것도 고치지 않고 Enter 한 번으로 그 값 그대로 저장 + 바로 다음 행으로 이동.
+  // 다르면 그 칸만 고쳐 쓰고 Enter를 누르면 됨(엑셀에서 맞는 셀은 그냥 넘어가는 것과 동일한 흐름).
+  function confirmRow(lot, idx, currentList) {
+    const sealedEl = inputRefs.current[`sealed_${lot.id}`]
+    const stockEl = inputRefs.current[`stock_${lot.id}`]
+    if (sealedEl && sealedEl.value !== '') saveCount(lot, 'actual_sealed', sealedEl.value)
+    if (stockEl && stockEl.value !== '') saveCount(lot, 'actual_stock', stockEl.value)
+    const nextLot = currentList[idx + 1]
+    if (nextLot && inputRefs.current[`sealed_${nextLot.id}`]) inputRefs.current[`sealed_${nextLot.id}`].focus()
+  }
+
   // 미확인(분실) 표시 — 스테이징만(실사 완료 처리 시점에 reagent_lots.status='missing'으로 반영)
   async function toggleMissing(lot) {
     const existing = counts[lot.id]
@@ -838,17 +862,17 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], abnormal_note: trimmed } }))
   }
 
-  // 폐기 신청 — 실사 완료 처리 흐름과 무관하게 기존 disposal_requests 신청→승인 구조 그대로 재사용
-  async function requestDisposal(lot) {
+  // 폐기 신청 — 실사 완료 처리 흐름과 무관하게 기존 disposal_requests 신청→승인 구조 그대로 재사용.
+  // window.prompt() 대신 표를 벗어나지 않는 사유 칩 선택으로 한 번에 제출.
+  const DISPOSAL_REASONS = ['변색', '침전', '용기손상', '유효기간 경과', '기타']
+  async function requestDisposal(lot, reason) {
     if (!myName.trim()) { alert('로그인 후 이용해주세요'); return }
-    const reason = window.prompt(`'${lot.reagents?.name}' 폐기 신청 사유(선택사항):`, '')
-    if (reason === null) return
     await supabase.from('disposal_requests').insert({
       reagent_id: lot.reagent_id, lot_id: lot.id, lot_no: lot.lot_no,
       reagent_name: lot.reagents?.name, requested_by: myName, requested_by_student_id: student?.student_id ?? null,
-      reason: reason.trim() || null, status: 'pending',
+      reason, status: 'pending',
     })
-    alert('폐기 신청이 제출됐어요. 관리자 승인 후 처리됩니다.')
+    setDisposingLotId(null)
   }
 
   // 위치 변경(종합실사 전용) — 스테이징만(실사 완료 처리 시점에 location_id 반영 + location_history 기록).
@@ -927,20 +951,6 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     fetchLots()
   }
 
-  async function submitChangeRequest() {
-    if (!changeForm.new_value.trim()) { alert('변경할 값을 입력해주세요'); return }
-    const reagent = changeModal.reagent
-    const oldValue = reagent[changeForm.field_name] ?? ''
-    await supabase.from('reagent_change_requests').insert({
-      reagent_id: reagent.id, requested_by: myName, requested_by_student_id: student?.student_id ?? null,
-      field_name: changeForm.field_name,
-      old_value: String(oldValue), new_value: changeForm.new_value,
-    })
-    alert('변경 요청이 제출되었습니다. 관리자 승인 후 반영됩니다.')
-    setChangeModal(null)
-    setChangeForm({ field_name: 'name', new_value: '' })
-  }
-
   // 알파벳 인덱스 — 실제 존재하는 첫 글자만 추출
   const availableLetters = [...new Set(lots.map(l => {
     const first = l.reagents?.name?.[0]?.toUpperCase() || ''
@@ -976,6 +986,18 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     }, 100)
   }
 
+  // 지금 실사 중인 시약장(위치) 하나로 화면을 좁혀서 보는 필터 — 관리자/담당자 구분 없이
+  // 누구나 쓸 수 있는, 이 화면 안에서만 적용되는 클라이언트 사이드 보기 필터(구역 배정과는 별개).
+  const sessionLocationGroups = {}
+  lots.forEach(l => {
+    if (!l.location_id || !l.locations) return
+    const room = l.locations.room
+    if (!sessionLocationGroups[room]) sessionLocationGroups[room] = new Map()
+    if (!sessionLocationGroups[room].has(l.location_id)) {
+      sessionLocationGroups[room].set(l.location_id, l.locations.detail || l.locations.room)
+    }
+  })
+
   const filteredLots = lots.filter(lot => {
     const name = lot.reagents?.name?.toLowerCase() || ''
     const matchSearch = !search || name.includes(search.toLowerCase())
@@ -987,6 +1009,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     const stockDiff = count?.actual_stock != null ? Math.abs(count.actual_stock - bookStock) : 0
     if (filter === 'undone' && isDone) return false
     if (filter === 'diff' && sealedDiff === 0 && stockDiff === 0) return false
+    if (locationFilter && lot.location_id !== locationFilter) return false
     return matchSearch
   })
 
@@ -1005,7 +1028,6 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
 
   const doneCnt = lots.filter(l => counts[l.id]?.actual_sealed != null).length
   const pct = lots.length > 0 ? Math.round(doneCnt / lots.length * 100) : 0
-  const fieldLabels = { name: '시약명', volume: '용량', unit: '단위', category: '성상/유별', hazard: '유해위험성', cas_no: 'CAS No.', company: '회사' }
 
   // 시약 기본정보 열 — 잔량/미개봉과 같은 방식으로 Tab/Enter 이동하며 직접입력, 장부값과 다르면 파란 테두리.
   function fieldInputCell(lot, idx, field, width = 90) {
@@ -1030,8 +1052,8 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
           }}
           style={{
             width: `${width}px`, padding: '5px 8px', borderRadius: '6px',
-            border: `1px solid ${changed ? '#1565C0' : C.border}`,
-            fontSize: '12px', background: C.white,
+            border: `1px solid ${changed ? '#1565C0' : 'transparent'}`,
+            fontSize: '12px', background: changed ? '#EAF1FB' : 'transparent',
           }}
         />
       </td>
@@ -1107,6 +1129,20 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
             )}
           </div>
 
+          {Object.keys(sessionLocationGroups).length > 0 && (
+            <select value={locationFilter} onChange={e => { setLocationFilter(e.target.value); setCapStart(0) }}
+              style={{ ...inputStyle, width: 'auto', maxWidth: '190px' }}>
+              <option value="">📍 전체 위치</option>
+              {Object.entries(sessionLocationGroups).map(([room, locMap]) => (
+                <optgroup key={room} label={room}>
+                  {[...locMap.entries()].map(([locId, label]) => (
+                    <option key={locId} value={locId}>{label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          )}
+
           {[['all', '전체'], ['undone', '미입력'], ['diff', '차이있음']].map(([key, label]) => (
             <button key={key} onClick={() => { setFilter(key); setCapStart(0) }} style={{
               padding: '6px 12px', borderRadius: '14px', border: 'none', cursor: 'pointer',
@@ -1123,13 +1159,18 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
 
         <div style={{ display: 'flex', gap: '18px', alignItems: 'center', marginBottom: '10px', fontSize: '12px', color: C.muted }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ display: 'inline-block', width: '13px', height: '13px', borderRadius: '4px', border: '2px solid #A5D6A7' }} />
-            테두리 초록: 장부값과 일치
+            <span style={{ display: 'inline-block', width: '13px', height: '13px', borderRadius: '4px', border: `2px solid ${C.border}` }} />
+            회색 테두리: 아직 확인 안 함
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{ display: 'inline-block', width: '13px', height: '13px', borderRadius: '4px', border: '2px solid transparent', background: '#F5F5F5' }} />
+            테두리 없음: 장부값과 일치 확인됨
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <span style={{ display: 'inline-block', width: '13px', height: '13px', borderRadius: '4px', border: '2px solid #FFCDD2' }} />
-            테두리 빨강: 장부값과 차이 있음
+            빨강: 장부값과 차이 있음 — 실제 값으로 고쳐졌어요
           </span>
+          <span style={{ fontWeight: '600', color: C.navy }}>💡 병을 확인했는데 숫자가 맞으면 아무것도 고치지 말고 Enter만 누르세요. 그대로 저장되고 다음 항목으로 넘어갑니다.</span>
         </div>
 
         {isAdmin && (
@@ -1192,8 +1233,8 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                               }}
                               style={{
                                 width: '150px', padding: '5px 8px', borderRadius: '6px', fontWeight: '600', color: C.navy,
-                                border: `1px solid ${counts[lot.id]?.staged_reagent_fields?.name && counts[lot.id].staged_reagent_fields.name !== (counts[lot.id]?.book_reagent_fields?.name ?? lot.reagents?.name ?? '') ? '#1565C0' : C.border}`,
-                                fontSize: '13px', background: C.white,
+                                border: `1px solid ${counts[lot.id]?.staged_reagent_fields?.name && counts[lot.id].staged_reagent_fields.name !== (counts[lot.id]?.book_reagent_fields?.name ?? lot.reagents?.name ?? '') ? '#1565C0' : 'transparent'}`,
+                                fontSize: '13px', background: counts[lot.id]?.staged_reagent_fields?.name && counts[lot.id].staged_reagent_fields.name !== (counts[lot.id]?.book_reagent_fields?.name ?? lot.reagents?.name ?? '') ? '#EAF1FB' : 'transparent',
                               }}
                             />
                             <div>
@@ -1219,20 +1260,15 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                           <input
                             ref={el => inputRefs.current[`sealed_${lot.id}`] = el}
                             type="number" min="0"
-                            defaultValue={actualSealed ?? ''}
-                            placeholder="입력"
+                            defaultValue={actualSealed ?? bookSealed}
                             onBlur={e => { if (e.target.value !== '') saveCount(lot, 'actual_sealed', e.target.value) }}
                             onKeyDown={e => {
-                              if (e.key === 'Enter') {
-                                if (e.target.value !== '') saveCount(lot, 'actual_sealed', e.target.value)
-                                const nextLot = visibleLots[idx + 1]
-                                if (nextLot && inputRefs.current[`sealed_${nextLot.id}`]) inputRefs.current[`sealed_${nextLot.id}`].focus()
-                              }
+                              if (e.key === 'Enter') { e.preventDefault(); confirmRow(lot, idx, visibleLots) }
                             }}
                             style={{
                               width: '72px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
-                              border: `2px solid ${isDone ? (hasDiff ? '#FFCDD2' : '#A5D6A7') : C.border}`,
-                              fontSize: '14px', fontWeight: '600', background: isSavingNow ? '#FFF8E7' : C.white,
+                              border: `2px solid ${isDone ? (hasDiff ? '#FFCDD2' : 'transparent') : C.border}`,
+                              fontSize: '14px', fontWeight: '600', background: isSavingNow ? '#FFF8E7' : (isDone && !hasDiff ? 'transparent' : C.white),
                             }}
                           />
                         </td>
@@ -1240,20 +1276,15 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                           <input
                             ref={el => inputRefs.current[`stock_${lot.id}`] = el}
                             type="number" min="0" max="100"
-                            defaultValue={actualStock ?? ''}
-                            placeholder="%"
+                            defaultValue={actualStock ?? bookStock}
                             onBlur={e => { if (e.target.value !== '') saveCount(lot, 'actual_stock', e.target.value) }}
                             onKeyDown={e => {
-                              if (e.key === 'Enter') {
-                                if (e.target.value !== '') saveCount(lot, 'actual_stock', e.target.value)
-                                const nextLot = visibleLots[idx + 1]
-                                if (nextLot && inputRefs.current[`stock_${nextLot.id}`]) inputRefs.current[`stock_${nextLot.id}`].focus()
-                              }
+                              if (e.key === 'Enter') { e.preventDefault(); confirmRow(lot, idx, visibleLots) }
                             }}
                             style={{
                               width: '72px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
-                              border: `2px solid ${actualStock != null ? (hasStockDiff ? '#FFCDD2' : '#A5D6A7') : C.border}`,
-                              fontSize: '14px', fontWeight: '600', background: C.white,
+                              border: `2px solid ${actualStock != null ? (hasStockDiff ? '#FFCDD2' : 'transparent') : C.border}`,
+                              fontSize: '14px', fontWeight: '600', background: actualStock != null && !hasStockDiff ? 'transparent' : C.white,
                             }}
                           />
                         </td>
@@ -1298,10 +1329,16 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                           )}
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'center', maxWidth: '150px' }}>
-                            <button onClick={() => { setChangeModal({ lot, reagent: lot.reagents }); setChangeForm({ field_name: 'name', new_value: '' }) }} style={smallBtnStyle()}>정보 수정</button>
-                            <button onClick={() => requestDisposal(lot)} style={smallBtnStyle()}>폐기신청</button>
-                          </div>
+                          {disposingLotId === lot.id ? (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'center', maxWidth: '190px' }}>
+                              {DISPOSAL_REASONS.map(reason => (
+                                <button key={reason} onClick={() => requestDisposal(lot, reason)} style={{ ...smallBtnStyle(), background: '#FDECEC', borderColor: '#F3D6D6', color: '#C13B3F' }}>{reason}</button>
+                              ))}
+                              <button onClick={() => setDisposingLotId(null)} style={smallBtnStyle()}>취소</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setDisposingLotId(lot.id)} style={smallBtnStyle()}>폐기신청</button>
+                          )}
                         </td>
                       </tr>
                     )
@@ -1331,37 +1368,6 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
         </div>
       </div>
 
-      {changeModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26,42,94,0.45)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setChangeModal(null)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '28px', width: '420px', boxShadow: '0 24px 64px rgba(26,42,94,0.25)' }}>
-            <h3 style={{ marginTop: 0, color: C.navy }}>📝 시약 정보 변경 요청</h3>
-            <div style={{ fontSize: '13px', color: C.muted, marginBottom: '16px' }}>
-              시약: <strong style={{ color: C.navy }}>{changeModal.reagent?.name}</strong><br />관리자 승인 후 변경됩니다.
-            </div>
-            <div style={{ marginBottom: '14px' }}>
-              <label style={labelStyle}>변경 항목</label>
-              <select value={changeForm.field_name} onChange={e => setChangeForm({ ...changeForm, field_name: e.target.value, new_value: '' })} style={inputStyle}>
-                {Object.entries(fieldLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-              </select>
-            </div>
-            <div style={{ marginBottom: '8px' }}>
-              <label style={labelStyle}>현재 값</label>
-              <div style={{ padding: '9px 12px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '14px', color: C.muted }}>
-                {changeModal.reagent?.[changeForm.field_name] || '(없음)'}
-              </div>
-            </div>
-            <div style={{ marginBottom: '20px' }}>
-              <label style={labelStyle}>변경할 값 *</label>
-              <input value={changeForm.new_value} onChange={e => setChangeForm({ ...changeForm, new_value: e.target.value })} placeholder="새로운 값 입력" style={inputStyle} />
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={() => setChangeModal(null)} style={{ ...btnGhost, flex: 1 }}>취소</button>
-              <button onClick={submitChangeRequest} style={{ ...btnPrimary, flex: 1 }}>요청 제출</button>
-            </div>
-          </div>
-        </div>
-      )}
 
 
       {showNewRegModal && (
