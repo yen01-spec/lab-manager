@@ -779,6 +779,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('') // ← 목록 필터링/하이라이트용(디바운스)
   const [compareLot, setCompareLot] = useState(null)  // ← 검색어 정확히 일치 시 상단에 뜨는 대조 입력 패널 대상
+  const [compareCandidates, setCompareCandidates] = useState([]) // ← 같은 이름의 Lot이 여러 개라 특정 못했을 때 고를 후보들
   const [savedMsg, setSavedMsg] = useState(false)      // ← "✓ 수정되었습니다" 인라인 메시지
   const [filter, setFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('')
@@ -1012,10 +1013,17 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
       || (l.reagents?.cas_no || '').toLowerCase() === term
       || (l.lot_no || '').toLowerCase() === term
     )
-    if (matches.length === 1) openComparePanel(matches[0])
+    if (matches.length === 1) {
+      openComparePanel(matches[0])
+    } else if (matches.length > 1) {
+      // 같은 시약명인데 Lot이 여러 개라 특정할 수 없음 — 어떤 Lot을 고치는 건지 사용자가 직접 고르게 함
+      setCompareLot(null)
+      setCompareCandidates(matches)
+    }
   }
 
   function openComparePanel(lot) {
+    setCompareCandidates([])
     setCompareLot(lot)
     setTimeout(() => { comparePanelInputRef.current?.focus(); comparePanelInputRef.current?.select() }, 50)
   }
@@ -1144,36 +1152,60 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
           <input
             ref={searchInputRef}
             value={search}
-            onChange={e => { setSearch(e.target.value); setCompareLot(null) }}
+            onChange={e => { setSearch(e.target.value); setCompareLot(null); setCompareCandidates([]) }}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSearchEnter() } }}
             placeholder="시약명 / CAS / Lot No. 검색 후 Enter"
             style={{ ...inputStyle, fontSize: '14px', padding: '9px 12px' }}
           />
           {savedMsg && <div style={{ fontSize: '12px', color: '#2E7D32', marginTop: '8px' }}>✓ 수정되었습니다 · 다음 시약으로 이동</div>}
-          {compareLot && (() => {
-            const count = counts[compareLot.id]
-            const bookSealed = count?.book_sealed ?? compareLot.sealed_count
-            return (
-              <div style={{ borderTop: `1px solid ${C.border}`, marginTop: '12px', paddingTop: '12px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px 20px', fontSize: '13px' }}>
-                  <div><div style={{ fontSize: '11px', color: C.muted }}>시약명</div><div style={{ fontWeight: '600', color: C.navy }}>{compareLot.reagents?.name || '-'}</div></div>
-                  <div><div style={{ fontSize: '11px', color: C.muted }}>CAS No.</div><div>{compareLot.reagents?.cas_no || '-'}</div></div>
-                  <div><div style={{ fontSize: '11px', color: C.muted }}>회사</div><div>{compareLot.reagents?.company || '-'}</div></div>
-                  <div><div style={{ fontSize: '11px', color: C.muted }}>위치</div><div>{compareLot.locations?.room || '-'}{compareLot.locations?.detail ? ` · ${compareLot.locations.detail}` : ''}</div></div>
-                  <div><div style={{ fontSize: '11px', color: C.muted }}>장부 수량(미개봉)</div><div>{bookSealed}병</div></div>
-                  <div>
-                    <div style={{ fontSize: '11px', color: C.muted }}>실측 수량(미개봉)</div>
-                    <input ref={comparePanelInputRef} type="number" min="0" defaultValue={count?.actual_sealed ?? bookSealed}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveComparePanel() } }}
-                      style={{ ...inputStyle, width: '90px', padding: '5px 8px', marginTop: '2px' }} />
-                  </div>
+
+          <div style={{ borderTop: `1px solid ${C.border}`, marginTop: '12px', paddingTop: '12px' }}>
+            {compareCandidates.length > 0 ? (
+              <div>
+                <div style={{ fontSize: '12.5px', color: '#92400E', marginBottom: '8px' }}>
+                  같은 이름으로 등록된 Lot이 {compareCandidates.length}개예요 — 어떤 Lot을 확인/수정할지 골라주세요.
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '14px' }}>
-                  <button onClick={saveComparePanel} style={{ ...btnPrimary, padding: '7px 16px', fontSize: '13px' }}>완료 (Enter)</button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {compareCandidates.map(c => (
+                    <div key={c.id} onClick={() => openComparePanel(c)}
+                      style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', border: `1px solid ${C.border}`, borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}
+                      onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                      <span>Lot {c.lot_no || '(번호 없음)'} · {c.locations?.room || '-'}{c.locations?.detail ? ` · ${c.locations.detail}` : ''}</span>
+                      <span style={{ color: C.muted }}>장부 {counts[c.id]?.book_sealed ?? c.sealed_count}병</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            )
-          })()}
+            ) : (() => {
+              const count = compareLot ? counts[compareLot.id] : null
+              const bookSealed = compareLot ? (count?.book_sealed ?? compareLot.sealed_count) : null
+              return (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px 20px', fontSize: '13px' }}>
+                    <div><div style={{ fontSize: '11px', color: C.muted }}>시약명</div><div style={{ fontWeight: '600', color: C.navy }}>{compareLot?.reagents?.name || '-'}</div></div>
+                    <div><div style={{ fontSize: '11px', color: C.muted }}>CAS No.</div><div>{compareLot?.reagents?.cas_no || '-'}</div></div>
+                    <div><div style={{ fontSize: '11px', color: C.muted }}>회사</div><div>{compareLot?.reagents?.company || '-'}</div></div>
+                    <div><div style={{ fontSize: '11px', color: C.muted }}>위치</div><div>{compareLot ? `${compareLot.locations?.room || '-'}${compareLot.locations?.detail ? ' · ' + compareLot.locations.detail : ''}` : '-'}</div></div>
+                    <div><div style={{ fontSize: '11px', color: C.muted }}>장부 수량(미개봉)</div><div>{compareLot ? `${bookSealed}병` : '-'}</div></div>
+                    <div>
+                      <div style={{ fontSize: '11px', color: C.muted }}>실측 수량(미개봉)</div>
+                      {compareLot ? (
+                        <input key={compareLot.id} ref={comparePanelInputRef} type="number" min="0" defaultValue={count?.actual_sealed ?? bookSealed}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveComparePanel() } }}
+                          style={{ ...inputStyle, width: '90px', padding: '5px 8px', marginTop: '2px' }} />
+                      ) : (
+                        <input disabled placeholder="-" style={{ ...inputStyle, width: '90px', padding: '5px 8px', marginTop: '2px', background: C.bg, color: C.muted }} />
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '14px' }}>
+                    <button onClick={saveComparePanel} disabled={!compareLot} style={{ ...btnPrimary, padding: '7px 16px', fontSize: '13px', opacity: compareLot ? 1 : 0.4, cursor: compareLot ? 'pointer' : 'default' }}>완료 (Enter)</button>
+                  </div>
+                </>
+              )
+            })()}
+          </div>
         </div>
 
         {/* ── ② 진행률 · 필터 · 목록 영역 ── */}
@@ -1222,7 +1254,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
           {searchTerm && (
             <span style={{ fontSize: '12px', color: C.muted }}>
               "{debouncedSearch.trim()}" 검색 결과 <b style={{ color: C.blue }}>{filteredLots.length}건</b>{' '}
-              <button onClick={() => { setSearch(''); setDebouncedSearch(''); setCompareLot(null) }}
+              <button onClick={() => { setSearch(''); setDebouncedSearch(''); setCompareLot(null); setCompareCandidates([]) }}
                 style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: '12px', textDecoration: 'underline' }}>✕ 초기화</button>
             </span>
           )}
