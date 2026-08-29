@@ -640,7 +640,8 @@ function toggleCheck(id, e, allData) {
   // 펼치기 클릭은 테이블 전체가 리렌더되면서 DOM 노드가 새로 생성돼 브라우저 네이티브
   // dblclick 감지(같은 노드 기준)가 깨지므로, 클릭 타이밍을 직접 재서 구분한다.
   function handleRowClick(r, canExpand) {
-    if (!canExpand) { navigate(`/reagents/${r.id}`); return }
+    // Lot 개수와 무관하게 더블클릭은 항상 상세페이지로 통일. 한 번 클릭은 펼칠
+    // Lot이 있을 때만 목록을 펼치고, 펼칠 게 없으면(Lot 1개) 아무 동작도 하지 않는다.
     if (rowClickTimerRef.current) {
       clearTimeout(rowClickTimerRef.current)
       rowClickTimerRef.current = null
@@ -649,7 +650,7 @@ function toggleCheck(id, e, allData) {
     }
     rowClickTimerRef.current = setTimeout(() => {
       rowClickTimerRef.current = null
-      toggleExpand(r.id)
+      if (canExpand) toggleExpand(r.id)
     }, 250)
   }
 
