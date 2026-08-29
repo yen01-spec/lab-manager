@@ -834,11 +834,12 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
   // 실측/잔량 입력칸은 장부값이 이미 채워진 채로 시작 — 병을 확인해서 장부랑 같으면
   // 아무것도 고치지 않고 Enter 한 번으로 그 값 그대로 저장 + 바로 다음 행으로 이동.
   // 다르면 그 칸만 고쳐 쓰고 Enter를 누르면 됨(엑셀에서 맞는 셀은 그냥 넘어가는 것과 동일한 흐름).
-  function confirmRow(lot, idx, currentList) {
+  function confirmRow(lot, idx, currentList, bookSealed, bookStock) {
     const sealedEl = inputRefs.current[`sealed_${lot.id}`]
     const stockEl = inputRefs.current[`stock_${lot.id}`]
-    if (sealedEl && sealedEl.value !== '') saveCount(lot, 'actual_sealed', sealedEl.value)
-    if (stockEl && stockEl.value !== '') saveCount(lot, 'actual_stock', stockEl.value)
+    // 고쳐 쓴 값을 지워서 빈 칸이 되면 장부값으로 되돌린 것으로 보고 그 값을 저장
+    if (sealedEl) saveCount(lot, 'actual_sealed', sealedEl.value !== '' ? sealedEl.value : bookSealed)
+    if (stockEl) saveCount(lot, 'actual_stock', stockEl.value !== '' ? stockEl.value : bookStock)
     const nextLot = currentList[idx + 1]
     if (nextLot && inputRefs.current[`sealed_${nextLot.id}`]) inputRefs.current[`sealed_${nextLot.id}`].focus()
   }
@@ -1261,9 +1262,10 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                             ref={el => inputRefs.current[`sealed_${lot.id}`] = el}
                             type="number" min="0"
                             defaultValue={actualSealed ?? bookSealed}
-                            onBlur={e => { if (e.target.value !== '') saveCount(lot, 'actual_sealed', e.target.value) }}
+                            placeholder={String(bookSealed)}
+                            onBlur={e => saveCount(lot, 'actual_sealed', e.target.value !== '' ? e.target.value : bookSealed)}
                             onKeyDown={e => {
-                              if (e.key === 'Enter') { e.preventDefault(); confirmRow(lot, idx, visibleLots) }
+                              if (e.key === 'Enter') { e.preventDefault(); confirmRow(lot, idx, visibleLots, bookSealed, bookStock) }
                             }}
                             style={{
                               width: '72px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
@@ -1277,9 +1279,10 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                             ref={el => inputRefs.current[`stock_${lot.id}`] = el}
                             type="number" min="0" max="100"
                             defaultValue={actualStock ?? bookStock}
-                            onBlur={e => { if (e.target.value !== '') saveCount(lot, 'actual_stock', e.target.value) }}
+                            placeholder={String(bookStock)}
+                            onBlur={e => saveCount(lot, 'actual_stock', e.target.value !== '' ? e.target.value : bookStock)}
                             onKeyDown={e => {
-                              if (e.key === 'Enter') { e.preventDefault(); confirmRow(lot, idx, visibleLots) }
+                              if (e.key === 'Enter') { e.preventDefault(); confirmRow(lot, idx, visibleLots, bookSealed, bookStock) }
                             }}
                             style={{
                               width: '72px', padding: '5px 8px', borderRadius: '6px', textAlign: 'center',
