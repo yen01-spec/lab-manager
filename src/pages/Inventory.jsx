@@ -236,7 +236,7 @@ export default function Inventory() {
       // 해당 구역의 location_id만 쿼리 단계에서 걸러서 가져온다(대량 DB에서 훨씬 빠름).
       const hasZones = startForm.zones && startForm.zones.length > 0
       const matchLocIds = hasZones
-        ? locations.filter(l => startForm.zones.some(z => l.room === z || l.detail === z)).map(l => l.id)
+        ? locations.filter(l => startForm.zones.some(z => locationMatchesZone(l, z))).map(l => l.id)
         : null
       if (hasZones && matchLocIds.length === 0) { alert('해당 구역에 등록된 위치가 없습니다.'); return }
       const lots = await fetchAllPages((from, to) => {
@@ -511,6 +511,26 @@ export default function Inventory() {
 
   const progressPct = progress.total > 0 ? Math.round(progress.done / progress.total * 100) : 0
   const rooms = [...new Set(locations.map(l => l.room))]
+
+  // 시약장(세부 위치) 이름이 서로 다른 방(room)에 같은 이름으로 존재할 수 있음(예: "노란시약장"이
+  // 303호와 5층에 둘 다 있음) — 이런 경우만 "방 · 세부위치"로 구분하고, 겹치지 않으면 그대로 세부위치명만 사용.
+  const detailCountAcrossRooms = {}
+  locations.forEach(l => {
+    const key = l.detail || l.room
+    if (!detailCountAcrossRooms[key]) detailCountAcrossRooms[key] = new Set()
+    detailCountAcrossRooms[key].add(l.room)
+  })
+  function zoneTokenOf(loc) {
+    const key = loc.detail || loc.room
+    return detailCountAcrossRooms[key]?.size > 1 ? `${loc.room} · ${key}` : key
+  }
+  function locationMatchesZone(loc, z) {
+    if (z.includes(' · ')) {
+      const [room, detail] = z.split(' · ')
+      return loc.room === room && (loc.detail || loc.room) === detail
+    }
+    return loc.room === z || loc.detail === z
+  }
   const zoneGroups = assignments.reduce((acc, a) => {
     if (!acc[a.zone]) acc[a.zone] = []
     acc[a.zone].push(a)
@@ -711,17 +731,21 @@ export default function Inventory() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: C.bg, borderRadius: '8px', maxHeight: '260px', overflowY: 'auto' }}>
                   {rooms.map(r => {
                     const locsInRoom = locations.filter(l => l.room === r)
-                    // 세부 위치(시약장)가 하나뿐이거나 없으면 방 이름 자체를 하나의 구역으로 취급
-                    const zoneTokens = locsInRoom.length > 0 ? [...new Set(locsInRoom.map(l => l.detail || l.room))] : [r]
+                    // 세부 위치(시약장)가 하나뿐이거나 없으면 방 이름 자체를 하나의 구역으로 취급.
+                    // 저장/매칭에 쓰는 값(token)은 다른 방과 이름이 겹치면 "방 · 세부위치"로 구분하되,
+                    // 버튼에는 이미 방 이름이 위에 제목으로 있으니 세부위치명만 짧게 보여줌.
+                    const zoneEntries = locsInRoom.length > 0
+                      ? [...new Map(locsInRoom.map(l => [zoneTokenOf(l), l.detail || l.room])).entries()]
+                      : [[r, r]]
                     return (
                       <div key={r}>
                         <div style={{ fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '4px' }}>{r}</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                          {zoneTokens.map(z => (
+                          {zoneEntries.map(([z, label]) => (
                             <button key={z} onClick={() => {
                               const cur = startForm.zones || []
                               setStartForm({ ...startForm, zones: cur.includes(z) ? cur.filter(x => x !== z) : [...cur, z] })
-                            }} style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', border: `1px solid ${(startForm.zones || []).includes(z) ? C.navy : C.border}`, background: (startForm.zones || []).includes(z) ? C.navy : C.white, color: (startForm.zones || []).includes(z) ? '#fff' : C.text, fontWeight: (startForm.zones || []).includes(z) ? '700' : '400' }}>{z}</button>
+                            }} style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', border: `1px solid ${(startForm.zones || []).includes(z) ? C.navy : C.border}`, background: (startForm.zones || []).includes(z) ? C.navy : C.white, color: (startForm.zones || []).includes(z) ? '#fff' : C.text, fontWeight: (startForm.zones || []).includes(z) ? '700' : '400' }}>{label}</button>
                           ))}
                         </div>
                       </div>
