@@ -17,7 +17,7 @@ function highlightPrefix(text, query) {
 }
 
 export default function ReagentAutocomplete({
-  value, onChange, onSelect, onEnter, placeholder, inputStyle: inputStyleProp, inputRef, className,
+  value, onChange, onSelect, onEnter, placeholder, inputStyle: inputStyleProp, inputRef, className, searchLocation,
 }) {
   const [options, setOptions] = useState([])
   const [open, setOpen] = useState(false)
@@ -37,7 +37,34 @@ export default function ReagentAutocomplete({
         .or(`name.ilike.${term}%,cas_no.ilike.${term}%`)
         .neq('status', 'archived')
         .order('name').limit(10)
-      if (requestIdRef.current === myRequestId) { setOptions(data || []); setOpen(true) }
+      let combined = data || []
+
+      if (searchLocation) {
+        // 이름/CAS로 못 찾았을 때, 위치(방/구역)명이 검색어를 포함하면 그 위치의 보유중인(active) 시약도 후보에 추가
+        const { data: locs } = await supabase.from('locations').select('id, room, detail')
+          .or(`room.ilike.%${term}%,detail.ilike.%${term}%`)
+        if (locs && locs.length > 0) {
+          const locIds = locs.map(l => l.id)
+          const { data: lots } = await supabase.from('reagent_lots').select('reagent_id, location_id')
+            .in('location_id', locIds).eq('status', 'active')
+          const existingIds = new Set(combined.map(r => r.id))
+          const newReagentIds = [...new Set((lots || []).map(l => l.reagent_id))].filter(id => !existingIds.has(id))
+          if (newReagentIds.length > 0) {
+            const { data: locReagents } = await supabase.from('reagents').select('id, name, company, cas_no')
+              .in('id', newReagentIds).neq('status', 'archived').order('name').limit(10)
+            const locNameByReagent = new Map()
+            ;(lots || []).forEach(l => {
+              const loc = locs.find(x => x.id === l.location_id)
+              if (loc && !locNameByReagent.has(l.reagent_id)) {
+                locNameByReagent.set(l.reagent_id, `${loc.room}${loc.detail ? ' ' + loc.detail : ''}`)
+              }
+            })
+            combined = [...combined, ...(locReagents || []).map(r => ({ ...r, matchedLocation: locNameByReagent.get(r.id) }))]
+          }
+        }
+      }
+
+      if (requestIdRef.current === myRequestId) { setOptions(combined.slice(0, 12)); setOpen(true) }
     }, 200)
   }
 
@@ -91,7 +118,9 @@ export default function ReagentAutocomplete({
               onMouseEnter={() => setHighlightIdx(i)}
               style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '13px', borderBottom: `1px solid ${C.border}`, background: i === highlightIdx ? C.blueTint : C.white }}>
               <div style={{ fontWeight: '600', color: C.navy }}>{highlightPrefix(r.name, value)}</div>
-              <div style={{ fontSize: '11px', color: C.muted }}>{r.company || '-'} · {r.cas_no || '-'}</div>
+              <div style={{ fontSize: '11px', color: C.muted }}>
+                {r.matchedLocation ? `📍 ${r.matchedLocation}` : `${r.company || '-'} · ${r.cas_no || '-'}`}
+              </div>
             </div>
           ))}
         </div>

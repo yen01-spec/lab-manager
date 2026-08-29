@@ -96,7 +96,15 @@ export default function ReagentList() {
       .select('*, reagent_lots(*), locations(*)', { count: 'exact' })
       .neq('status', 'archived')
     if (search.trim()) query = query.or(`name.ilike.%${search.trim()}%,cas_no.ilike.%${search.trim()}%`)
-    if (locationFilter) query = query.eq('location_id', locationFilter)
+    if (locationFilter) {
+      // 마스터(reagents.location_id)가 아니라 실제 보유중인(active) Lot의 위치를 기준으로 찾음
+      const { data: matchLots } = await supabase.from('reagent_lots')
+        .select('reagent_id').eq('location_id', locationFilter).eq('status', 'active')
+      const matchIds = [...new Set((matchLots || []).map(l => l.reagent_id))]
+      if (fetchRequestRef.current !== myRequestId) return
+      if (matchIds.length === 0) { setResults([]); return [] }
+      query = query.in('id', matchIds)
+    }
     if (companyFilter) query = query.eq('company', companyFilter)
     const { data, count } = await query.range(0, 4999)
     if (fetchRequestRef.current !== myRequestId) return // 늦게 도착한 응답이 최신 필터 결과를 덮어쓰지 않도록 함

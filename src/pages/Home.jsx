@@ -86,9 +86,14 @@ export default function Home() {
       if (req.lot_id) await supabase.from('reagent_lots').update({ sealed_count: 0, current_stock: 0, needs_review: false }).eq('id', req.lot_id)
     } else if (item.type === 'location') {
       const req = item.raw
-      await supabase.from('reagents').update({ location_id: req.to_location_id }).eq('id', req.reagent_id)
+      if (!req.lot_id) {
+        alert('이 신청에는 Lot 정보가 없어 자동으로 처리할 수 없어요. 시약 상세 페이지에서 직접 위치를 이동해주세요.')
+        setBusyId(null)
+        return
+      }
+      await supabase.from('reagent_lots').update({ location_id: req.to_location_id }).eq('id', req.lot_id)
       await supabase.from('location_history').insert({
-        reagent_id: req.reagent_id, reagent_name: req.reagent_name,
+        reagent_id: req.reagent_id, lot_id: req.lot_id, reagent_name: req.reagent_name,
         from_location_id: req.from_location_id, from_location_name: req.from_location_name,
         to_location_id: req.to_location_id, to_location_name: req.to_location_name, moved_by: student?.name,
       })
@@ -185,6 +190,7 @@ export default function Home() {
               onChange={setSearch}
               onSelect={r => navigate(`/reagents/${r.id}`)}
               onEnter={submitSearch}
+              searchLocation
               placeholder="예) Acetone, 67-64-1, 303-1 A-2"
               inputStyle={{ ...inputStyle, width: '100%', padding: '13px 16px 13px 42px', borderRadius: 12, fontSize: 14, boxShadow: '0 1px 3px rgba(16,24,40,.06)' }}
             />
