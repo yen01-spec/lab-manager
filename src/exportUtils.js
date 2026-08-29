@@ -178,14 +178,12 @@ export function exportPurchaseRequestForm(reagentItems, goodsItems, requesterNam
   const wb = XLSX.utils.book_new()
 
   if (reagentItems.length > 0) {
-    const header = ['No.', '시약명', 'CAS No.', '성상', '필요용량', '사용처', '구매목적', '회사', 'Cat No.', '규격', '수량', '단가', '총가격', '비고']
+    // 시약 항목에는 가격 필드가 없음(요청만 하고 가격은 담당자가 처리)
+    const header = ['No.', '화학물질명', 'CAS No.', '필요한 용량', '사용처', '용도', '비고', '제조사', 'Cat No.', '규격', '수량']
     const rows = reagentItems.map((it, i) => [
-      i + 1, it.name, it.cas_no, it.state, it.needed_amount, it.usage_place, it.purchase_reason,
-      it.company, it.cat_no, it.spec, it.quantity, it.unit_price,
-      (Number(it.unit_price) || 0) * (Number(it.quantity) || 0), it.note,
+      i + 1, it.name, it.cas_no, it.needed_amount, it.usage_place, it.purchase_reason, it.note,
+      it.company, it.cat_no, it.spec, it.quantity,
     ])
-    const totalPrice = reagentItems.reduce((s, it) => s + (Number(it.unit_price) || 0) * (Number(it.quantity) || 0), 0)
-    rows.push(['', '', '', '', '', '', '', '', '', '', '합계', '', totalPrice, ''])
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
     ws['!cols'] = header.map((h, i) => ({ wch: Math.max(h.length + 2, ...rows.map(r => String(r[i] ?? '').length + 2)) }))
     XLSX.utils.book_append_sheet(wb, ws, '시약')

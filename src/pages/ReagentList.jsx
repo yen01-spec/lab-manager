@@ -179,8 +179,8 @@ function toggleCheck(id, e, allData) {
   function goToPurchaseRequestWithPicked() {
     const prefillReagentItems = Array.from(pickedIds.values()).map(r => ({
       reagent_id: r.id, name: r.name, company: r.company || '', cas_no: r.cas_no || '',
-      cat_no: '', state: r.category === '고체' ? '고체' : '액체',
-      spec: r.volume ? `${r.volume}${r.unit || ''}` : '', quantity: '1', unit_price: '', purpose: '', note: '',
+      cat_no: '', needed_amount: '', usage_place: '', purchase_reason: '', note: '',
+      spec: r.volume ? `${r.volume}${r.unit || ''}` : '', quantity: '1',
     }))
     navigate('/purchase-request', { state: { prefillReagentItems } })
   }
