@@ -53,6 +53,8 @@ export default function PurchaseRequest() {
   const [wantsProduct, setWantsProduct] = useState(false)
   const [editingReagentId, setEditingReagentId] = useState(null)
   const [editingGoodsId, setEditingGoodsId] = useState(null)
+  const [listTab, setListTab] = useState('reagent') // 하단 목록 탭: 화면에선 하나씩만 보여주되, 내보내기 땐 둘 다 포함
+  const [exportCapture, setExportCapture] = useState(false) // PDF 캡처 중엔 두 목록을 강제로 같이 렌더링
   const [saving, setSaving] = useState(false)
   const printRef = useRef(null)
 
@@ -175,10 +177,15 @@ export default function PurchaseRequest() {
     setSaving(true)
     const log = await saveToDb()
     if (!log) { setSaving(false); return }
+    // 화면에선 탭으로 하나씩만 보여주지만, PDF엔 시약목록+물품목록이 항상 같이 들어가야 하므로
+    // 캡처 직전에만 두 목록을 강제로 같이 렌더링한다.
+    setExportCapture(true)
+    await new Promise(r => setTimeout(r, 60))
     const canvas = await html2canvas(printRef.current, {
       scale: 2, backgroundColor: '#ffffff',
       ignoreElements: el => el.classList?.contains('no-print'),
     })
+    setExportCapture(false)
     const imgData = canvas.toDataURL('image/png')
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [canvas.width, canvas.height] })
     pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height)
@@ -339,75 +346,90 @@ export default function PurchaseRequest() {
         </Card>
         </div>
 
-        {/* ── ② 하단: 시약/물품 목록(읽기전용, 분리 표시) ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-          <span style={{ fontSize: '15px', fontWeight: '700', color: C.navy }}>🧪 시약 목록</span>
-          <span style={{ fontSize: '11.5px', color: C.muted, background: '#EEF2FB', padding: '2px 9px', borderRadius: '999px', fontWeight: '600' }}>{reagentItems.length}건</span>
-        </div>
+        {/* ── ② 하단: 시약/물품 목록 — 탭으로 전환해서 보되, 내보내기엔 항상 둘 다 포함됨 ── */}
         <Card noPadding style={{ marginBottom: '24px' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>{['화학물질명', '필요용량', '사용처', '제조사', '규격', '수량', ''].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
-              </thead>
-              <tbody>
-                {reagentItems.length === 0 ? (
-                  <tr><td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: C.muted, padding: '24px' }}>담긴 시약이 없습니다. 위 폼에서 입력 후 "목록에 추가"를 눌러주세요.</td></tr>
-                ) : reagentItems.map(it => (
-                  <tr key={it.id} style={{ background: editingReagentId === it.id ? '#FBF0DF' : 'transparent' }}>
-                    <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>{it.name}</td>
-                    <td style={{ ...tdStyle, color: C.muted }}>{it.needed_amount}</td>
-                    <td style={{ ...tdStyle, color: C.muted }}>{it.usage_place}</td>
-                    <td style={tdStyle}>{it.wants_product ? (it.company || '-') : '-'}</td>
-                    <td style={tdStyle}>{it.wants_product ? (it.spec || '-') : '-'}</td>
-                    <td style={tdStyle}>{it.wants_product ? (it.quantity || '-') : '-'}</td>
-                    <td className="no-print" style={{ ...tdStyle, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                      <button onClick={() => startEditReagent(it)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '2px' }} title="수정">✎</button>
-                      <button onClick={() => deleteReagentItem(it.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '2px' }} title="삭제">🗑</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="no-print" style={{ display: 'flex', gap: '4px', padding: '0 16px', borderBottom: `1px solid ${C.border}` }}>
+            {[['reagent', '시약 목록', reagentItems.length], ['goods', '물품 목록', goodsItems.length]].map(([key, label, count]) => (
+              <button key={key} onClick={() => setListTab(key)} style={{
+                padding: '12px 16px', border: 'none', background: 'none', cursor: 'pointer',
+                fontSize: '13.5px', fontFamily: 'inherit', fontWeight: listTab === key ? 700 : 500,
+                color: listTab === key ? C.blueDark : C.muted,
+                borderBottom: listTab === key ? `2px solid ${C.blue}` : '2px solid transparent',
+                marginBottom: '-1px', display: 'flex', alignItems: 'center', gap: '6px',
+              }}>
+                {label}
+                <span style={{ fontSize: '11px', color: listTab === key ? C.blue : C.muted, background: listTab === key ? '#EAF1FB' : '#EEF1F6', padding: '1px 7px', borderRadius: '999px', fontWeight: '600' }}>{count}</span>
+              </button>
+            ))}
           </div>
-          <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.border}`, fontSize: '11px', color: C.muted, textAlign: 'right' }}>
-            가격 정보 없음 · "-" = 원하는 제품 미지정
-          </div>
-        </Card>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-          <span style={{ fontSize: '15px', fontWeight: '700', color: C.navy }}>📦 물품 목록</span>
-          <span style={{ fontSize: '11.5px', color: C.muted, background: '#EEF2FB', padding: '2px 9px', borderRadius: '999px', fontWeight: '600' }}>{goodsItems.length}건</span>
-        </div>
-        <Card noPadding style={{ marginBottom: '24px' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>{['제품명', '규격', '수량', '단가', '배송비', '총가격', ''].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
-              </thead>
-              <tbody>
-                {goodsItems.length === 0 ? (
-                  <tr><td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: C.muted, padding: '24px' }}>담긴 물품이 없습니다. 위 폼에서 입력 후 "목록에 추가"를 눌러주세요.</td></tr>
-                ) : goodsItems.map(it => (
-                  <tr key={it.id} style={{ background: editingGoodsId === it.id ? '#FBF0DF' : 'transparent' }}>
-                    <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>{it.name}</td>
-                    <td style={{ ...tdStyle, color: C.muted }}>{it.spec || '-'}</td>
-                    <td style={tdStyle}>{it.quantity}</td>
-                    <td style={tdStyle}>{(Number(it.unit_price) || 0).toLocaleString()}원</td>
-                    <td style={tdStyle}>{(Number(it.shipping_fee) || 0).toLocaleString()}원</td>
-                    <td style={{ ...tdStyle, fontWeight: '700', color: C.navy }}>{totalOf(it).toLocaleString()}원</td>
-                    <td className="no-print" style={{ ...tdStyle, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                      <button onClick={() => startEditGoods(it)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '2px' }} title="수정">✎</button>
-                      <button onClick={() => deleteGoodsItem(it.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '2px' }} title="삭제">🗑</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.border}`, fontSize: '11px', color: C.muted, textAlign: 'right' }}>
-            총가격 = 단가 × 수량 + 배송비 (자동 계산) · 배송비 합계: {shippingTotal.toLocaleString()}원 · 물품 합계: <b style={{ color: C.blueDark }}>{goodsTotal.toLocaleString()}원</b>
-          </div>
+          {(listTab === 'reagent' || exportCapture) && (
+            <>
+              {exportCapture && <div style={{ padding: '14px 16px 0', fontSize: '13px', fontWeight: '700', color: C.navy }}>🧪 시약 목록</div>}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>{['화학물질명', '필요용량', '사용처', '제조사', '규격', '수량', ''].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {reagentItems.length === 0 ? (
+                      <tr><td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: C.muted, padding: '24px' }}>담긴 시약이 없습니다. 위 폼에서 입력 후 "목록에 추가"를 눌러주세요.</td></tr>
+                    ) : reagentItems.map(it => (
+                      <tr key={it.id} style={{ background: editingReagentId === it.id ? '#FBF0DF' : 'transparent' }}>
+                        <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>{it.name}</td>
+                        <td style={{ ...tdStyle, color: C.muted }}>{it.needed_amount}</td>
+                        <td style={{ ...tdStyle, color: C.muted }}>{it.usage_place}</td>
+                        <td style={tdStyle}>{it.wants_product ? (it.company || '-') : '-'}</td>
+                        <td style={tdStyle}>{it.wants_product ? (it.spec || '-') : '-'}</td>
+                        <td style={tdStyle}>{it.wants_product ? (it.quantity || '-') : '-'}</td>
+                        <td className="no-print" style={{ ...tdStyle, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <button onClick={() => startEditReagent(it)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '2px' }} title="수정">✎</button>
+                          <button onClick={() => deleteReagentItem(it.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '2px' }} title="삭제">🗑</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.border}`, fontSize: '11px', color: C.muted, textAlign: 'right' }}>
+                가격 정보 없음 · "-" = 원하는 제품 미지정
+              </div>
+            </>
+          )}
+
+          {(listTab === 'goods' || exportCapture) && (
+            <>
+              {exportCapture && <div style={{ padding: '18px 16px 0', fontSize: '13px', fontWeight: '700', color: C.navy, borderTop: `1px solid ${C.border}` }}>📦 물품 목록</div>}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>{['제품명', '규격', '수량', '단가', '배송비', '총가격', ''].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {goodsItems.length === 0 ? (
+                      <tr><td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: C.muted, padding: '24px' }}>담긴 물품이 없습니다. 위 폼에서 입력 후 "목록에 추가"를 눌러주세요.</td></tr>
+                    ) : goodsItems.map(it => (
+                      <tr key={it.id} style={{ background: editingGoodsId === it.id ? '#FBF0DF' : 'transparent' }}>
+                        <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>{it.name}</td>
+                        <td style={{ ...tdStyle, color: C.muted }}>{it.spec || '-'}</td>
+                        <td style={tdStyle}>{it.quantity}</td>
+                        <td style={tdStyle}>{(Number(it.unit_price) || 0).toLocaleString()}원</td>
+                        <td style={tdStyle}>{(Number(it.shipping_fee) || 0).toLocaleString()}원</td>
+                        <td style={{ ...tdStyle, fontWeight: '700', color: C.navy }}>{totalOf(it).toLocaleString()}원</td>
+                        <td className="no-print" style={{ ...tdStyle, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <button onClick={() => startEditGoods(it)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '2px' }} title="수정">✎</button>
+                          <button onClick={() => deleteGoodsItem(it.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '2px' }} title="삭제">🗑</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.border}`, fontSize: '11px', color: C.muted, textAlign: 'right' }}>
+                총가격 = 단가 × 수량 + 배송비 (자동 계산) · 배송비 합계: {shippingTotal.toLocaleString()}원 · 물품 합계: <b style={{ color: C.blueDark }}>{goodsTotal.toLocaleString()}원</b>
+              </div>
+            </>
+          )}
         </Card>
 
         {/* 요청자 정보 + 내보내기 */}
@@ -416,6 +438,7 @@ export default function PurchaseRequest() {
             <div>
               <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>요청자: {student?.name || '-'} {student?.student_id ? `(${student.student_id})` : ''}</div>
               <div style={{ fontSize: '11px', color: C.muted }}>{new Date().toLocaleDateString('ko-KR')} 작성 · 시약 {reagentItems.length}건 · 물품 {goodsItems.length}건</div>
+              <div className="no-print" style={{ fontSize: '11px', color: C.blue, marginTop: '4px' }}>📎 시약 목록과 물품 목록이 하나의 파일로 함께 내보내집니다</div>
             </div>
             <div className="no-print" style={{ display: 'flex', gap: '8px' }}>
               <button onClick={handleExportExcel} disabled={saving} style={{ ...btnGhost, padding: '10px 18px', opacity: saving ? 0.6 : 1 }}>📊 Excel로 내보내기</button>
