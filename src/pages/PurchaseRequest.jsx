@@ -199,13 +199,14 @@ export default function PurchaseRequest() {
         {/* ── ① 상단: 탭 + 입력 폼 ── */}
         <div className="no-print">
         <Card style={{ marginBottom: '20px' }}>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-            {[['reagent', '🧪 탭1 · 시약 주문', reagentDraftHasContent], ['goods', '📦 탭2 · 물품 주문', goodsDraftHasContent]].map(([key, label, hasContent]) => (
+          <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', borderBottom: `1px solid ${C.border}` }}>
+            {[['reagent', '시약 주문', reagentDraftHasContent], ['goods', '물품 주문', goodsDraftHasContent]].map(([key, label, hasContent]) => (
               <button key={key} onClick={() => setActiveTab(key)} style={{
-                padding: '8px 18px', borderRadius: '8px', cursor: 'pointer', fontSize: '13.5px', fontWeight: '600',
-                border: `1px solid ${activeTab === key ? C.blue : C.border}`,
-                background: activeTab === key ? '#EAF1FB' : C.white,
-                color: activeTab === key ? C.blue : C.text,
+                padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer',
+                fontSize: '13.5px', fontFamily: 'inherit', fontWeight: activeTab === key ? 700 : 500,
+                color: activeTab === key ? C.blueDark : C.muted,
+                borderBottom: activeTab === key ? `2px solid ${C.blue}` : '2px solid transparent',
+                marginBottom: '-1px',
                 display: 'flex', alignItems: 'center', gap: '6px',
               }}>
                 {label}
@@ -282,12 +283,14 @@ export default function PurchaseRequest() {
                 </>
               )}
 
-              <button onClick={submitReagent} style={{
-                width: '100%', marginTop: '18px', padding: '12px', borderRadius: '8px', fontSize: '14px', fontWeight: '700', cursor: 'pointer',
-                border: `1px solid ${editingReagentId ? C.warning : C.blue}`,
-                background: editingReagentId ? '#FFF8E7' : '#EAF1FB',
-                color: editingReagentId ? '#92400E' : C.blue,
-              }}>{editingReagentId ? '💾 저장 (수정 완료)' : '+ 목록에 추가'}</button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '18px' }}>
+                <button onClick={submitReagent} style={{
+                  padding: '9px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer',
+                  border: `1px solid ${editingReagentId ? C.warning : C.blue}`,
+                  background: editingReagentId ? '#FFF8E7' : '#EAF1FB',
+                  color: editingReagentId ? '#92400E' : C.blue,
+                }}>{editingReagentId ? '💾 저장 (수정 완료)' : '+ 목록에 추가'}</button>
+              </div>
             </>
           ) : (
             <>
@@ -323,12 +326,14 @@ export default function PurchaseRequest() {
               <div style={{ fontSize: '12px', color: C.muted, marginTop: '10px' }}>
                 총가격(자동 계산): <b style={{ color: C.navy }}>{totalOf(goodsDraft).toLocaleString()}원</b> = 단가 × 수량 + 배송비
               </div>
-              <button onClick={submitGoods} style={{
-                width: '100%', marginTop: '14px', padding: '12px', borderRadius: '8px', fontSize: '14px', fontWeight: '700', cursor: 'pointer',
-                border: `1px solid ${editingGoodsId ? C.warning : C.blue}`,
-                background: editingGoodsId ? '#FFF8E7' : '#EAF1FB',
-                color: editingGoodsId ? '#92400E' : C.blue,
-              }}>{editingGoodsId ? '💾 저장 (수정 완료)' : '+ 목록에 추가'}</button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
+                <button onClick={submitGoods} style={{
+                  padding: '9px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer',
+                  border: `1px solid ${editingGoodsId ? C.warning : C.blue}`,
+                  background: editingGoodsId ? '#FFF8E7' : '#EAF1FB',
+                  color: editingGoodsId ? '#92400E' : C.blue,
+                }}>{editingGoodsId ? '💾 저장 (수정 완료)' : '+ 목록에 추가'}</button>
+              </div>
             </>
           )}
         </Card>
