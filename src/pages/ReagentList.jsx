@@ -41,6 +41,9 @@ export default function ReagentList() {
   const [totalCount, setTotalCount] = useState(0)
   const alphabetRefs = useRef({})
   const fetchRequestRef = useRef(0)
+  const rowClickTimerRef = useRef(null) // 한 번 클릭(펼치기)/더블클릭(상세페이지) 구분용
+
+  useEffect(() => () => { if (rowClickTimerRef.current) clearTimeout(rowClickTimerRef.current) }, [])
 
   // 편집 모드
   const [editMode, setEditMode] = useState(false)
@@ -321,6 +324,23 @@ function toggleCheck(id, e, allData) {
     return groups
   }
 
+  // 한 번 클릭 = Lot/위치별 목록 펼치기, 더블클릭 = 상세페이지 이동.
+  // 펼치기 클릭은 테이블 전체가 리렌더되면서 DOM 노드가 새로 생성돼 브라우저 네이티브
+  // dblclick 감지(같은 노드 기준)가 깨지므로, 클릭 타이밍을 직접 재서 구분한다.
+  function handleRowClick(r, canExpand) {
+    if (!canExpand) { navigate(`/reagents/${r.id}`); return }
+    if (rowClickTimerRef.current) {
+      clearTimeout(rowClickTimerRef.current)
+      rowClickTimerRef.current = null
+      navigate(`/reagents/${r.id}`)
+      return
+    }
+    rowClickTimerRef.current = setTimeout(() => {
+      rowClickTimerRef.current = null
+      toggleExpand(r.id)
+    }, 250)
+  }
+
   function toggleExpand(id) {
     setExpandedIds(prev => {
       const next = new Set(prev)
@@ -453,7 +473,8 @@ function toggleCheck(id, e, allData) {
       return (
       <Fragment key={r.id}>
         <tr
-          onClick={e => editMode ? toggleCheck(r.id, e, data) : navigate(`/reagents/${r.id}`)}
+          onClick={e => editMode ? toggleCheck(r.id, e, data) : handleRowClick(r, canExpand)}
+          title={!editMode ? (canExpand ? '한 번 클릭: Lot 목록 펼치기 · 더블클릭: 상세페이지' : '더블클릭: 상세페이지') : ''}
           style={{
             background: isSelected ? selectedBg : baseBg,
             cursor: 'pointer',
