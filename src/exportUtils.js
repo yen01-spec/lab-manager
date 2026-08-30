@@ -28,9 +28,9 @@ const LOT_STATUS_LABEL = { active: '', used_up: '사용완료', disposed: '폐�
 // Lot이 여러 개인 시약은 Lot 단위로 한 줄씩 풀어서 내보냄(위치·재고가 Lot마다 다르므로).
 // 화면에서 "위치별 보기"로 펼쳐보고 있지 않아도 Excel에는 항상 이렇게 Lot별로 전부 나감 —
 // 즉 화면에 현재 보이는(필터링된) 시약 목록을 기준으로, 그 시약들의 모든 Lot을 나열.
-// locationFilter가 있으면(화면에서 위치를 선택해 검색한 경우) 그 위치의 Lot만 내보냄 —
-// 아니면 "303-1로 검색했는데 그 시약이 5층에도 보관 중인 Lot까지" 같이 딸려나갔었음.
-export function exportReagents(reagents, locations = [], locationFilter = '') {
+// locationIds가 있으면(화면에서 방/세부위치를 선택해 검색한 경우) 그 위치(들)의 Lot만
+// 내보냄 — 아니면 "303-1로 검색했는데 그 시약이 5층에도 보관 중인 Lot까지" 같이 딸려나갔었음.
+export function exportReagents(reagents, locations = [], locationIds = null, filterLabel = '') {
   const locName = locId => {
     const loc = locations.find(l => l.id === locId)
     return loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '-'
@@ -38,7 +38,7 @@ export function exportReagents(reagents, locations = [], locationFilter = '') {
   const rows = []
   reagents.forEach(r => {
     const allLots = r.reagent_lots || []
-    const lots = locationFilter ? allLots.filter(l => l.location_id === locationFilter) : allLots
+    const lots = locationIds ? allLots.filter(l => locationIds.includes(l.location_id)) : allLots
     if (lots.length === 0) {
       rows.push({
         name: r.name, cas_no: r.cas_no || '-', company: r.company || '-', cat_no: '-',
@@ -74,7 +74,7 @@ export function exportReagents(reagents, locations = [], locationFilter = '') {
     { key: 'location', label: '위치' },
     { key: 'note', label: '비고' },
   ]
-  const filename = locationFilter ? `시약목록_${locName(locationFilter).replace(/[\s-]+/g, '_')}` : '시약목록'
+  const filename = locationIds && filterLabel ? `시약목록_${filterLabel.replace(/[\s-]+/g, '_')}` : '시약목록'
   downloadExcel(rows, columns, filename)
 }
 

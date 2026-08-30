@@ -401,7 +401,10 @@ export default function ReagentList() {
   const [companies, setCompanies] = useState([])
   const [expandedIds, setExpandedIds] = useState(new Set())
   const [search, setSearch] = useState(() => searchParams.get('q') || '')
-  const [locationFilter, setLocationFilter] = useState('')
+  // 위치 필터 — 방(room) 탭 + (세부위치가 있는 방이면) 세부위치 알약 2단계 구조.
+  // roomFilter=''(전체) | 방 이름. detailFilter=''(그 방 전체) | 특정 위치 id.
+  const [roomFilter, setRoomFilter] = useState('')
+  const [detailFilter, setDetailFilter] = useState('')
   const [companyFilter, setCompanyFilter] = useState('')
   const [visibleCols, setVisibleCols] = useState({
     casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
@@ -446,7 +449,7 @@ export default function ReagentList() {
   useEffect(() => {
     fetchResults()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locationFilter, companyFilter])
+  }, [roomFilter, detailFilter, companyFilter])
 
   async function fetchLocations() {
     const { data } = await supabase.from('locations').select('*').order('room')
@@ -473,10 +476,14 @@ export default function ReagentList() {
       .select('id, name, cas_no, company, volume, unit, category, hazard, reagent_type, pending_confirm, msds_url, last_confirmed_at, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no, expiry_date, cat_no, pending_confirm)', { count: 'exact' })
       .neq('status', 'archived')
     if (search.trim()) query = query.or(`name.ilike.%${search.trim()}%,cas_no.ilike.%${search.trim()}%`)
-    if (locationFilter) {
+    // detailFilter(특정 위치 하나) > roomFilter(그 방에 속한 모든 위치) > 전체(필터 없음) 순.
+    const activeLocationIds = detailFilter
+      ? [detailFilter]
+      : roomFilter ? locations.filter(l => l.room === roomFilter).map(l => l.id) : null
+    if (activeLocationIds) {
       // 마스터(reagents.location_id)가 아니라 실제 보유중인(active) Lot의 위치를 기준으로 찾음
       const { data: matchLots } = await supabase.from('reagent_lots')
-        .select('reagent_id').eq('location_id', locationFilter).eq('status', 'active')
+        .select('reagent_id').in('location_id', activeLocationIds).eq('status', 'active')
       const matchIds = [...new Set((matchLots || []).map(l => l.reagent_id))]
       if (fetchRequestRef.current !== myRequestId) return
       if (matchIds.length === 0) { setResults([]); return [] }
@@ -801,16 +808,6 @@ export default function ReagentList() {
               inputStyle={{ ...inputStyle, width: '100%' }} />
             <button onClick={() => fetchResults()} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>검색</button>
           </div>
-          <select value={locationFilter} onChange={e => setLocationFilter(e.target.value)} style={{ ...inputStyle, width: 'auto', maxWidth: '160px' }}>
-            <option value="">전체 위치</option>
-            {rooms.map(room => (
-              <optgroup key={room} label={room}>
-                {locations.filter(l => l.room === room).map(loc => (
-                  <option key={loc.id} value={loc.id}>{loc.detail || loc.room}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
           <select value={companyFilter} onChange={e => setCompanyFilter(e.target.value)} style={{ ...inputStyle, width: 'auto', maxWidth: '160px' }}>
             <option value="">전체 제조사</option>
             {companies.map(c => <option key={c} value={c}>{c}</option>)}
@@ -826,7 +823,13 @@ export default function ReagentList() {
             fontSize: '13px', fontWeight: '600', flexShrink: 0,
           }}>🧪 직접 제조 시약 등록</button>
           {isAdmin && displayResults.length > 0 && (
-            <button onClick={() => exportReagents(displayResults, locations, locationFilter)} style={{
+            <button onClick={() => {
+              const activeLocationIds = detailFilter ? [detailFilter] : roomFilter ? locations.filter(l => l.room === roomFilter).map(l => l.id) : null
+              const filterLabel = detailFilter
+                ? (() => { const l = locations.find(x => x.id === detailFilter); return l ? `${l.room}${l.detail ? '_' + l.detail : ''}` : '' })()
+                : roomFilter
+              exportReagents(displayResults, locations, activeLocationIds, filterLabel)
+            }} style={{
               background: '#1D6F42', color: 'white', border: 'none',
               padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
               fontSize: '13px', fontWeight: '600', flexShrink: 0,
@@ -840,6 +843,42 @@ export default function ReagentList() {
               padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
               fontSize: '13px', fontWeight: '600', flexShrink: 0,
             }}>✏️ {editMode ? '편집 종료' : '편집'}</button>
+          )}
+        </div>
+
+        {/* 위치 필터: 방(room) 밑줄 탭 + 세부위치가 있는 방이면 알약 버튼으로 한 단계 더 좁힘 */}
+        <div style={{
+          background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px',
+          padding: '0 16px', boxShadow: '0 1px 3px rgba(16,24,40,.06)', marginBottom: '16px',
+        }}>
+          <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
+            {['', ...rooms].map(room => (
+              <button key={room || '전체'} onClick={() => { setRoomFilter(room); setDetailFilter('') }} style={{
+                padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer',
+                fontSize: '13px', fontFamily: 'inherit', fontWeight: roomFilter === room ? 700 : 500,
+                color: roomFilter === room ? C.blueDark : C.muted,
+                borderBottom: roomFilter === room ? `2px solid ${C.blue}` : '2px solid transparent',
+                marginBottom: '-1px', whiteSpace: 'nowrap',
+              }}>{room || '전체'}</button>
+            ))}
+          </div>
+          {roomFilter && locations.some(l => l.room === roomFilter && l.detail) && (
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', padding: '10px 0' }}>
+              <button onClick={() => setDetailFilter('')} style={{
+                padding: '4px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
+                border: `1px solid ${!detailFilter ? C.navy : C.border}`,
+                background: !detailFilter ? C.navy : C.white,
+                color: !detailFilter ? '#fff' : C.text, fontWeight: !detailFilter ? '700' : '400',
+              }}>전체 {roomFilter}</button>
+              {locations.filter(l => l.room === roomFilter && l.detail).map(loc => (
+                <button key={loc.id} onClick={() => setDetailFilter(loc.id)} style={{
+                  padding: '4px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
+                  border: `1px solid ${detailFilter === loc.id ? C.navy : C.border}`,
+                  background: detailFilter === loc.id ? C.navy : C.white,
+                  color: detailFilter === loc.id ? '#fff' : C.text, fontWeight: detailFilter === loc.id ? '700' : '400',
+                }}>{loc.detail}</button>
+              ))}
+            </div>
           )}
         </div>
 
