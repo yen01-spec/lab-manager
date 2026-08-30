@@ -940,18 +940,48 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
 
   async function fetchLots() {
     setLoading(true)
-    const countData = await fetchAllPages((from, to) => supabase.from('inventory_counts').select('*').eq('session_id', session.id).range(from, to))
+    // 이전엔 세션 전체(수천 개)를 일단 다 받아온 뒤 내 담당 구역으로 화면에서만 걸러냈음 —
+    // 관리자가 아니고 배정된 구역이 전부 "위치" 기반(알파벳 범위 구역 없음)이면, 애초에
+    // 서버에다 그 위치의 Lot만 요청해서 안 쓰는 나머지를 통신량에서부터 빼버린다.
+    // 알파벳 범위 구역("A-G" 등, 시약명 기준)은 서버에서 걸러내기 까다로워 기존 방식 유지.
+    const alphaZones = myAssignments.filter(a => a.zone.match(/^[A-Z]-[A-Z]$/))
+    const locZones = myAssignments.filter(a => !a.zone.match(/^[A-Z]-[A-Z]$/))
+    const canScopeByLocation = !isAdmin && myAssignments.length > 0 && alphaZones.length === 0
+
+    // matchedLocIds가 null이면 제한 없음(관리자 등 전체를 봐야 하는 경우).
+    // 담당 구역에 해당하는 Lot id 목록을 먼저 통째로 받아와 .in(lot_id, [...])로 거르면
+    // 구역이 세션 전체(수천 개)에 가까울 때 URL에 UUID가 수천 개 붙어 요청 자체가 실패한다
+    // (실제로 재현됨: 414/URL too long → 브라우저에는 CORS 오류로만 보임).
+    // 그래서 lot_id 목록을 따로 안 만들고, inventory_counts를 reagent_lots와 조인해서
+    // "location_id가 내 구역에 속한 것만" 서버에서 바로 걸러낸다 — 필터 값은 위치 id
+    // 몇 개뿐이라 URL 길이 문제가 없다.
+    let matchedLocIds = null
+    if (canScopeByLocation) {
+      const { data: locs } = await supabase.from('locations').select('id, room, detail')
+      const zoneNames = new Set(locZones.map(a => a.zone))
+      matchedLocIds = (locs || []).filter(l => zoneNames.has(l.detail) || zoneNames.has(l.room)).map(l => l.id)
+      if (matchedLocIds.length === 0) { setLots([]); setCounts({}); setLoading(false); return }
+    }
+
+    const countData = await fetchAllPages((from, to) => {
+      let q = supabase.from('inventory_counts')
+        .select(matchedLocIds ? '*, reagent_lots!inner(location_id)' : '*')
+        .eq('session_id', session.id)
+      if (matchedLocIds) q = q.in('reagent_lots.location_id', matchedLocIds)
+      return q.range(from, to)
+    })
     const lotIds = (countData || []).map(c => c.lot_id)
     if (lotIds.length === 0) { setLots([]); setCounts({}); setLoading(false); return }
     const idChunks = []
     for (let i = 0; i < lotIds.length; i += 500) idChunks.push(lotIds.slice(i, i + 500))
     const chunkResults = await Promise.all(idChunks.map(chunk => supabase.from('reagent_lots')
-      .select('*, reagents(id, name, cas_no, company, category, hazard, volume, unit), locations(room, detail)')
+      .select('id, reagent_id, location_id, lot_no, sealed_count, current_stock, reagents(id, name, cas_no, company, category, hazard, volume, unit), locations(room, detail)')
       .in('id', chunk)))
     const lotData = chunkResults.flatMap(r => r.data || [])
     if (lotData) {
       let filtered = lotData
-      if (!isAdmin && myAssignments.length > 0) {
+      if (!isAdmin && myAssignments.length > 0 && !canScopeByLocation) {
+        // 알파벳 범위 구역이 섞여 있는 경우엔 서버에서 미리 못 거르므로 기존처럼 여기서 걸러냄
         filtered = lotData.filter(lot => myAssignments.some(a => {
           const zone = a.zone
           if (zone.match(/^[A-Z]-[A-Z]$/)) {
