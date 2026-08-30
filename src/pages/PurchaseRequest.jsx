@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useOutletContext, useLocation, useNavigate } from 'react-router-dom'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
@@ -27,6 +27,30 @@ const REQUIRED_REAGENT_FIELDS = [
 const REQUIRED_GOODS_FIELDS = [['name', '제품명'], ['quantity', '수량'], ['unit_price', '단가']]
 
 const fieldGridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px' }
+
+// 용도/비고처럼 길게 쓸 수 있는 필드용 — 글자가 늘어나면 칸 높이가 같이 늘어나서
+// 입력한 내용이 전부 보이도록 함(고정 높이 input이라 일부만 보이던 문제 수정).
+function AutoTextarea({ value, onChange, placeholder }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.style.height = 'auto'
+      ref.current.style.height = ref.current.scrollHeight + 'px'
+    }
+  }, [value])
+  return (
+    <textarea
+      ref={ref}
+      className="autosize-cell"
+      rows={1}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{ ...inputStyle, minHeight: '38px' }}
+    />
+  )
+}
+
 function Field({ label, required, children }) {
   return (
     <div>
@@ -258,10 +282,10 @@ export default function PurchaseRequest() {
                   <input value={reagentDraft.usage_place} onChange={e => updateReagentDraft('usage_place', e.target.value)} placeholder="예) 분석화학실험" style={inputStyle} />
                 </Field>
                 <Field label="용도" required>
-                  <input value={reagentDraft.purchase_reason} onChange={e => updateReagentDraft('purchase_reason', e.target.value)} placeholder="예) 적정 실험용" style={inputStyle} />
+                  <AutoTextarea value={reagentDraft.purchase_reason} onChange={v => updateReagentDraft('purchase_reason', v)} placeholder="예) 적정 실험용" />
                 </Field>
                 <Field label="비고" required>
-                  <input value={reagentDraft.note} onChange={e => updateReagentDraft('note', e.target.value)} style={inputStyle} />
+                  <AutoTextarea value={reagentDraft.note} onChange={v => updateReagentDraft('note', v)} />
                 </Field>
               </div>
 
@@ -321,17 +345,21 @@ export default function PurchaseRequest() {
                   <input type="number" min="0" value={goodsDraft.shipping_fee} onChange={e => updateGoodsDraft('shipping_fee', e.target.value)} placeholder="원" style={inputStyle} />
                 </Field>
                 <Field label="용도">
-                  <input value={goodsDraft.purpose} onChange={e => updateGoodsDraft('purpose', e.target.value)} style={inputStyle} />
+                  <AutoTextarea value={goodsDraft.purpose} onChange={v => updateGoodsDraft('purpose', v)} />
                 </Field>
                 <Field label="비고">
-                  <input value={goodsDraft.note} onChange={e => updateGoodsDraft('note', e.target.value)} style={inputStyle} />
+                  <AutoTextarea value={goodsDraft.note} onChange={v => updateGoodsDraft('note', v)} />
                 </Field>
                 <Field label="구매 링크">
                   <input value={goodsDraft.link} onChange={e => updateGoodsDraft('link', e.target.value)} placeholder="구매 링크" style={inputStyle} />
                 </Field>
-              </div>
-              <div style={{ fontSize: '12px', color: C.muted, marginTop: '10px' }}>
-                총가격(자동 계산): <b style={{ color: C.navy }}>{totalOf(goodsDraft).toLocaleString()}원</b> = 단가 × 수량 + 배송비
+                <div>
+                  <label style={labelStyle}>총가격 (자동 계산)</label>
+                  <div style={{ ...inputStyle, display: 'flex', alignItems: 'center', background: C.bg, fontWeight: '700', color: C.navy }}>
+                    {totalOf(goodsDraft).toLocaleString()}원
+                    <span style={{ marginLeft: '8px', fontSize: '11px', color: C.muted, fontWeight: '400' }}>= 단가 × 수량 + 배송비</span>
+                  </div>
+                </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
                 <button onClick={submitGoods} style={{
@@ -440,11 +468,11 @@ export default function PurchaseRequest() {
               <div style={{ fontSize: '11px', color: C.muted }}>{new Date().toLocaleDateString('ko-KR')} 작성 · 시약 {reagentItems.length}건 · 물품 {goodsItems.length}건</div>
             </div>
             <div className="no-print" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-              <div style={{ fontSize: '11px', color: C.blue }}>📎 시약 목록과 물품 목록이 하나의 파일로 함께 내보내집니다</div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button onClick={handleExportExcel} disabled={saving} style={{ ...btnGhost, padding: '10px 18px', opacity: saving ? 0.6 : 1 }}>📊 Excel로 내보내기</button>
                 <button onClick={handleDownloadPdf} disabled={saving} style={{ ...btnPrimary, padding: '10px 18px', opacity: saving ? 0.6 : 1 }}>📄 PDF로 저장</button>
               </div>
+              <div style={{ fontSize: '11px', color: C.blue }}>📎 시약 목록과 물품 목록이 하나의 파일로 함께 내보내집니다</div>
             </div>
           </div>
         </Card>
