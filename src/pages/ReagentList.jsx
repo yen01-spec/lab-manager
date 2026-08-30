@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, Fragment } from 'react'
+import { useEffect, useState, useRef, useCallback, memo, Fragment } from 'react'
 import { useOutletContext, useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
@@ -21,6 +21,34 @@ function getGhsEmojis(hazard) {
   if (!hazard) return []
   const lower = hazard.toLowerCase()
   return GHS_MAP.filter(g => g.keywords.some(k => lower.includes(k)))
+}
+
+// Lot 필터링/평균 계산/GHS 매칭처럼 시약 데이터 자체(Lot 목록·유해성 문구)에만 좌우되고
+// 화면 상태(체크/선택/컬럼 표시 등)와는 무관한 값들을 "불러올 때 딱 한 번만" 계산해서
+// 각 시약 객체에 붙여둔다. 이 값들을 매 렌더링마다 새로 계산하던 게(특히 컬럼 체크박스를
+// 켜고 끌 때 1,500여 개 행 전부를 다시 계산) 화면이 멈춘 것처럼 보이던 주요 원인이었음.
+function enrichReagent(r) {
+  const allLots = r.reagent_lots || []
+  const activeLots = allLots.filter(l => l.status === 'active')
+  const totalSealed = activeLots.reduce((s, l) => s + l.sealed_count, 0)
+  const avgStock = activeLots.length > 0
+    ? Math.round(activeLots.reduce((s, l) => s + l.current_stock, 0) / activeLots.length) : 0
+  const isLow = activeLots.some(l => l.sealed_count === 0 && l.current_stock <= 20)
+  const hasPendingConfirm = r.pending_confirm || activeLots.some(l => l.pending_confirm)
+  const activeLocIds = [...new Set(activeLots.map(l => l.location_id).filter(Boolean))]
+  return {
+    ...r,
+    _activeLots: activeLots,
+    _totalSealed: totalSealed,
+    _avgStock: avgStock,
+    _isLow: isLow,
+    _hasPendingConfirm: hasPendingConfirm,
+    _ghsList: getGhsEmojis(r.hazard),
+    _onlyLot: activeLots.length === 1 ? activeLots[0] : null,
+    _canExpand: allLots.length > 1,
+    _activeLocIds: activeLocIds,
+    _multiLocation: activeLocIds.length > 1,
+  }
 }
 
 function getGroupedReagents(data) {
@@ -67,99 +95,86 @@ function AlphabetIndex({ data, editMode, scrollToLetter }) {
   )
 }
 
-function ReagentTable({
-  data, locations, visibleCols, checkedIds, pickedIds, editMode, isAdmin,
-  inlineEdit, setInlineEdit, expandedIds, alphabetRefs,
-  toggleCheck, togglePick, toggleAll, togglePickAll, handleRowClick, toggleExpand,
-  startInlineEdit, saveInlineEdit,
-}) {
-  const COLS = 2 // 체크박스 + 시약명 (항상 표시)
-    + (visibleCols.casNo ? 1 : 0) + (visibleCols.company ? 1 : 0) + (visibleCols.volume ? 1 : 0)
-    + (visibleCols.stock ? 1 : 0) + (visibleCols.location ? 1 : 0) + (visibleCols.lastConfirmed ? 1 : 0)
-    + (visibleCols.lot ? 1 : 0) + (visibleCols.expiry ? 1 : 0)
-    + (visibleCols.category ? 1 : 0) + (visibleCols.ghs ? 1 : 0) + (visibleCols.status ? 1 : 0)
+const LOT_STATUS_LABEL = { active: '보유중', used_up: '사용완료', disposed: '폐기', missing: '분실' }
+const LOT_STATUS_COLOR = { active: '#00875A', used_up: C.muted, disposed: C.danger, missing: '#B7791F' }
 
-  const groups = getGroupedReagents(data)
-  const letters = Object.keys(groups).sort()
-  const allChecked = data.length > 0 && checkedIds.size === data.length
-  const allPicked = data.length > 0 && data.every(r => pickedIds.has(r.id))
-
-  const LOT_STATUS_LABEL = { active: '보유중', used_up: '사용완료', disposed: '폐기', missing: '분실' }
-  const LOT_STATUS_COLOR = { active: '#00875A', used_up: C.muted, disposed: C.danger, missing: '#B7791F' }
-
-  const renderLotRow = (r, lot) => {
-    const loc = locations.find(l => l.id === lot.location_id)
-    const dimmed = lot.status !== 'active'
-    return (
-      <tr key={lot.id} onClick={e => e.stopPropagation()} style={{ background: '#F7F9FC', opacity: dimmed ? 0.6 : 1 }}>
-        <td style={{ ...tdStyle, borderRight: `1px solid ${C.borderRow}` }}></td>
-        <td style={{ ...tdStyle, fontSize: '12.5px', color: C.muted, whiteSpace: 'nowrap', paddingLeft: '30px', borderRight: `1px solid ${C.borderRow}` }}>
-          ↳ Lot {lot.lot_no || '(번호 없음)'}
-        </td>
-        {visibleCols.casNo && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
-        {visibleCols.company && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
-        {visibleCols.volume && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
-        {visibleCols.stock && (
-          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '36px', height: '6px', borderRadius: '3px', background: '#F0F2F6', overflow: 'hidden', flexShrink: 0 }}>
-                <div style={{ width: `${lot.current_stock}%`, height: '100%', background: (lot.sealed_count === 0 && lot.current_stock <= 20) ? '#E5484D' : '#1E9E6A' }} />
-              </div>
-              <span>{lot.sealed_count}병 / {lot.current_stock}%</span>
+function LotRow({ lot, locations, visibleCols }) {
+  const loc = locations.find(l => l.id === lot.location_id)
+  const dimmed = lot.status !== 'active'
+  return (
+    <tr onClick={e => e.stopPropagation()} style={{ background: '#F7F9FC', opacity: dimmed ? 0.6 : 1 }}>
+      <td style={{ ...tdStyle, borderRight: `1px solid ${C.borderRow}` }}></td>
+      <td style={{ ...tdStyle, fontSize: '12.5px', color: C.muted, whiteSpace: 'nowrap', paddingLeft: '30px', borderRight: `1px solid ${C.borderRow}` }}>
+        ↳ Lot {lot.lot_no || '(번호 없음)'}
+      </td>
+      {visibleCols.casNo && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
+      {visibleCols.company && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
+      {visibleCols.volume && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
+      {visibleCols.stock && (
+        <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ width: '36px', height: '6px', borderRadius: '3px', background: '#F0F2F6', overflow: 'hidden', flexShrink: 0 }}>
+              <div style={{ width: `${lot.current_stock}%`, height: '100%', background: (lot.sealed_count === 0 && lot.current_stock <= 20) ? '#E5484D' : '#1E9E6A' }} />
             </div>
-          </td>
-        )}
-        {visibleCols.location && (
-          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
-            {loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
-          </td>
-        )}
-        {visibleCols.lot && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>{lot.lot_no || '-'}</td>}
-        {visibleCols.expiry && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>{lot.expiry_date || '-'}</td>}
-        {visibleCols.category && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
-        {visibleCols.ghs && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
-        {visibleCols.lastConfirmed && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: visibleCols.status ? `1px solid ${C.borderRow}` : undefined }}>-</td>}
-        {visibleCols.status && (
-          <td style={{ ...tdStyle, fontSize: '12px', color: LOT_STATUS_COLOR[lot.status] || C.muted, fontWeight: '600' }}>
-            {LOT_STATUS_LABEL[lot.status] || lot.status}
-          </td>
-        )}
-      </tr>
-    )
+            <span>{lot.sealed_count}병 / {lot.current_stock}%</span>
+          </div>
+        </td>
+      )}
+      {visibleCols.location && (
+        <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
+          {loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
+        </td>
+      )}
+      {visibleCols.lot && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>{lot.lot_no || '-'}</td>}
+      {visibleCols.expiry && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>{lot.expiry_date || '-'}</td>}
+      {visibleCols.category && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
+      {visibleCols.ghs && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
+      {visibleCols.lastConfirmed && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: visibleCols.status ? `1px solid ${C.borderRow}` : undefined }}>-</td>}
+      {visibleCols.status && (
+        <td style={{ ...tdStyle, fontSize: '12px', color: LOT_STATUS_COLOR[lot.status] || C.muted, fontWeight: '600' }}>
+          {LOT_STATUS_LABEL[lot.status] || lot.status}
+        </td>
+      )}
+    </tr>
+  )
+}
+
+// 행 하나를 memo로 감싸서, 서로 무관한 상태 변화(다른 행 체크/선택/펼치기, 컬럼 표시
+// 전환 등)가 일어나도 실제로 이 행에 영향을 주는 props가 안 바뀌면 리렌더를 건너뛴다.
+// isChecked/isPicked/isExpanded/editing* 처럼 원본 Set·Map·객체 대신 "이 행에 해당하는
+// boolean/원시값"만 골라서 props로 내려주는 게 핵심 — 그래야 다른 행이 체크되어도 이
+// 행의 props는 그대로라 memo가 스킵할 수 있다. onSaveEdit/onChangeEdit도 실제로
+// 편집 중인 행에만 값을 넘기고, 나머지 행에는 항상 undefined(고정값)를 넘긴다.
+const ReagentRow = memo(function ReagentRow({
+  r, locations, visibleCols, editMode, isAdmin, data,
+  isChecked, isPicked, isExpanded, isEditingSealed, isEditingStock, editValue,
+  onToggleCheck, onTogglePick, onToggleExpand, onRowClick,
+  onStartEdit, onSaveEdit, onChangeEdit,
+}) {
+  const allLots = r.reagent_lots || []
+  const activeLots = r._activeLots
+  const totalSealed = r._totalSealed
+  const avgStock = r._avgStock
+  const isLow = r._isLow
+  const hasPendingConfirm = r._hasPendingConfirm
+  const ghsList = r._ghsList
+  const onlyLot = r._onlyLot
+  const canExpand = r._canExpand
+  const multiLocation = r._multiLocation
+
+  let loc = null
+  if (activeLots.length > 0 && r._activeLocIds.length <= 1) {
+    loc = locations.find(l => l.id === activeLots[0].location_id) || null
   }
 
-  const renderRow = (r) => {
-    const allLots = r.reagent_lots || []
-    const activeLots = allLots.filter(l => l.status === 'active')
-    const totalSealed = activeLots.reduce((s, l) => s + l.sealed_count, 0)
-    const avgStock = activeLots.length > 0
-      ? Math.round(activeLots.reduce((s, l) => s + l.current_stock, 0) / activeLots.length) : 0
-    const isLow = activeLots.some(l => l.sealed_count === 0 && l.current_stock <= 20)
-    const hasPendingConfirm = r.pending_confirm || activeLots.some(l => l.pending_confirm)
-    const ghsList = getGhsEmojis(r.hazard)
-    const isChecked = checkedIds.has(r.id)
-    const isPicked = pickedIds.has(r.id)
-    const editingThisSealed = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'sealed_count'
-    const editingThisStock = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'current_stock'
-    const onlyLot = activeLots.length === 1 ? activeLots[0] : null
-    const isExpanded = expandedIds.has(r.id)
-    const canExpand = allLots.length > 1
+  const baseBg = isLow ? '#FFF8F8' : hasPendingConfirm ? '#F0F7FF' : C.white
+  const selectedBg = '#EEF2FB'
+  const isSelected = editMode ? isChecked : isPicked
 
-    const activeLocIds = new Set(activeLots.map(l => l.location_id).filter(Boolean))
-    let loc = null
-    if (activeLots.length > 0 && activeLocIds.size <= 1) {
-      loc = locations.find(l => l.id === activeLots[0].location_id) || null
-    }
-    const multiLocation = activeLocIds.size > 1
-
-    const baseBg = isLow ? '#FFF8F8' : hasPendingConfirm ? '#F0F7FF' : C.white
-    const selectedBg = '#EEF2FB'
-    const isSelected = editMode ? isChecked : isPicked
-
-    return (
-    <Fragment key={r.id}>
+  return (
+    <Fragment>
       <tr
-        onClick={e => editMode ? toggleCheck(r.id, e, data) : handleRowClick(r, canExpand)}
+        onClick={e => editMode ? onToggleCheck(r.id, e, data) : onRowClick(r, canExpand)}
         title={!editMode ? (canExpand ? '한 번 클릭: Lot 목록 펼치기 · 더블클릭: 상세페이지' : '더블클릭: 상세페이지') : ''}
         style={{
           background: isSelected ? selectedBg : baseBg,
@@ -169,20 +184,20 @@ function ReagentTable({
         onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg }}
         onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = baseBg }}>
         <td style={{ ...tdStyle, textAlign: 'center', borderRight: `1px solid ${C.borderRow}` }}
-          onClick={e => editMode ? toggleCheck(r.id, e, data) : togglePick(r, e)}>
+          onClick={e => editMode ? onToggleCheck(r.id, e, data) : onTogglePick(r, e)}>
           <input type="checkbox" checked={isSelected} onChange={() => {}}
             style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
         </td>
         <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', maxWidth: '300px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
           {canExpand && (
-            <span onClick={e => { e.stopPropagation(); toggleExpand(r.id) }}
+            <span onClick={e => { e.stopPropagation(); onToggleExpand(r.id) }}
               style={{ marginRight: '5px', color: C.blue, fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
               {isExpanded ? '▾' : '▸'}
             </span>
           )}
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: '230px', verticalAlign: 'middle' }} title={r.name}>{r.name}</span>
           {canExpand && (
-            <span onClick={e => { e.stopPropagation(); toggleExpand(r.id) }}
+            <span onClick={e => { e.stopPropagation(); onToggleExpand(r.id) }}
               style={{ marginLeft: '6px', fontSize: '10.5px', background: '#EEF2FB', color: C.navy,
                 padding: '2px 8px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer' }}>
               {activeLots.length}병{multiLocation ? ' · 위치별 보기' : ''}
@@ -213,14 +228,14 @@ function ReagentTable({
               <div style={{ width: '36px', height: '6px', borderRadius: '3px', background: '#F0F2F6', overflow: 'hidden', flexShrink: 0 }}>
                 <div style={{ width: `${avgStock}%`, height: '100%', background: isLow ? '#E5484D' : '#1E9E6A' }} />
               </div>
-              {editingThisSealed ? (
-                <input autoFocus type="number" min="0" value={inlineEdit.value}
-                  onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                  onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(onlyLot, { advance: true, data }); if (e.key === 'Escape') setInlineEdit(null) }}
-                  onBlur={() => saveInlineEdit(onlyLot)}
+              {isEditingSealed ? (
+                <input autoFocus type="number" min="0" value={editValue}
+                  onChange={e => onChangeEdit(prev => ({ ...prev, value: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') onSaveEdit(onlyLot, { advance: true, data }); if (e.key === 'Escape') onChangeEdit(null) }}
+                  onBlur={() => onSaveEdit(onlyLot)}
                   style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
               ) : (
-                <span onClick={e => !editMode && onlyLot && startInlineEdit(onlyLot.id, r.id, 'sealed_count', totalSealed, e)}
+                <span onClick={e => !editMode && onlyLot && onStartEdit(onlyLot.id, r.id, 'sealed_count', totalSealed, e)}
                   title={isAdmin && !editMode && onlyLot ? '클릭하여 수정' : !onlyLot ? '상세페이지에서 Lot별로 수정하세요' : ''}
                   style={{ cursor: isAdmin && !editMode && onlyLot ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
                     border: isAdmin && !editMode && onlyLot ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
@@ -228,14 +243,14 @@ function ReagentTable({
                 </span>
               )}
               <span style={{ color: C.muted, fontSize: '11px' }}>/</span>
-              {editingThisStock ? (
-                <input autoFocus type="number" min="0" max="100" value={inlineEdit.value}
-                  onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                  onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(onlyLot, { advance: true, data }); if (e.key === 'Escape') setInlineEdit(null) }}
-                  onBlur={() => saveInlineEdit(onlyLot)}
+              {isEditingStock ? (
+                <input autoFocus type="number" min="0" max="100" value={editValue}
+                  onChange={e => onChangeEdit(prev => ({ ...prev, value: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') onSaveEdit(onlyLot, { advance: true, data }); if (e.key === 'Escape') onChangeEdit(null) }}
+                  onBlur={() => onSaveEdit(onlyLot)}
                   style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
               ) : (
-                <span onClick={e => !editMode && onlyLot && startInlineEdit(onlyLot.id, r.id, 'current_stock', avgStock, e)}
+                <span onClick={e => !editMode && onlyLot && onStartEdit(onlyLot.id, r.id, 'current_stock', avgStock, e)}
                   title={isAdmin && !editMode && onlyLot ? '클릭하여 수정' : !onlyLot ? '상세페이지에서 Lot별로 수정하세요' : ''}
                   style={{ cursor: isAdmin && !editMode && onlyLot ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
                     border: isAdmin && !editMode && onlyLot ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
@@ -287,8 +302,41 @@ function ReagentTable({
           </td>
         )}
       </tr>
-      {isExpanded && allLots.map(lot => renderLotRow(r, lot))}
+      {isExpanded && allLots.map(lot => <LotRow key={lot.id} lot={lot} locations={locations} visibleCols={visibleCols} />)}
     </Fragment>
+  )
+})
+
+function ReagentTable({
+  data, locations, visibleCols, checkedIds, pickedIds, editMode, isAdmin,
+  inlineEdit, setInlineEdit, expandedIds, alphabetRefs,
+  toggleCheck, togglePick, toggleAll, togglePickAll, handleRowClick, toggleExpand,
+  startInlineEdit, saveInlineEdit,
+}) {
+  const COLS = 2 // 체크박스 + 시약명 (항상 표시)
+    + (visibleCols.casNo ? 1 : 0) + (visibleCols.company ? 1 : 0) + (visibleCols.volume ? 1 : 0)
+    + (visibleCols.stock ? 1 : 0) + (visibleCols.location ? 1 : 0) + (visibleCols.lastConfirmed ? 1 : 0)
+    + (visibleCols.lot ? 1 : 0) + (visibleCols.expiry ? 1 : 0)
+    + (visibleCols.category ? 1 : 0) + (visibleCols.ghs ? 1 : 0) + (visibleCols.status ? 1 : 0)
+
+  const groups = getGroupedReagents(data)
+  const letters = Object.keys(groups).sort()
+  const allChecked = data.length > 0 && checkedIds.size === data.length
+  const allPicked = data.length > 0 && data.every(r => pickedIds.has(r.id))
+
+  const renderRow = (r) => {
+    const isEditingSealed = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'sealed_count'
+    const isEditingStock = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'current_stock'
+    return (
+      <ReagentRow key={r.id} r={r} locations={locations} visibleCols={visibleCols}
+        editMode={editMode} isAdmin={isAdmin} data={data}
+        isChecked={checkedIds.has(r.id)} isPicked={pickedIds.has(r.id)} isExpanded={expandedIds.has(r.id)}
+        isEditingSealed={isEditingSealed} isEditingStock={isEditingStock}
+        editValue={(isEditingSealed || isEditingStock) ? inlineEdit.value : undefined}
+        onToggleCheck={toggleCheck} onTogglePick={togglePick} onToggleExpand={toggleExpand} onRowClick={handleRowClick}
+        onStartEdit={startInlineEdit}
+        onSaveEdit={(isEditingSealed || isEditingStock) ? saveInlineEdit : undefined}
+        onChangeEdit={(isEditingSealed || isEditingStock) ? setInlineEdit : undefined} />
     )
   }
 
@@ -437,7 +485,7 @@ export default function ReagentList() {
       alert(`⚠️ 시약이 ${count}개로 많아 일부만 표시됩니다. 관리자에게 문의하세요.`)
     }
     if (data) {
-      const sorted = data.sort((a, b) => a.name.localeCompare(b.name))
+      const sorted = data.sort((a, b) => a.name.localeCompare(b.name)).map(enrichReagent)
       setResults(sorted)
       return sorted
     }
@@ -457,40 +505,44 @@ export default function ReagentList() {
     setCheckedIds(new Set())
   }
 
-  const [lastChecked, setLastChecked] = useState(null)
+  // 시프트 범위선택용 "마지막 클릭 id"는 화면에 영향 없는 부기용 값이라
+  // state 대신 ref로 관리 — toggleCheck를 완전히 안정된(참조가 안 바뀌는)
+  // 콜백으로 만들어서 행(ReagentRow) 메모이제이션이 깨지지 않도록 하기 위함.
+  const lastCheckedRef = useRef(null)
 
-function toggleCheck(id, e, allData) {
-  e.stopPropagation()
-  const next = new Set(checkedIds)
-
-  if (e.shiftKey && lastChecked) {
-    // Shift+클릭 범위 선택
-    const ids = allData.map(r => r.id)
-    const start = ids.indexOf(lastChecked)
-    const end = ids.indexOf(id)
-    const range = ids.slice(Math.min(start, end), Math.max(start, end) + 1)
-    const allSelected = range.every(rid => next.has(rid))
-    range.forEach(rid => allSelected ? next.delete(rid) : next.add(rid))
-  } else {
-    next.has(id) ? next.delete(id) : next.add(id)
-  }
-  setLastChecked(id)
-  setCheckedIds(next)
-}
+  const toggleCheck = useCallback((id, e, allData) => {
+    e.stopPropagation()
+    setCheckedIds(prev => {
+      const next = new Set(prev)
+      if (e.shiftKey && lastCheckedRef.current) {
+        // Shift+클릭 범위 선택
+        const ids = allData.map(r => r.id)
+        const start = ids.indexOf(lastCheckedRef.current)
+        const end = ids.indexOf(id)
+        const range = ids.slice(Math.min(start, end), Math.max(start, end) + 1)
+        const allSelected = range.every(rid => next.has(rid))
+        range.forEach(rid => allSelected ? next.delete(rid) : next.add(rid))
+      } else {
+        next.has(id) ? next.delete(id) : next.add(id)
+      }
+      return next
+    })
+    lastCheckedRef.current = id
+  }, [])
 
   function toggleAll(data) {
     if (checkedIds.size === data.length) setCheckedIds(new Set())
     else setCheckedIds(new Set(data.map(r => r.id)))
   }
 
-  function togglePick(r, e) {
+  const togglePick = useCallback((r, e) => {
     e.stopPropagation()
     setPickedIds(prev => {
       const next = new Map(prev)
       next.has(r.id) ? next.delete(r.id) : next.set(r.id, r)
       return next
     })
-  }
+  }, [])
 
   function togglePickAll(data) {
     const allPicked = data.length > 0 && data.every(r => pickedIds.has(r.id))
@@ -549,7 +601,7 @@ function toggleCheck(id, e, allData) {
     let movedLotCount = 0
     let skippedCount = 0
     for (const r of selected) {
-      const activeLots = (r.reagent_lots || []).filter(l => l.status === 'active')
+      const activeLots = r._activeLots || (r.reagent_lots || []).filter(l => l.status === 'active')
       if (activeLots.length === 0) { skippedCount++; continue }
       for (const lot of activeLots) {
         const fromLoc = locations.find(l => l.id === lot.location_id)
@@ -598,11 +650,11 @@ function toggleCheck(id, e, allData) {
     fetchResults()
   }
 
-  function startInlineEdit(lotId, reagentId, field, currentValue, e) {
+  const startInlineEdit = useCallback((lotId, reagentId, field, currentValue, e) => {
     e.stopPropagation()
     if (!isAdmin) return
     setInlineEdit({ lotId, reagentId, field, value: currentValue })
-  }
+  }, [isAdmin])
 
   // advance: Enter로 저장한 경우 같은 항목(잔량/미개봉)을 목록의 다음 시약에서 바로 이어서 편집 —
   // 단일 Lot 시약만 인라인 편집 대상이라, 다음 항목 중 첫 단일 Lot 시약을 찾아서 연다.
@@ -626,20 +678,27 @@ function toggleCheck(id, e, allData) {
       const idx = fresh.findIndex(r => r.id === reagentId)
       for (let i = idx + 1; i < fresh.length; i++) {
         const nextR = fresh[i]
-        const activeLots = (nextR.reagent_lots || []).filter(l => l.status === 'active')
-        if (activeLots.length === 1) {
-          const nextVal = field === 'sealed_count' ? activeLots[0].sealed_count : activeLots[0].current_stock
-          setInlineEdit({ lotId: activeLots[0].id, reagentId: nextR.id, field, value: nextVal })
+        if (nextR._onlyLot) {
+          const nextVal = field === 'sealed_count' ? nextR._onlyLot.sealed_count : nextR._onlyLot.current_stock
+          setInlineEdit({ lotId: nextR._onlyLot.id, reagentId: nextR.id, field, value: nextVal })
           break
         }
       }
     }
   }
 
+  const toggleExpand = useCallback((id) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }, [])
+
   // 한 번 클릭 = Lot/위치별 목록 펼치기, 더블클릭 = 상세페이지 이동.
   // 펼치기 클릭은 테이블 전체가 리렌더되면서 DOM 노드가 새로 생성돼 브라우저 네이티브
   // dblclick 감지(같은 노드 기준)가 깨지므로, 클릭 타이밍을 직접 재서 구분한다.
-  function handleRowClick(r, canExpand) {
+  const handleRowClick = useCallback((r, canExpand) => {
     // Lot 개수와 무관하게 더블클릭은 항상 상세페이지로 통일. 한 번 클릭은 펼칠
     // Lot이 있을 때만 목록을 펼치고, 펼칠 게 없으면(Lot 1개) 아무 동작도 하지 않는다.
     if (rowClickTimerRef.current) {
@@ -652,15 +711,7 @@ function toggleCheck(id, e, allData) {
       rowClickTimerRef.current = null
       if (canExpand) toggleExpand(r.id)
     }, 250)
-  }
-
-  function toggleExpand(id) {
-    setExpandedIds(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
+  }, [navigate, toggleExpand])
 
   const scrollToLetter = (letter) => {
     const el = alphabetRefs.current[letter]
