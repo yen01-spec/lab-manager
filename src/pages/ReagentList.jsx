@@ -109,6 +109,7 @@ function LotRow({ lot, locations, visibleCols }) {
       <td style={{ ...tdStyle, fontSize: '12.5px', color: C.muted, whiteSpace: 'nowrap', paddingLeft: '30px', borderRight: `1px solid ${C.borderRow}` }}>
         ↳ Lot {lot.lot_no || '(번호 없음)'}
       </td>
+      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>
       {visibleCols.casNo && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
       {visibleCols.company && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
       {visibleCols.volume && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
@@ -130,7 +131,6 @@ function LotRow({ lot, locations, visibleCols }) {
       {visibleCols.lot && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>{lot.lot_no || '-'}</td>}
       {visibleCols.expiry && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>{lot.expiry_date || '-'}</td>}
       {visibleCols.category && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
-      {visibleCols.purity && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
       {visibleCols.ghs && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
       {visibleCols.lastConfirmed && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: visibleCols.status ? `1px solid ${C.borderRow}` : undefined }}>-</td>}
       {visibleCols.status && (
@@ -219,6 +219,7 @@ const ReagentRow = memo(function ReagentRow({
                 cursor: isAdmin ? 'pointer' : 'default' }}>검토대기{isAdmin ? ' ✓' : ''}</span>
           )}
         </td>
+        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{r.purity || '-'}</td>
         {visibleCols.casNo && (
           <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{r.cas_no || '-'}</td>
         )}
@@ -289,9 +290,6 @@ const ReagentRow = memo(function ReagentRow({
               : <span style={{ color: C.muted }}>-</span>}
           </td>
         )}
-        {visibleCols.purity && (
-          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, borderRight: `1px solid ${C.borderRow}` }}>{r.purity || '-'}</td>
-        )}
         {visibleCols.ghs && (
           <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }} onClick={e => e.stopPropagation()}>
             {ghsList.length > 0
@@ -325,11 +323,11 @@ function ReagentTable({
   toggleCheck, togglePick, toggleAll, togglePickAll, handleRowClick, toggleExpand,
   startInlineEdit, saveInlineEdit, confirmPending,
 }) {
-  const COLS = 2 // 체크박스 + 시약명 (항상 표시)
+  const COLS = 3 // 체크박스 + 시약명 + 순도 (항상 표시)
     + (visibleCols.casNo ? 1 : 0) + (visibleCols.company ? 1 : 0) + (visibleCols.volume ? 1 : 0)
     + (visibleCols.stock ? 1 : 0) + (visibleCols.location ? 1 : 0) + (visibleCols.lastConfirmed ? 1 : 0)
     + (visibleCols.lot ? 1 : 0) + (visibleCols.expiry ? 1 : 0)
-    + (visibleCols.category ? 1 : 0) + (visibleCols.purity ? 1 : 0) + (visibleCols.ghs ? 1 : 0) + (visibleCols.status ? 1 : 0)
+    + (visibleCols.category ? 1 : 0) + (visibleCols.ghs ? 1 : 0) + (visibleCols.status ? 1 : 0)
 
   const groups = getGroupedReagents(data)
   const letters = Object.keys(groups).sort()
@@ -365,6 +363,7 @@ function ReagentTable({
           </th>
           {[
             '시약명',
+            '순도',
             ...(visibleCols.casNo ? ['CAS No.'] : []),
             ...(visibleCols.company ? ['회사'] : []),
             ...(visibleCols.volume ? ['용량'] : []),
@@ -373,7 +372,6 @@ function ReagentTable({
             ...(visibleCols.lot ? ['Lot No.'] : []),
             ...(visibleCols.expiry ? ['유효기간'] : []),
             ...(visibleCols.category ? ['성상'] : []),
-            ...(visibleCols.purity ? ['순도'] : []),
             ...(visibleCols.ghs ? ['GHS'] : []),
             ...(visibleCols.lastConfirmed ? ['최근확인'] : []),
             ...(visibleCols.status ? ['상태'] : []),
@@ -420,7 +418,7 @@ export default function ReagentList() {
   const [detailFilter, setDetailFilter] = useState('')
   const [visibleCols, setVisibleCols] = useState({
     casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
-    lot: false, expiry: false, category: false, ghs: false, status: false, purity: false,
+    lot: false, expiry: false, category: false, ghs: false, status: false,
   })
   const [results, setResults] = useState([])
   const [totalCount, setTotalCount] = useState(0)
@@ -524,7 +522,7 @@ export default function ReagentList() {
   function resetFilters() {
     setVisibleCols({
       casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
-      lot: false, expiry: false, category: false, ghs: false, status: false, purity: false,
+      lot: false, expiry: false, category: false, ghs: false, status: false,
     })
   }
 
@@ -977,7 +975,7 @@ export default function ReagentList() {
 
         {/* 표시 열 선택 (기본 열 + 선택 열) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '2px 4px 12px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '11.5px', color: C.muted }}>시약명(고정)</span>
+          <span style={{ fontSize: '11.5px', color: C.muted }}>시약명·순도(고정)</span>
           <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
             <input type="checkbox" checked={visibleCols.casNo} onChange={() => setVisibleCols(v => ({ ...v, casNo: !v.casNo }))} />CAS
           </label>
@@ -1005,9 +1003,6 @@ export default function ReagentList() {
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
             <input type="checkbox" checked={visibleCols.category} onChange={() => setVisibleCols(v => ({ ...v, category: !v.category }))} />성상
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={visibleCols.purity} onChange={() => setVisibleCols(v => ({ ...v, purity: !v.purity }))} />순도
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
             <input type="checkbox" checked={visibleCols.ghs} onChange={() => setVisibleCols(v => ({ ...v, ghs: !v.ghs }))} />GHS
