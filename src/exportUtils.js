@@ -25,6 +25,9 @@ export function downloadExcel(data, columns, filename) {
 // ── 시약 목록 내보내기 ────────────────────────────────
 const LOT_STATUS_LABEL = { active: '', used_up: '사용완료', disposed: '폐기', missing: '분실' }
 
+// Lot이 여러 개인 시약은 Lot 단위로 한 줄씩 풀어서 내보냄(위치·재고가 Lot마다 다르므로).
+// 화면에서 "위치별 보기"로 펼쳐보고 있지 않아도 Excel에는 항상 이렇게 Lot별로 전부 나감 —
+// 즉 화면에 현재 보이는(필터링된) 시약 목록을 기준으로, 그 시약들의 모든 Lot을 나열.
 export function exportReagents(reagents, locations = []) {
   const locName = locId => {
     const loc = locations.find(l => l.id === locId)
@@ -35,40 +38,37 @@ export function exportReagents(reagents, locations = []) {
     const lots = r.reagent_lots || []
     if (lots.length === 0) {
       rows.push({
-        name: r.name, cas_no: r.cas_no || '-', company: r.company || '-',
+        name: r.name, cas_no: r.cas_no || '-', company: r.company || '-', cat_no: '-',
+        lot_no: '-', category: r.category || '-',
         volume: r.volume ? `${r.volume}${r.unit}` : '-',
-        category: r.category || '-', hazard: r.hazard || '-',
-        location: '-', lot_no: '-', expiry_date: '-', sealed_count: '-', current_stock: '-', status: '-',
+        stock: '-', location: '-', note: '-',
       })
     } else {
       lots.forEach(lot => {
         const isLow = lot.status === 'active' && lot.sealed_count === 0 && lot.current_stock <= 20
         rows.push({
-          name: r.name, cas_no: r.cas_no || '-', company: r.company || '-',
+          name: r.name, cas_no: r.cas_no || '-', company: r.company || '-', cat_no: lot.cat_no || '-',
+          lot_no: lot.lot_no || '-', category: r.category || '-',
           volume: r.volume ? `${r.volume}${r.unit}` : '-',
-          category: r.category || '-', hazard: r.hazard || '-',
+          stock: `${lot.sealed_count}병 / ${lot.current_stock}%`,
           location: locName(lot.location_id),
-          lot_no: lot.lot_no || '-', expiry_date: lot.expiry_date || '-',
-          sealed_count: lot.sealed_count, current_stock: `${lot.current_stock}%`,
-          status: LOT_STATUS_LABEL[lot.status] || (isLow ? '재고부족' : '정상'),
+          note: LOT_STATUS_LABEL[lot.status] || (isLow ? '재고부족' : '정상'),
         })
       })
     }
   })
 
   const columns = [
-    { key: 'name', label: '시약명' },
+    { key: 'name', label: '화학물질명' },
     { key: 'cas_no', label: 'CAS No.' },
-    { key: 'company', label: '회사' },
-    { key: 'volume', label: '용량' },
-    { key: 'category', label: '성상' },
-    { key: 'hazard', label: '유해·위험성' },
-    { key: 'location', label: '위치' },
+    { key: 'company', label: '제조사' },
+    { key: 'cat_no', label: 'Cat No.' },
     { key: 'lot_no', label: 'Lot No.' },
-    { key: 'expiry_date', label: '유통기한' },
-    { key: 'sealed_count', label: '미개봉(병)' },
-    { key: 'current_stock', label: '잔량' },
-    { key: 'status', label: '상태' },
+    { key: 'category', label: '성상' },
+    { key: 'volume', label: '용량(단위)' },
+    { key: 'stock', label: '재고' },
+    { key: 'location', label: '위치' },
+    { key: 'note', label: '비고' },
   ]
   downloadExcel(rows, columns, '시약목록')
 }
