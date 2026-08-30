@@ -465,8 +465,11 @@ export default function ReagentList() {
 
   async function fetchResults() {
     const myRequestId = ++fetchRequestRef.current
+    // 목록 화면에서 실제로 쓰는 컬럼만 select — 예전엔 '*'로 모든 컬럼 + 위치 join까지
+    // 통째로 가져와서(안 쓰는 locations(*) join 포함) 1,500여 개 시약 응답이 5MB가
+    // 넘었음. 그게 페이지 진입마다 체감되는 지연의 큰 원인이라 필요한 것만 좁힘.
     let query = supabase.from('reagents')
-      .select('*, reagent_lots(*), locations(*)', { count: 'exact' })
+      .select('id, name, cas_no, company, volume, unit, category, hazard, reagent_type, pending_confirm, msds_url, last_confirmed_at, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no, expiry_date, cat_no, pending_confirm)', { count: 'exact' })
       .neq('status', 'archived')
     if (search.trim()) query = query.or(`name.ilike.%${search.trim()}%,cas_no.ilike.%${search.trim()}%`)
     if (locationFilter) {
