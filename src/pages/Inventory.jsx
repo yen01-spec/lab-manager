@@ -301,7 +301,7 @@ export default function Inventory() {
       .or('actual_sealed.not.is.null,is_new_registration.eq.true,staged_reagent_fields.not.is.null').range(from, to))
     if (counts) await applyCounts(counts)
     fetchProgress(); fetchPendingConfirmCount()
-    alert('실사가 완료 처리되었습니다! 관리자 검토 후 "최종 DB 반영하기"를 눌러야 확정됩니다.')
+    alert('실사가 완료 처리되었습니다! 관리자 검토 후 "실사 DB 반영하기"를 눌러야 확정됩니다.')
   }
 
   // 2단계 — 관리자가 전체 변경사항을 검토한 뒤 최종 확정. 값은 이미 1단계에서 반영돼
@@ -489,11 +489,11 @@ export default function Inventory() {
                   <button onClick={cancelSession} style={{ ...btnGhost, color: C.danger, borderColor: C.danger }}>🗑️ 실사 취소</button>
                   {activeSession.status !== 'paused' && (
                     <>
-                      <button onClick={completeSession} style={{ ...btnPrimary, background: '#1565C0' }}>✅ 실사 완료 처리</button>
+                      <button onClick={completeSession} style={{ ...btnPrimary, background: '#1565C0', width: '150px', textAlign: 'center' }}>✅ 실사 완료 처리</button>
                       {pendingConfirmCount > 0 && (
                         <button onClick={undoSessionCompletion} style={{ ...btnGhost, color: C.danger, borderColor: C.danger }}>↩ 완료 취소</button>
                       )}
-                      <button onClick={finalizeSession} style={{ ...btnPrimary, background: '#38A169' }}>🏁 모든 변경사항 최종 DB 반영하기</button>
+                      <button onClick={finalizeSession} style={{ ...btnPrimary, background: '#38A169', width: '150px', textAlign: 'center' }}>🏁 실사 DB 반영하기</button>
                     </>
                   )}
                 </div>
