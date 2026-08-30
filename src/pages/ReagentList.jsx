@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
 import { exportReagents, exportPickedReagents } from '../exportUtils'
 import ReagentAutocomplete from '../components/ReagentAutocomplete'
+import CompanyPicker from '../components/CompanyPicker'
 import { lookupStudent, writeSession } from '../lib/session'
 
 const GHS_MAP = [
@@ -1310,7 +1311,7 @@ export default function ReagentList() {
                     </div>
                     <div>
                       <label style={labelStyle}>제조사</label>
-                      <input value={newReagentForm.company} onChange={e => setNewReagentForm({ ...newReagentForm, company: e.target.value })} style={inputStyle} />
+                      <CompanyPicker value={newReagentForm.company} onChange={v => setNewReagentForm({ ...newReagentForm, company: v })} style={inputStyle} />
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>

@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, btnPrimary, btnGhost, inputStyle, labelStyle, thStyle, tdStyle } from '../design'
 import DateSplitInput from '../components/DateSplitInput'
+import CompanyPicker from '../components/CompanyPicker'
 
 // Supabase/PostgREST 기본 응답은 1000행으로 잘림 — 시약이 7000개가 넘는 지금은
 // 반드시 페이지네이션해야 함. queryFn(from, to)는 .range(from, to)를 적용한 쿼리를 반환.
@@ -26,6 +27,47 @@ function smallBtnStyle(active, activeColor = C.navy, activeBg = C.bg) {
     background: active ? activeBg : C.white, cursor: 'pointer', fontSize: '11px',
     color: active ? activeColor : C.navy, fontWeight: '600',
   }
+}
+
+// 확인칸(장부값과 같은지 다른지)에 공통으로 쓰는 테두리/배경 —
+// 아직 확인 안 함(투명) / 확인했고 장부값과 일치(파랑) / 확인했는데 장부값과 다름(빨강)
+function diffCellStyle(touched, differs) {
+  if (!touched) return { border: '1px solid transparent', background: 'transparent' }
+  return differs
+    ? { border: `1px solid ${C.danger}`, background: C.dangerTint }
+    : { border: '1px solid #1565C0', background: '#EAF1FB' }
+}
+
+// 회사명 칸 전용 — CompanyPicker는 controlled 컴포넌트라 나머지 필드들이 쓰는
+// defaultValue+onBlur 저장 패턴(fieldInputCell/panelMasterField)과 안 맞아서 따로 뺌.
+// 로컬에 잠깐 값을 들고 있다가, 로고를 클릭하면 그 즉시 저장하고(다른 필드의 버튼형
+// 선택과 동일하게), 직접 타이핑한 값은 기존과 동일하게 blur/Enter 때 저장.
+function StagedCompanyField({ value, bookVal, touched, differs, disabled, onSave, onEnter, width, inputRef, baseStyle }) {
+  const [local, setLocal] = useState(value)
+  // 렌더 중에 이전 value와 비교해서 바뀌었으면 그 자리에서 로컬 상태를 다시 맞춤 —
+  // useEffect로 하면 "effect 안에서 setState"로 리렌더가 한 번 더 도는 문제가 있어서
+  // React 공식 권장 패턴(렌더 중 조정)으로 처리.
+  const [prevValue, setPrevValue] = useState(value)
+  if (value !== prevValue) {
+    setPrevValue(value)
+    setLocal(value)
+  }
+  function commit(v) {
+    onSave(v !== '' ? v : bookVal)
+  }
+  return (
+    <CompanyPicker
+      value={local}
+      disabled={disabled}
+      onChange={setLocal}
+      onPick={commit}
+      onBlur={() => commit(local)}
+      onKeyDown={e => { if (e.key === 'Enter') { commit(local); if (onEnter) onEnter() } }}
+      inputRef={inputRef}
+      placeholder={bookVal}
+      style={{ ...baseStyle, width: width ? `${width}px` : undefined, padding: '5px 8px', borderRadius: '6px', fontSize: '12px', ...diffCellStyle(touched, differs) }}
+    />
+  )
 }
 
 export default function Inventory() {
@@ -869,12 +911,6 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
 
   // 확인칸(장부값과 같은지 다른지)에 공통으로 쓰는 테두리/배경 —
   // 아직 확인 안 함(투명) / 확인했고 장부값과 일치(파랑) / 확인했는데 장부값과 다름(빨강)
-  function diffCellStyle(touched, differs) {
-    if (!touched) return { border: '1px solid transparent', background: 'transparent' }
-    return differs
-      ? { border: `1px solid ${C.danger}`, background: C.dangerTint }
-      : { border: '1px solid #1565C0', background: '#EAF1FB' }
-  }
 
   // 신규(미등록) 시약 등록 — 검색해서 기존 목록에 전혀 없으면 상단 검색창 아래 드롭다운에
   // "기존 목록에 없습니다"를 띄우고, 그걸 누르면 대조 패널이 신규 입력 모드로 바뀜.
@@ -1101,6 +1137,21 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
     const saveFn = isLot ? saveLotField : saveReagentField
     // 지워서 빈 칸으로 두고 넘어가면 "장부값 그대로"로 확인 처리 — 빈 칸일 땐 장부값이
     // 연한 회색 placeholder로 보여서 원래 뭐였는지 알 수 있게 함.
+    if (field === 'company') {
+      return (
+        <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+          <StagedCompanyField
+            value={current} bookVal={bookVal} touched={touched} differs={differs} width={width}
+            inputRef={el => inputRefs.current[`${field}_${lot.id}`] = el}
+            onSave={v => saveFn(lot, field, v)}
+            onEnter={() => {
+              const nextLot = visibleLots[idx + 1]
+              if (nextLot && inputRefs.current[`${field}_${nextLot.id}`]) inputRefs.current[`${field}_${nextLot.id}`].focus()
+            }}
+          />
+        </td>
+      )
+    }
     return (
       <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
         <input
@@ -1221,7 +1272,7 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
                     <input value={newEntryForm.cas_no} disabled={!!newEntryForm.reagent_id} onChange={e => setNewEntryForm({ ...newEntryForm, cas_no: e.target.value })}
                       style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px', background: newEntryForm.reagent_id ? C.bg : C.white }} /></div>
                   <div><div style={{ fontSize: '11px', color: C.muted }}>회사</div>
-                    <input value={newEntryForm.company} disabled={!!newEntryForm.reagent_id} onChange={e => setNewEntryForm({ ...newEntryForm, company: e.target.value })}
+                    <CompanyPicker value={newEntryForm.company} disabled={!!newEntryForm.reagent_id} onChange={v => setNewEntryForm({ ...newEntryForm, company: v })}
                       style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px', background: newEntryForm.reagent_id ? C.bg : C.white }} /></div>
                   <div><div style={{ fontSize: '11px', color: C.muted }}>Cat No.</div>
                     <input value={newEntryForm.cat_no} onChange={e => setNewEntryForm({ ...newEntryForm, cat_no: e.target.value })}
@@ -1291,6 +1342,16 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
                 const current = touched ? st[field] : bookVal
                 const differs = touched && String(st[field] ?? '') !== String(bookVal ?? '')
                 const saveFn = isLot ? saveLotField : saveReagentField
+                if (field === 'company') {
+                  return (
+                    <StagedCompanyField
+                      key={`${compareLot.id}_${field}`}
+                      value={current} bookVal={bookVal} touched={touched} differs={differs} width={width}
+                      baseStyle={{ ...inputStyle, marginTop: '2px' }}
+                      onSave={v => saveFn(compareLot, field, v)}
+                    />
+                  )
+                }
                 return (
                   <input key={`${compareLot.id}_${field}`} defaultValue={current} placeholder={bookVal}
                     onBlur={e => saveFn(compareLot, field, e.target.value !== '' ? e.target.value : bookVal)}

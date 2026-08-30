@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, StatusBadge, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
+import CompanyPicker from '../components/CompanyPicker'
 
 export default function Requests() {
   const { isAdmin } = useOutletContext()
@@ -321,8 +322,8 @@ export default function Requests() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px', padding: '16px', background: C.bg, borderRadius: '8px' }}>
                 <div>
                   <label style={labelStyle}>회사명</label>
-                  <input value={reagentForm.company}
-                    onChange={e => setReagentForm({ ...reagentForm, company: e.target.value })}
+                  <CompanyPicker value={reagentForm.company}
+                    onChange={v => setReagentForm({ ...reagentForm, company: v })}
                     placeholder="예: Sigma-Aldrich" style={inputStyle} />
                 </div>
                 <div>

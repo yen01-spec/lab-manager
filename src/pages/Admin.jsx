@@ -3,6 +3,7 @@ import { useOutletContext, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card, StatusBadge, inputStyle, labelStyle, btnPrimary, btnGhost, thStyle, tdStyle } from '../design'
 import { exportPurchaseRequests } from '../exportUtils'
+import CompanyPicker from '../components/CompanyPicker'
 
 export default function Admin() {
   const { isAdmin, isSuper, student } = useOutletContext()
@@ -345,8 +346,8 @@ try {
           <input value={form.name} placeholder="예: Ethanol"
             onChange={e => setForm({ ...form, name: e.target.value })} style={inputStyle} /></div>
         <div><label style={labelStyle}>회사명</label>
-          <input value={form.company} placeholder="예: Sigma-Aldrich"
-            onChange={e => setForm({ ...form, company: e.target.value })} style={inputStyle} /></div>
+          <CompanyPicker value={form.company} placeholder="예: Sigma-Aldrich"
+            onChange={v => setForm({ ...form, company: v })} style={inputStyle} /></div>
         <div><label style={labelStyle}>유해·위험성</label>
           <input value={form.hazard} placeholder="예: 인화성 액체"
             onChange={e => setForm({ ...form, hazard: e.target.value })} style={inputStyle} /></div>
@@ -1712,14 +1713,18 @@ export function BulkEditTab({ locations, student }) {
     return (r.reagent_lots || []).filter(l => l.status === 'active').length
   }
 
-  async function fetchReagents() {
+  // companyOverride — 로고를 클릭한 직후엔 setCompanyFilter가 아직 리렌더 전이라
+  // companyFilter를 그대로 읽으면 클릭 직전 값(한 박자 늦은 값)을 쓰게 됨. 방금 고른
+  // 값을 바로 넘겨받아 쓰도록 옵션 인자로 받음.
+  async function fetchReagents(companyOverride) {
     setLoading(true)
+    const companyTerm = companyOverride ?? companyFilter
     let query = supabase.from('reagents')
       .select('*, reagent_lots(*)')
       .neq('status', 'archived')
       .order('name')
       .range(0, 2999)
-    if (companyFilter.trim()) query = query.ilike('company', `%${companyFilter.trim()}%`)
+    if (companyTerm.trim()) query = query.ilike('company', `%${companyTerm.trim()}%`)
     const { data } = await query
     let filtered = data || []
     if (roomFilter) filtered = filtered.filter(r => locations.find(l => l.id === repLot(r)?.location_id)?.room === roomFilter)
@@ -1798,8 +1803,8 @@ export function BulkEditTab({ locations, student }) {
           <option value="">전체 실험실</option>
           {rooms.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
-        <input value={companyFilter} onChange={e => setCompanyFilter(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchReagents()}
-          placeholder="제조사 검색" style={{ ...inputStyle, maxWidth: '160px' }} />
+        <CompanyPicker value={companyFilter} onChange={setCompanyFilter} onPick={v => fetchReagents(v)} onKeyDown={e => e.key === 'Enter' && fetchReagents()}
+          placeholder="제조사 검색" style={{ ...inputStyle, maxWidth: '130px' }} />
         <button onClick={fetchReagents} style={{ ...btnGhost, padding: '8px 16px' }}>필터 적용</button>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: '11.5px', color: C.muted }}>표시 열</span>
@@ -1878,8 +1883,8 @@ export function BulkEditTab({ locations, student }) {
                     )}
                     {cols.company && (
                       <td style={{ ...tdStyle, ...(edit.company !== undefined ? changedStyle : {}) }}>
-                        <input value={edit.company ?? r.company ?? ''} onChange={e => clearEditIfSame(r.id, 'company', e.target.value, r.company)}
-                          style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px', width: '110px' }} />
+                        <CompanyPicker value={edit.company ?? r.company ?? ''} onChange={v => clearEditIfSame(r.id, 'company', v, r.company)}
+                          style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px', width: '80px' }} />
                       </td>
                     )}
                     {cols.expiry && <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{lot?.expiry_date || '-'}</td>}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useOutletContext, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../design'
+import CompanyPicker from '../components/CompanyPicker'
 
 const GHS_MAP = [
   { keywords: ['인화', '발화', '가연', 'flammable', 'flame'],        emoji: '🔥', label: '인화성' },
@@ -465,7 +466,13 @@ export default function ReagentDetail() {
                       </div>
                     )}
                     <div style={{ fontSize: '11px', color: C.muted, marginBottom: '4px' }}>{label}</div>
-                    {isEditing ? (
+                    {isEditing && field === 'company' ? (
+                      <CompanyPicker value={editingValue} onChange={setEditingValue}
+                        onPick={v => saveField(field, v, source ? `${field}_source` : null)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveField(field, editingValue, source ? `${field}_source` : null) }}
+                        onBlur={() => saveField(field, editingValue, source ? `${field}_source` : null)}
+                        style={{ ...inputStyle, padding: '4px 8px', fontSize: '13px' }} />
+                    ) : isEditing ? (
                       <input autoFocus value={editingValue} onChange={e => setEditingValue(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') saveField(field, editingValue, source ? `${field}_source` : null) }}
                         onBlur={() => saveField(field, editingValue, source ? `${field}_source` : null)}

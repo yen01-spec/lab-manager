@@ -6,6 +6,7 @@ import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, btnGhost, thStyle, tdStyle } from '../design'
 import { exportPurchaseRequestForm } from '../exportUtils'
 import ReagentAutocomplete from '../components/ReagentAutocomplete'
+import CompanyPicker from '../components/CompanyPicker'
 
 let uidCounter = 0
 function newId() { uidCounter += 1; return `local-${uidCounter}` }
@@ -301,8 +302,8 @@ export default function PurchaseRequest() {
                 <>
                   <div style={{ ...fieldGridStyle, background: C.bg, borderRadius: '8px', padding: '14px' }}>
                     <Field label="제조사">
-                      <input value={reagentDraft.company} onChange={e => updateReagentDraft('company', e.target.value)}
-                        readOnly={!!reagentDraft.reagent_id} style={{ ...inputStyle, background: reagentDraft.reagent_id ? '#EEF0F3' : C.white }} />
+                      <CompanyPicker value={reagentDraft.company} onChange={v => updateReagentDraft('company', v)}
+                        disabled={!!reagentDraft.reagent_id} style={{ ...inputStyle, background: reagentDraft.reagent_id ? '#EEF0F3' : C.white }} />
                     </Field>
                     <Field label="Cat No.">
                       <input value={reagentDraft.cat_no} onChange={e => updateReagentDraft('cat_no', e.target.value)} style={inputStyle} />
