@@ -398,14 +398,12 @@ export default function ReagentList() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [locations, setLocations] = useState([])
-  const [companies, setCompanies] = useState([])
   const [expandedIds, setExpandedIds] = useState(new Set())
   const [search, setSearch] = useState(() => searchParams.get('q') || '')
   // 위치 필터 — 방(room) 탭 + (세부위치가 있는 방이면) 세부위치 알약 2단계 구조.
   // roomFilter=''(전체) | 방 이름. detailFilter=''(그 방 전체) | 특정 위치 id.
   const [roomFilter, setRoomFilter] = useState('')
   const [detailFilter, setDetailFilter] = useState('')
-  const [companyFilter, setCompanyFilter] = useState('')
   const [visibleCols, setVisibleCols] = useState({
     casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
     lot: false, expiry: false, category: false, ghs: false, status: false,
@@ -443,23 +441,17 @@ export default function ReagentList() {
   const [showMadeModal, setShowMadeModal] = useState(false)
   const [madeForm, setMadeForm] = useState({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
 
-  useEffect(() => { fetchLocations(); fetchCompanies(); fetchTotalCount() }, [])
+  useEffect(() => { fetchLocations(); fetchTotalCount() }, [])
 
   // 검색어(홈 화면 ?q= 포함) 또는 필터가 바뀔 때마다 결과를 다시 불러온다
   useEffect(() => {
     fetchResults()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomFilter, detailFilter, companyFilter])
+  }, [roomFilter, detailFilter])
 
   async function fetchLocations() {
     const { data } = await supabase.from('locations').select('*').order('room')
     if (data) setLocations(data)
-  }
-
-  async function fetchCompanies() {
-    const { data } = await supabase.from('reagents').select('company').neq('status', 'archived')
-    const uniq = [...new Set((data || []).map(r => r.company).filter(Boolean))].sort()
-    setCompanies(uniq)
   }
 
   async function fetchTotalCount() {
@@ -489,7 +481,6 @@ export default function ReagentList() {
       if (matchIds.length === 0) { setResults([]); return [] }
       query = query.in('id', matchIds)
     }
-    if (companyFilter) query = query.eq('company', companyFilter)
     const { data, count } = await query.range(0, 4999)
     if (fetchRequestRef.current !== myRequestId) return // 늦게 도착한 응답이 최신 필터 결과를 덮어쓰지 않도록 함
     if (count > 4999) {
@@ -808,10 +799,6 @@ export default function ReagentList() {
               inputStyle={{ ...inputStyle, width: '100%' }} />
             <button onClick={() => fetchResults()} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>검색</button>
           </div>
-          <select value={companyFilter} onChange={e => setCompanyFilter(e.target.value)} style={{ ...inputStyle, width: 'auto', maxWidth: '160px' }}>
-            <option value="">전체 제조사</option>
-            {companies.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
           <button onClick={() => { setShowBulkLookupModal(true); setBulkLookupResults(null) }} style={{
             background: C.white, color: C.text, border: `1px solid ${C.border}`,
             padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
