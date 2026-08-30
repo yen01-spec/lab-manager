@@ -33,7 +33,7 @@ export default function ReagentAutocomplete({
     const myRequestId = ++requestIdRef.current
     debounceRef.current = setTimeout(async () => {
       const term = v.trim()
-      const { data } = await supabase.from('reagents').select('id, name, company, cas_no')
+      const { data } = await supabase.from('reagents').select('id, name, company, cas_no, category')
         .or(`name.ilike.${term}%,cas_no.ilike.${term}%`)
         .neq('status', 'archived')
         .order('name').limit(10)
@@ -50,7 +50,7 @@ export default function ReagentAutocomplete({
           const existingIds = new Set(combined.map(r => r.id))
           const newReagentIds = [...new Set((lots || []).map(l => l.reagent_id))].filter(id => !existingIds.has(id))
           if (newReagentIds.length > 0) {
-            const { data: locReagents } = await supabase.from('reagents').select('id, name, company, cas_no')
+            const { data: locReagents } = await supabase.from('reagents').select('id, name, company, cas_no, category')
               .in('id', newReagentIds).neq('status', 'archived').order('name').limit(10)
             const locNameByReagent = new Map()
             ;(lots || []).forEach(l => {
@@ -119,7 +119,7 @@ export default function ReagentAutocomplete({
               style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '13px', borderBottom: `1px solid ${C.border}`, background: i === highlightIdx ? C.blueTint : C.white }}>
               <div style={{ fontWeight: '600', color: C.navy }}>{highlightPrefix(r.name, value)}</div>
               <div style={{ fontSize: '11px', color: C.muted }}>
-                {r.matchedLocation ? `📍 ${r.matchedLocation}` : `${r.company || '-'} · ${r.cas_no || '-'}`}
+                {r.matchedLocation ? `📍 ${r.matchedLocation}` : `${r.company || '-'} · ${r.cas_no || '-'}${r.category ? ' · ' + r.category : ''}`}
               </div>
             </div>
           ))}
