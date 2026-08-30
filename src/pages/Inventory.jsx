@@ -1316,10 +1316,8 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
       || (lot.lot_no || '').toLowerCase().includes(searchTerm)
     const count = counts[lot.id]
     const isDone = count?.actual_stock != null
-    const bookStock = count?.book_stock ?? lot.current_stock
-    const stockDiff = isDone ? Math.abs(count.actual_stock - bookStock) : 0
     if (filter === 'undone' && isDone) return false
-    if (filter === 'diff' && stockDiff === 0) return false
+    if (filter === 'done' && !isDone) return false
     return matchSearch
   })
 
@@ -1621,14 +1619,18 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
         </div>
 
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            {[['all', '전체'], ['undone', '미입력'], ['diff', '장부와 차이있음']].map(([key, label]) => (
-              <button key={key} onClick={() => { setFilter(key); setCapStart(0) }} style={{
-                padding: '6px 12px', borderRadius: '14px', border: 'none', cursor: 'pointer',
-                background: filter === key ? C.navy : C.bg, color: filter === key ? '#fff' : C.text,
-                fontSize: '12px', fontWeight: filter === key ? '700' : '400',
-              }}>{label}</button>
-            ))}
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}` }}>
+              {[['all', '전체'], ['done', '완료'], ['undone', '미완료']].map(([key, label]) => (
+                <button key={key} onClick={() => { setFilter(key); setCapStart(0) }} style={{
+                  padding: '8px 14px', border: 'none', background: 'none', cursor: 'pointer',
+                  fontSize: '13px', fontFamily: 'inherit', fontWeight: filter === key ? 700 : 500,
+                  color: filter === key ? C.blueDark : C.muted,
+                  borderBottom: filter === key ? `2px solid ${C.blue}` : '2px solid transparent',
+                  marginBottom: '-1px', whiteSpace: 'nowrap',
+                }}>{label}</button>
+              ))}
+            </div>
             {Object.keys(sessionLocationGroups).length > 0 && (
               <select value={locationFilter} onChange={e => { setLocationFilter(e.target.value); setCapStart(0) }}
                 style={{ ...inputStyle, width: 'auto', maxWidth: '190px' }}>
@@ -1674,7 +1676,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
 
         {isCapped && (
           <div style={{ background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#92400E' }}>
-            ⚠️ 범위가 넓어 {filteredLots.length}개 중 {cappedStart + 1}~{cappedStart + visibleLots.length}번째만 표시하고 있어요. 오른쪽 알파벳 인덱스로 이동하거나, 검색·"미입력"/"차이있음" 필터를 사용하세요.
+            ⚠️ 범위가 넓어 {filteredLots.length}개 중 {cappedStart + 1}~{cappedStart + visibleLots.length}번째만 표시하고 있어요. 오른쪽 알파벳 인덱스로 이동하거나, 검색·"완료"/"미완료" 탭을 사용하세요.
           </div>
         )}
 
