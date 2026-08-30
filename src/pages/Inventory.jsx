@@ -1432,8 +1432,8 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                     return (
                       <tr key={lot.id} ref={el => rowRefs.current[lot.id] = el}
                         style={{ background: rowBg }}>
-                        <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
+                        <td style={{ ...tdStyle, textAlign: 'center', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                             <input
                               ref={el => inputRefs.current[`name_${lot.id}`] = el}
                               defaultValue={counts[lot.id]?.staged_reagent_fields?.name ?? counts[lot.id]?.book_reagent_fields?.name ?? lot.reagents?.name ?? ''}
@@ -1451,10 +1451,8 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                                 fontSize: '13px', background: counts[lot.id]?.staged_reagent_fields?.name && counts[lot.id].staged_reagent_fields.name !== (counts[lot.id]?.book_reagent_fields?.name ?? lot.reagents?.name ?? '') ? '#EAF1FB' : 'transparent',
                               }}
                             />
-                            <div>
-                              {count?.reported_missing && <span style={{ fontSize: '10px', color: '#E65100', fontWeight: '700' }}>미확인</span>}
-                              {count?.abnormal_note && <span title={count.abnormal_note} style={{ marginLeft: '4px', fontSize: '10px', color: C.danger, fontWeight: '700' }}>⚠ 이상</span>}
-                            </div>
+                            {count?.reported_missing && <span style={{ fontSize: '10px', color: '#E65100', fontWeight: '700' }}>미확인</span>}
+                            {count?.abnormal_note && <span title={count.abnormal_note} style={{ fontSize: '10px', color: C.danger, fontWeight: '700' }}>⚠ 이상</span>}
                           </div>
                         </td>
                         {fieldInputCell(lot, idx, 'cas_no', 100)}
@@ -1506,10 +1504,10 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                             }}
                           />
                         </td>
-                        <td style={{ ...tdStyle, textAlign: 'center' }}>
+                        <td style={{ ...tdStyle, textAlign: 'center', whiteSpace: 'nowrap' }}>
                           {(() => {
                             const s = STATUS_BADGE[rowStatus(lot)]
-                            return <span style={{ fontSize: '11px', padding: '2px 9px', borderRadius: '12px', fontWeight: '700', background: s.bg, color: s.color }}>{s.label}</span>
+                            return <span style={{ fontSize: '11px', padding: '2px 9px', borderRadius: '12px', fontWeight: '700', background: s.bg, color: s.color, whiteSpace: 'nowrap' }}>{s.label}</span>
                           })()}
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
@@ -1542,26 +1540,26 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                             {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
                           </select>
                         </td>
-                        <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>
+                        <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap' }}>
                           {isAdmin ? (
                             <>
                               {count?.counted_by || '-'}
-                              {count?.counted_at && <div style={{ fontSize: '10px' }}>{new Date(count.counted_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</div>}
+                              {count?.counted_at && <span style={{ fontSize: '10px', marginLeft: '4px' }}>· {new Date(count.counted_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span>}
                             </>
                           ) : (
                             count?.counted_at ? new Date(count.counted_at).toLocaleDateString('ko-KR') : '-'
                           )}
                         </td>
-                        <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                        <td style={{ ...tdStyle, textAlign: 'center', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
                           {disposingLotId === lot.id ? (
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'center', maxWidth: '190px' }}>
                               {DISPOSAL_REASONS.map(reason => (
-                                <button key={reason} onClick={() => requestDisposal(lot, reason)} style={{ ...smallBtnStyle(), background: '#FDECEC', borderColor: '#F3D6D6', color: '#C13B3F' }}>{reason}</button>
+                                <button key={reason} onClick={() => requestDisposal(lot, reason)} style={{ ...smallBtnStyle(), background: '#FDECEC', borderColor: '#F3D6D6', color: '#C13B3F', whiteSpace: 'nowrap' }}>{reason}</button>
                               ))}
-                              <button onClick={() => setDisposingLotId(null)} style={smallBtnStyle()}>취소</button>
+                              <button onClick={() => setDisposingLotId(null)} style={{ ...smallBtnStyle(), whiteSpace: 'nowrap' }}>취소</button>
                             </div>
                           ) : (
-                            <button onClick={() => setDisposingLotId(lot.id)} style={smallBtnStyle()}>폐기신청</button>
+                            <button onClick={() => setDisposingLotId(lot.id)} style={{ ...smallBtnStyle(), whiteSpace: 'nowrap' }}>폐기신청</button>
                           )}
                         </td>
                       </tr>
