@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
 import { exportReagents, exportPickedReagents } from '../exportUtils'
 import ReagentAutocomplete from '../components/ReagentAutocomplete'
+import { lookupStudent, writeSession } from '../lib/session'
 
 const GHS_MAP = [
   { keywords: ['인화', '발화', '가연', 'flammable', 'flame'],        emoji: '🔥', label: '인화성' },
@@ -401,7 +402,7 @@ function ReagentTable({
 }
 
 export default function ReagentList() {
-  const { isAdmin, student } = useOutletContext?.() || {}
+  const { isAdmin, student, applySession } = useOutletContext?.() || {}
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [locations, setLocations] = useState([])
@@ -444,7 +445,6 @@ export default function ReagentList() {
   const [bulkLookupLoading, setBulkLookupLoading] = useState(false)
   const [zippingMsds, setZippingMsds] = useState(false)
 
-  // 직접제조시약
   // 신규 시약 등록 모달 — "신규 시약 등록"/"직접 제조 시약 등록" 두 탭을 하나의 모달에서 전환
   const [showRegisterModal, setShowRegisterModal] = useState(false)
   const [registerTab, setRegisterTab] = useState('new') // 'new' | 'made'
@@ -453,6 +453,14 @@ export default function ReagentList() {
     cat_no: '', lot_no: '', location_id: '', sealed_count: '1', current_stock: '100',
   })
   const [madeForm, setMadeForm] = useState({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
+  // 등록하기를 눌렀는데 로그인이 안 되어 있으면, 별도 로그인 버튼으로 보내는 대신
+  // 이 모달 안에서 바로 학번/생년월일/이름을 확인 → 맞으면 로그인 처리와 동시에
+  // 원래 누르려던 등록을 그대로 이어서 진행한다.
+  const [showInlineLogin, setShowInlineLogin] = useState(false)
+  const [inlineLoginForm, setInlineLoginForm] = useState({ student_id: '', birth_date: '', name: '' })
+  const [inlineLoginError, setInlineLoginError] = useState('')
+  const [inlineLoginLoading, setInlineLoginLoading] = useState(false)
+  const [pendingRegisterTab, setPendingRegisterTab] = useState(null) // 로그인 확인 후 이어서 제출할 탭
 
   useEffect(() => { fetchLocations(); fetchTotalCount() }, [])
 
@@ -696,15 +704,18 @@ export default function ReagentList() {
     fetchResults()
   }
 
-  async function submitMade() {
+  // studentOverride: 인라인 로그인 확인 직후 곧바로 이어서 제출할 때, 아직 리액트 상태에
+  // 반영 안 된(비동기라 한 틱 늦음) student 대신 방금 확인된 세션을 바로 써야 하므로 받음.
+  async function submitMade(studentOverride) {
+    const activeStudent = studentOverride || student
     if (!madeForm.name.trim()) { alert('시약명을 입력해주세요'); return }
     if (!madeForm.location_id) { alert('보관 위치를 선택해주세요'); return }
-    if (!student) { alert('로그인 후 이용해주세요'); return }
+    if (!activeStudent) { setPendingRegisterTab('made'); setShowInlineLogin(true); return }
     const { data: reagent, error } = await supabase.from('reagents').insert({
       name: madeForm.name, volume: madeForm.volume || null, unit: madeForm.unit || null,
       location_id: madeForm.location_id, reagent_type: 'self_made',
       made_date: madeForm.made_date, made_purpose: madeForm.made_purpose,
-      registered_by: student.student_id, pending_confirm: true,
+      registered_by: activeStudent.student_id, pending_confirm: true,
     }).select().single()
     if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
     await supabase.from('reagent_lots').insert({
@@ -717,14 +728,15 @@ export default function ReagentList() {
     fetchResults()
   }
 
-  async function submitNewReagent() {
+  async function submitNewReagent(studentOverride) {
+    const activeStudent = studentOverride || student
     if (!newReagentForm.name.trim()) { alert('시약명을 입력해주세요'); return }
     if (!newReagentForm.location_id) { alert('보관 위치를 선택해주세요'); return }
-    if (!student) { alert('로그인 후 이용해주세요'); return }
+    if (!activeStudent) { setPendingRegisterTab('new'); setShowInlineLogin(true); return }
     const { data: reagent, error } = await supabase.from('reagents').insert({
       name: newReagentForm.name, cas_no: newReagentForm.cas_no || null, company: newReagentForm.company || null,
       category: newReagentForm.category || null, volume: newReagentForm.volume || null, unit: newReagentForm.unit || null,
-      registered_by: student.student_id, pending_confirm: true,
+      registered_by: activeStudent.student_id, pending_confirm: true,
     }).select().single()
     if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
     await supabase.from('reagent_lots').insert({
@@ -737,6 +749,40 @@ export default function ReagentList() {
     setShowRegisterModal(false)
     setNewReagentForm({ name: '', cas_no: '', company: '', category: '', volume: '', unit: '', cat_no: '', lot_no: '', location_id: '', sealed_count: '1', current_stock: '100' })
     fetchResults()
+  }
+
+  // 인라인 로그인란에 입력한 학번/생년월일/이름을 확인 → 맞으면 로그인 처리(전역 세션에도
+  // 반영)와 동시에, 원래 누르려던 등록(신규/직접제조)을 그대로 이어서 제출한다.
+  async function submitInlineLogin() {
+    const { student_id, birth_date, name } = inlineLoginForm
+    if (!student_id.trim() || !birth_date.trim() || !name.trim()) {
+      setInlineLoginError('학번·생년월일·이름을 모두 입력하세요'); return
+    }
+    setInlineLoginLoading(true)
+    setInlineLoginError('')
+    try {
+      const found = await lookupStudent(student_id.trim())
+      if (!found) {
+        setInlineLoginError('등록되지 않은 학번이에요. 처음이시면 상단의 "로그인" 버튼으로 먼저 등록해주세요.')
+        return
+      }
+      if (found.name !== name.trim() || found.birth_date !== birth_date.trim()) {
+        setInlineLoginError('등록된 정보와 달라요. 본인이 맞다면 관리자에게 문의하세요.')
+        return
+      }
+      const session = { student_id: found.student_id, name: found.name, is_admin: false, is_super: false }
+      writeSession(session)
+      applySession?.(session)
+      setShowInlineLogin(false)
+      setInlineLoginForm({ student_id: '', birth_date: '', name: '' })
+      if (pendingRegisterTab === 'new') await submitNewReagent(session)
+      else if (pendingRegisterTab === 'made') await submitMade(session)
+      setPendingRegisterTab(null)
+    } catch (err) {
+      setInlineLoginError(err.message || '처리 중 오류가 발생했습니다')
+    } finally {
+      setInlineLoginLoading(false)
+    }
   }
 
   // 매 렌더마다 최신 fetchResults를 가리키게 갱신 — confirmPending을 useCallback([])으로
@@ -1190,6 +1236,45 @@ export default function ReagentList() {
             width: '440px', maxWidth: '92vw', maxHeight: '88vh', overflowY: 'auto',
             boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
           }}>
+            {showInlineLogin ? (
+              <>
+                <h3 style={{ margin: '0 0 4px', color: C.navy }}>🔑 로그인 확인</h3>
+                <p style={{ margin: '0 0 18px', color: C.muted, fontSize: '12px' }}>
+                  등록하려면 먼저 로그인 정보를 확인해야 해요. 학번·생년월일·이름을 입력하면
+                  일치하는 즉시 로그인과 등록이 함께 처리됩니다.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div>
+                    <label style={labelStyle}>학번</label>
+                    <input value={inlineLoginForm.student_id}
+                      onChange={e => { setInlineLoginForm({ ...inlineLoginForm, student_id: e.target.value }); setInlineLoginError('') }}
+                      placeholder="예) 202112345" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>생년월일</label>
+                    <input value={inlineLoginForm.birth_date}
+                      onChange={e => { setInlineLoginForm({ ...inlineLoginForm, birth_date: e.target.value }); setInlineLoginError('') }}
+                      placeholder="YYYY-MM-DD" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>이름</label>
+                    <input value={inlineLoginForm.name}
+                      onChange={e => { setInlineLoginForm({ ...inlineLoginForm, name: e.target.value }); setInlineLoginError('') }}
+                      placeholder="예) 이OO" style={inputStyle} />
+                  </div>
+                  {inlineLoginError && (
+                    <div style={{ fontSize: '11.5px', color: C.dangerDark, background: C.dangerTint, padding: '8px 10px', borderRadius: '8px' }}>{inlineLoginError}</div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+                  <button onClick={() => { setShowInlineLogin(false); setPendingRegisterTab(null); setInlineLoginError('') }} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
+                  <button onClick={submitInlineLogin} disabled={inlineLoginLoading} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.navy, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px', opacity: inlineLoginLoading ? 0.6 : 1 }}>
+                    {inlineLoginLoading ? '확인 중...' : '확인하고 등록하기'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
             <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`, marginBottom: '18px' }}>
               {[['new', '신규 시약 등록'], ['made', '직접 제조 시약 등록']].map(([key, label]) => (
                 <button key={key} onClick={() => setRegisterTab(key)} style={{
@@ -1264,7 +1349,7 @@ export default function ReagentList() {
                 </div>
                 <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
                   <button onClick={() => setShowRegisterModal(false)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
-                  <button onClick={submitNewReagent} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.navy, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>등록하기</button>
+                  <button onClick={() => submitNewReagent()} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.navy, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>등록하기</button>
                 </div>
               </>
             ) : (
@@ -1306,8 +1391,10 @@ export default function ReagentList() {
                 </div>
                 <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
                   <button onClick={() => setShowRegisterModal(false)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
-                  <button onClick={submitMade} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.navy, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>등록하기</button>
+                  <button onClick={() => submitMade()} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.navy, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>등록하기</button>
                 </div>
+              </>
+            )}
               </>
             )}
           </div>

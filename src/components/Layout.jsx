@@ -160,7 +160,9 @@ export default function Layout() {
           flex: 1, minWidth: 0,
           paddingBottom: isMobile ? 64 : 0,
         }}>
-          <Outlet context={{ isAdmin, isSuper, student }} />
+          {/* applySession: 자식 페이지가 자체적으로 로그인을 확인한 뒤(예: 등록 버튼 누를 때
+              인라인으로 뜨는 로그인란) 헤더/전역 세션에도 곧바로 반영할 수 있게 노출 */}
+          <Outlet context={{ isAdmin, isSuper, student, applySession: setSession }} />
         </main>
       </div>
 
