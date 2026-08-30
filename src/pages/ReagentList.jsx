@@ -434,6 +434,7 @@ export default function ReagentList() {
   const [bulkLookupText, setBulkLookupText] = useState('')
   const [bulkLookupResults, setBulkLookupResults] = useState(null)
   const [bulkLookupLoading, setBulkLookupLoading] = useState(false)
+  const [zippingMsds, setZippingMsds] = useState(false)
 
   // 직접제조시약
   const [showMadeModal, setShowMadeModal] = useState(false)
@@ -591,6 +592,57 @@ export default function ReagentList() {
       return next
     })
     setShowBulkLookupModal(false)
+  }
+
+  // 일괄 검색 결과 중 MSDS 파일이 등록된 시약들의 MSDS를 하나의 ZIP으로 묶어서 다운로드.
+  // JSZip은 이 버튼을 눌렀을 때만 필요하므로 동적 import — 안 쓰는 사용자의 초기 로딩엔
+  // 영향 없게(번들에 항상 포함되지 않게) 함.
+  async function downloadMsdsZip() {
+    const items = []
+    const seen = new Set()
+    bulkLookupResults?.forEach(({ matches }) => matches.forEach(r => {
+      if (r.msds_url && !seen.has(r.id)) { seen.add(r.id); items.push(r) }
+    }))
+    if (items.length === 0) { alert('조회 결과 중 등록된 MSDS 파일이 있는 시약이 없어요.'); return }
+    setZippingMsds(true)
+    try {
+      const { default: JSZip } = await import('jszip')
+      const zip = new JSZip()
+      const usedNames = new Set()
+      let failCount = 0
+      await Promise.all(items.map(async r => {
+        try {
+          const res = await fetch(r.msds_url)
+          if (!res.ok) throw new Error('fetch failed')
+          const blob = await res.blob()
+          const extMatch = r.msds_url.match(/\.([a-zA-Z0-9]+)(?:\?|#|$)/)
+          const ext = extMatch ? extMatch[1] : 'pdf'
+          const baseName = r.name.replace(/[\\/:*?"<>|]/g, '_')
+          let filename = `${baseName}.${ext}`
+          let i = 2
+          while (usedNames.has(filename)) { filename = `${baseName}_${i}.${ext}`; i++ }
+          usedNames.add(filename)
+          zip.file(filename, blob)
+        } catch {
+          failCount++
+        }
+      }))
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(zipBlob)
+      const a = document.createElement('a')
+      a.href = url
+      const dateStr = new Date().toLocaleDateString('ko-KR').replace(/\. /g, '-').replace('.', '')
+      a.download = `MSDS_일괄다운로드_${dateStr}.zip`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      if (failCount > 0) alert(`${items.length - failCount}개 파일을 압축했어요. (${failCount}개는 다운로드에 실패해 제외됨)`)
+    } catch (e) {
+      alert('MSDS ZIP 생성 중 오류가 발생했습니다: ' + e.message)
+    } finally {
+      setZippingMsds(false)
+    }
   }
 
   // 다량 위치 이동 — 선택한 시약들의 활성 Lot을 전부 새 위치로 이동(Lot별 위치이동과 동일한 방식)
@@ -989,10 +1041,19 @@ export default function ReagentList() {
                     조회 결과 · 있음 {bulkLookupResults.filter(r => r.matches.length > 0).length}/{bulkLookupResults.length}건
                   </span>
                   {bulkLookupResults.some(r => r.matches.length > 0) && (
-                    <button onClick={addBulkLookupMatchesToPicked} style={{
-                      background: C.navy, color: '#fff', border: 'none', padding: '7px 14px',
-                      borderRadius: '6px', cursor: 'pointer', fontSize: '12.5px', fontWeight: '600',
-                    }}>찾은 시약 모두 선택 목록에 담기</button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {bulkLookupResults.some(r => r.matches.some(m => m.msds_url)) && (
+                        <button onClick={downloadMsdsZip} disabled={zippingMsds} style={{
+                          background: C.white, color: C.navy, border: `1px solid ${C.border}`, padding: '7px 14px',
+                          borderRadius: '6px', cursor: 'pointer', fontSize: '12.5px', fontWeight: '600',
+                          opacity: zippingMsds ? 0.6 : 1,
+                        }}>{zippingMsds ? '압축 중...' : '📦 MSDS 일괄 다운로드'}</button>
+                      )}
+                      <button onClick={addBulkLookupMatchesToPicked} style={{
+                        background: C.navy, color: '#fff', border: 'none', padding: '7px 14px',
+                        borderRadius: '6px', cursor: 'pointer', fontSize: '12.5px', fontWeight: '600',
+                      }}>찾은 시약 모두 선택 목록에 담기</button>
+                    </div>
                   )}
                 </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
