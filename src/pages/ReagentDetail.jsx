@@ -73,73 +73,77 @@ export default function ReagentDetail() {
   async function fetchAll() {
     const { data } = await supabase.from('reagents')
       .select('*, locations(*), reagent_lots(*)').eq('id', id).single()
-    if (data) {
-      setReagent(data)
-      setLots(data.reagent_lots || [])
-      fetchPendingChanges()
-      if (data.confirmed_by) {
-        const { data: cs } = await supabase.from('students').select('name').eq('student_id', data.confirmed_by).maybeSingle()
-        setConfirmedByName(cs?.name || data.confirmed_by)
-      } else setConfirmedByName('')
-      if (data.registered_by) {
-        const { data: rs } = await supabase.from('students').select('name').eq('student_id', data.registered_by).maybeSingle()
-        setRegisteredByName(rs?.name || data.registered_by)
-      } else setRegisteredByName('')
-      const { data: disposal } = await supabase.from('disposal_requests')
-        .select('*').eq('reagent_id', id).eq('status', 'pending').maybeSingle()
-      setDisposalPending(disposal || null)
-      fetchHistory()
+    if (!data) { setLoading(false); return }
+    setReagent(data)
+    setLots(data.reagent_lots || [])
+    fetchPendingChanges()
 
-      let casForLookup = data.cas_no
-      if (!casForLookup && data.name) {
-        // CAS 번호가 비어있으면 PubChem에서 시약명으로 CID를 찾고, 그 동의어 목록에서 CAS 형식 값을 추출
-        try {
-          const cidRes = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(data.name)}/cids/JSON`)
-          if (cidRes.ok) {
-            const cidData = await cidRes.json()
-            const cid = cidData?.IdentifierList?.CID?.[0]
-            if (cid) {
-              const synRes = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/synonyms/JSON`)
-              if (synRes.ok) {
-                const synData = await synRes.json()
-                const syns = synData?.InformationList?.Information?.[0]?.Synonym || []
-                const foundCas = syns.find(s => /^\d{2,7}-\d{2}-\d$/.test(s))
-                if (foundCas) {
-                  casForLookup = foundCas
-                  await supabase.from('reagents').update({ cas_no: foundCas, cas_source: 'auto_ghs' }).eq('id', id)
-                  setReagent(prev => ({ ...prev, cas_no: foundCas, cas_source: 'auto_ghs' }))
-                }
-              }
-            }
-          }
-        } catch { /* PubChem 조회 실패 시 무시 — CAS 없이 계속 진행 */ }
-      }
+    // DB 조회 3개는 서로 독립적이라 순차로 기다릴 필요 없이 한번에 병렬 실행
+    const [{ data: cs }, { data: rs }, { data: disposal }] = await Promise.all([
+      data.confirmed_by ? supabase.from('students').select('name').eq('student_id', data.confirmed_by).maybeSingle() : Promise.resolve({ data: null }),
+      data.registered_by ? supabase.from('students').select('name').eq('student_id', data.registered_by).maybeSingle() : Promise.resolve({ data: null }),
+      supabase.from('disposal_requests').select('*').eq('reagent_id', id).eq('status', 'pending').maybeSingle(),
+    ])
+    setConfirmedByName(data.confirmed_by ? (cs?.name || data.confirmed_by) : '')
+    setRegisteredByName(data.registered_by ? (rs?.name || data.registered_by) : '')
+    setDisposalPending(disposal || null)
+    fetchHistory()
 
-      if (casForLookup) {
-        try {
-          const GHS_KEY = 'e9bf2e5bc508d370a9660687c34a6730eae5237e78bad04e08f66705be15d597'
-          const ghsRes = await fetch(
-            `https://apis.data.go.kr/B552584/kecoapi/ncisghs/ghsList?serviceKey=${GHS_KEY}&searchGubun=2&searchNm=${encodeURIComponent(casForLookup)}&pageNo=1&numOfRows=1&returnType=JSON`
-          )
-          if (ghsRes.ok) {
-            const ghsData = await ghsRes.json()
-            const items = ghsData?.body?.items
-            const first = Array.isArray(items) ? items[0] : items
-            if (first) {
-              const korName = first.sbstnNmKor || ''
-              const isYudok = first.sbstnTypeUnqno ? first.sbstnTypeUnqno.split('^')[0] : ''
-              const hazard = first.hrmflnList ? first.hrmflnList.map(h => h.hrmflnClsfArtclNm).join(', ') : ''
-              setReagent(prev => ({ ...prev, hazard: prev.hazard || hazard, ghs_live: { korName, isYudok, hazard } }))
-              if (!data.hazard && hazard) {
-                await supabase.from('reagents').update({ hazard, hazard_source: 'auto_ghs' }).eq('id', id)
-                setReagent(prev => ({ ...prev, hazard, hazard_source: 'auto_ghs' }))
-              }
-            }
-          }
-        } catch { /* GHS 조회 실패 시 무시 — DB 값만 표시 */ }
-      }
-    }
+    // 여기서 로딩을 끝냄 — 아래 CAS/GHS 외부 공공 API 조회는 느릴 수 있어(초 단위) 화면을
+    // 붙잡아두지 않고 백그라운드에서 계속 돌리다가 끝나면 결과만 반영한다.
     setLoading(false)
+    enrichCasAndHazard(data)
+  }
+
+  async function enrichCasAndHazard(data) {
+    let casForLookup = data.cas_no
+    if (!casForLookup && data.name) {
+      // CAS 번호가 비어있으면 PubChem에서 시약명으로 CID를 찾고, 그 동의어 목록에서 CAS 형식 값을 추출
+      try {
+        const cidRes = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(data.name)}/cids/JSON`)
+        if (cidRes.ok) {
+          const cidData = await cidRes.json()
+          const cid = cidData?.IdentifierList?.CID?.[0]
+          if (cid) {
+            const synRes = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/synonyms/JSON`)
+            if (synRes.ok) {
+              const synData = await synRes.json()
+              const syns = synData?.InformationList?.Information?.[0]?.Synonym || []
+              const foundCas = syns.find(s => /^\d{2,7}-\d{2}-\d$/.test(s))
+              if (foundCas) {
+                casForLookup = foundCas
+                await supabase.from('reagents').update({ cas_no: foundCas, cas_source: 'auto_ghs' }).eq('id', id)
+                setReagent(prev => ({ ...prev, cas_no: foundCas, cas_source: 'auto_ghs' }))
+              }
+            }
+          }
+        }
+      } catch { /* PubChem 조회 실패 시 무시 — CAS 없이 계속 진행 */ }
+    }
+
+    if (casForLookup) {
+      try {
+        const GHS_KEY = 'e9bf2e5bc508d370a9660687c34a6730eae5237e78bad04e08f66705be15d597'
+        const ghsRes = await fetch(
+          `https://apis.data.go.kr/B552584/kecoapi/ncisghs/ghsList?serviceKey=${GHS_KEY}&searchGubun=2&searchNm=${encodeURIComponent(casForLookup)}&pageNo=1&numOfRows=1&returnType=JSON`
+        )
+        if (ghsRes.ok) {
+          const ghsData = await ghsRes.json()
+          const items = ghsData?.body?.items
+          const first = Array.isArray(items) ? items[0] : items
+          if (first) {
+            const korName = first.sbstnNmKor || ''
+            const isYudok = first.sbstnTypeUnqno ? first.sbstnTypeUnqno.split('^')[0] : ''
+            const hazard = first.hrmflnList ? first.hrmflnList.map(h => h.hrmflnClsfArtclNm).join(', ') : ''
+            setReagent(prev => ({ ...prev, hazard: prev.hazard || hazard, ghs_live: { korName, isYudok, hazard } }))
+            if (!data.hazard && hazard) {
+              await supabase.from('reagents').update({ hazard, hazard_source: 'auto_ghs' }).eq('id', id)
+              setReagent(prev => ({ ...prev, hazard, hazard_source: 'auto_ghs' }))
+            }
+          }
+        }
+      } catch { /* GHS 조회 실패 시 무시 — DB 값만 표시 */ }
+    }
   }
 
   async function fetchPendingChanges() {
