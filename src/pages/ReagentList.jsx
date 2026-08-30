@@ -774,7 +774,7 @@ export default function ReagentList() {
             fontSize: '13px', fontWeight: '600', flexShrink: 0,
           }}>🧪 직접 제조 시약 등록</button>
           {isAdmin && displayResults.length > 0 && (
-            <button onClick={() => exportReagents(displayResults, locations)} style={{
+            <button onClick={() => exportReagents(displayResults, locations, locationFilter)} style={{
               background: '#1D6F42', color: 'white', border: 'none',
               padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
               fontSize: '13px', fontWeight: '600', flexShrink: 0,

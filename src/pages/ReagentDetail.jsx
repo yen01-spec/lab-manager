@@ -590,7 +590,7 @@ export default function ReagentDetail() {
                 </a>
                 {isAdmin && (
                   <label style={{ fontSize: '11.5px', color: C.blue, cursor: uploadingMsds ? 'default' : 'pointer' }}>
-                    {uploadingMsds ? '업로드 중...' : (reagent.msds_url ? '📤 제조사 MSDS 파일 교체' : '📤 제조사 MSDS 파일 업로드')}
+                    {uploadingMsds ? '업로드 중...' : (reagent.msds_url ? '📤 제조사 SDS(MSDS) 파일 교체' : '📤 제조사 SDS(MSDS) 파일 업로드')}
                     <input type="file" accept="application/pdf" disabled={uploadingMsds}
                       onChange={e => uploadMsds(e.target.files[0])} style={{ display: 'none' }} />
                   </label>
