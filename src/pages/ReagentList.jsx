@@ -1,429 +1,35 @@
-import { useEffect, useState, useRef, useCallback, memo, Fragment } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useOutletContext, useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
-import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../design'
-import { exportReagents, exportPickedReagents } from '../exportUtils'
-import ReagentAutocomplete from '../components/ReagentAutocomplete'
-import CompanyPicker from '../components/CompanyPicker'
+import { C, PageBanner, Card } from '../design'
+import { exportReagents } from '../exportUtils'
 import { lookupStudent, writeSession } from '../lib/session'
-
-const GHS_MAP = [
-  { keywords: ['인화', '발화', '가연', 'flammable', 'flame'],        emoji: '🔥', label: '인화성' },
-  { keywords: ['독성', '독극', 'toxic', 'poison', '독'],              emoji: '💀', label: '독성' },
-  { keywords: ['부식', '산', '염기', 'corrosive', 'acid', 'base'],    emoji: '🧪', label: '부식성' },
-  { keywords: ['폭발', 'explosi', '폭'],                              emoji: '💥', label: '폭발성' },
-  { keywords: ['산화', 'oxidiz', 'oxidis'],                           emoji: '🔶', label: '산화성' },
-  { keywords: ['가스', '고압', 'gas', 'pressure'],                    emoji: '🫧', label: '고압가스' },
-  { keywords: ['자극', '경고', 'irritant', 'warning', '유해'],        emoji: '⚠️', label: '유해성' },
-  { keywords: ['환경', '수생', 'environment', 'aquatic'],             emoji: '🌊', label: '환경유해' },
-  { keywords: ['발암', '생식', '변이', 'carcinogen', 'mutagen'],      emoji: '☣️', label: '발암성' },
-]
-
-function getGhsEmojis(hazard) {
-  if (!hazard) return []
-  const lower = hazard.toLowerCase()
-  return GHS_MAP.filter(g => g.keywords.some(k => lower.includes(k)))
-}
-
-// Lot 필터링/평균 계산/GHS 매칭처럼 시약 데이터 자체(Lot 목록·유해성 문구)에만 좌우되고
-// 화면 상태(체크/선택/컬럼 표시 등)와는 무관한 값들을 "불러올 때 딱 한 번만" 계산해서
-// 각 시약 객체에 붙여둔다. 이 값들을 매 렌더링마다 새로 계산하던 게(특히 컬럼 체크박스를
-// 켜고 끌 때 1,500여 개 행 전부를 다시 계산) 화면이 멈춘 것처럼 보이던 주요 원인이었음.
-function enrichReagent(r) {
-  const allLots = r.reagent_lots || []
-  const activeLots = allLots.filter(l => l.status === 'active')
-  const totalSealed = activeLots.reduce((s, l) => s + l.sealed_count, 0)
-  const avgStock = activeLots.length > 0
-    ? Math.round(activeLots.reduce((s, l) => s + l.current_stock, 0) / activeLots.length) : 0
-  const isLow = activeLots.some(l => l.sealed_count === 0 && l.current_stock <= 20)
-  const hasPendingConfirm = r.pending_confirm || activeLots.some(l => l.pending_confirm)
-  const activeLocIds = [...new Set(activeLots.map(l => l.location_id).filter(Boolean))]
-  return {
-    ...r,
-    _activeLots: activeLots,
-    _totalSealed: totalSealed,
-    _avgStock: avgStock,
-    _isLow: isLow,
-    _hasPendingConfirm: hasPendingConfirm,
-    _ghsList: getGhsEmojis(r.hazard),
-    _onlyLot: activeLots.length === 1 ? activeLots[0] : null,
-    _canExpand: allLots.length > 1,
-    _activeLocIds: activeLocIds,
-    _multiLocation: activeLocIds.length > 1,
-  }
-}
-
-function getGroupedReagents(data) {
-  const groups = {}
-  data.forEach(r => {
-    const letter = r.name[0].toUpperCase()
-    if (!groups[letter]) groups[letter] = []
-    groups[letter].push(r)
-  })
-  return groups
-}
-
-// 컴포넌트 밖(모듈 스코프)에 고정 정의 — ReagentList 안에 정의하면 리렌더될 때마다
-// "새로운 컴포넌트"로 취급되어 표 전체 DOM이 매번 통째로 재생성된다(더블클릭 감지가
-// 깨지는 원인이기도 했음). 필요한 값은 전부 props로 받는다.
-function AlphabetIndex({ data, editMode, scrollToLetter }) {
-  if (editMode) return null
-  const BASE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
-  const availableLetters = new Set(data.map(r => r.name[0].toUpperCase()))
-  // A~Z는 항상 표시(없으면 연하게, 있으면 J처럼 진하게) — 그 외 문자(숫자·한글 등)는
-  // 실제 목록에 있을 때만 동적으로 추가되고, 사라지면 인덱스에서도 같이 사라짐.
-  const extra = [...availableLetters].filter(l => !BASE.includes(l)).sort((a, b) => a.localeCompare(b, 'ko'))
-  const allLetters = [...BASE, ...extra]
-  return (
-    <div style={{
-      width: '22px', flexShrink: 0, marginLeft: '4px',
-      position: 'sticky', top: '96px',
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-    }}>
-      {allLetters.map(letter => (
-        <button key={letter} onClick={() => scrollToLetter(letter)}
-          disabled={!availableLetters.has(letter)} style={{
-            width: '22px', height: '18px', border: 'none', background: 'transparent',
-            cursor: availableLetters.has(letter) ? 'pointer' : 'default',
-            color: availableLetters.has(letter) ? C.navy : '#D5D9E0',
-            fontSize: '11px', fontWeight: availableLetters.has(letter) ? '700' : '400', padding: 0,
-            transition: 'color 0.1s, background 0.1s', borderRadius: '4px',
-          }}
-          onMouseEnter={e => { if (availableLetters.has(letter)) { e.currentTarget.style.color = C.white; e.currentTarget.style.background = C.blue } }}
-          onMouseLeave={e => { if (availableLetters.has(letter)) { e.currentTarget.style.color = C.navy; e.currentTarget.style.background = 'transparent' } }}
-        >{letter}</button>
-      ))}
-    </div>
-  )
-}
-
-const LOT_STATUS_LABEL = { active: '보유중', used_up: '사용완료', disposed: '폐기', missing: '분실' }
-const LOT_STATUS_COLOR = { active: '#00875A', used_up: C.muted, disposed: C.danger, missing: '#B7791F' }
-
-function LotRow({ lot, locations, visibleCols }) {
-  const loc = locations.find(l => l.id === lot.location_id)
-  const dimmed = lot.status !== 'active'
-  return (
-    <tr onClick={e => e.stopPropagation()} style={{ background: '#F7F9FC', opacity: dimmed ? 0.6 : 1 }}>
-      <td style={{ ...tdStyle, borderRight: `1px solid ${C.borderRow}` }}></td>
-      <td style={{ ...tdStyle, fontSize: '12.5px', color: C.muted, whiteSpace: 'nowrap', paddingLeft: '30px', borderRight: `1px solid ${C.borderRow}` }}>
-        ↳ Lot {lot.lot_no || '(번호 없음)'}
-      </td>
-      <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>
-      {visibleCols.casNo && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
-      {visibleCols.company && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
-      {visibleCols.volume && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
-      {visibleCols.stock && (
-        <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <div style={{ width: '36px', height: '6px', borderRadius: '3px', background: '#F0F2F6', overflow: 'hidden', flexShrink: 0 }}>
-              <div style={{ width: `${lot.current_stock}%`, height: '100%', background: (lot.sealed_count === 0 && lot.current_stock <= 20) ? '#E5484D' : '#1E9E6A' }} />
-            </div>
-            <span>{lot.sealed_count}병 / {lot.current_stock}%</span>
-          </div>
-        </td>
-      )}
-      {visibleCols.location && (
-        <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
-          {loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
-        </td>
-      )}
-      {visibleCols.lot && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>{lot.lot_no || '-'}</td>}
-      {visibleCols.expiry && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>{lot.expiry_date || '-'}</td>}
-      {visibleCols.category && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
-      {visibleCols.ghs && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
-      {visibleCols.lastConfirmed && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: visibleCols.status ? `1px solid ${C.borderRow}` : undefined }}>-</td>}
-      {visibleCols.status && (
-        <td style={{ ...tdStyle, fontSize: '12px', color: LOT_STATUS_COLOR[lot.status] || C.muted, fontWeight: '600' }}>
-          {LOT_STATUS_LABEL[lot.status] || lot.status}
-        </td>
-      )}
-    </tr>
-  )
-}
-
-// 행 하나를 memo로 감싸서, 서로 무관한 상태 변화(다른 행 체크/선택/펼치기, 컬럼 표시
-// 전환 등)가 일어나도 실제로 이 행에 영향을 주는 props가 안 바뀌면 리렌더를 건너뛴다.
-// isChecked/isPicked/isExpanded/editing* 처럼 원본 Set·Map·객체 대신 "이 행에 해당하는
-// boolean/원시값"만 골라서 props로 내려주는 게 핵심 — 그래야 다른 행이 체크되어도 이
-// 행의 props는 그대로라 memo가 스킵할 수 있다. onSaveEdit/onChangeEdit도 실제로
-// 편집 중인 행에만 값을 넘기고, 나머지 행에는 항상 undefined(고정값)를 넘긴다.
-const ReagentRow = memo(function ReagentRow({
-  r, locations, visibleCols, editMode, isAdmin, data,
-  isChecked, isPicked, isExpanded, isEditingSealed, isEditingStock, editValue,
-  onToggleCheck, onTogglePick, onToggleExpand, onRowClick,
-  onStartEdit, onSaveEdit, onChangeEdit, onConfirmPending,
-}) {
-  const allLots = r.reagent_lots || []
-  const activeLots = r._activeLots
-  const totalSealed = r._totalSealed
-  const avgStock = r._avgStock
-  const isLow = r._isLow
-  const hasPendingConfirm = r._hasPendingConfirm
-  const ghsList = r._ghsList
-  const onlyLot = r._onlyLot
-  const canExpand = r._canExpand
-  const multiLocation = r._multiLocation
-
-  let loc = null
-  if (activeLots.length > 0 && r._activeLocIds.length <= 1) {
-    loc = locations.find(l => l.id === activeLots[0].location_id) || null
-  }
-
-  const baseBg = isLow ? '#FFF8F8' : hasPendingConfirm ? '#F0F7FF' : C.white
-  const selectedBg = '#EEF2FB'
-  const isSelected = editMode ? isChecked : isPicked
-
-  return (
-    <Fragment>
-      <tr
-        onClick={e => editMode ? onToggleCheck(r.id, e, data) : onRowClick(r, canExpand)}
-        title={!editMode ? (canExpand ? '한 번 클릭: Lot 목록 펼치기 · 더블클릭: 상세페이지' : '더블클릭: 상세페이지') : ''}
-        style={{
-          background: isSelected ? selectedBg : baseBg,
-          cursor: 'pointer',
-          borderLeft: isSelected ? `3px solid ${C.navy}` : '3px solid transparent',
-        }}
-        onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg }}
-        onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = baseBg }}>
-        <td style={{ ...tdStyle, textAlign: 'center', borderRight: `1px solid ${C.borderRow}` }}
-          onClick={e => editMode ? onToggleCheck(r.id, e, data) : onTogglePick(r, e)}>
-          <input type="checkbox" checked={isSelected} onChange={() => {}}
-            style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
-        </td>
-        <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', maxWidth: '300px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
-          {canExpand && (
-            <span onClick={e => { e.stopPropagation(); onToggleExpand(r.id) }}
-              style={{ marginRight: '5px', color: C.blue, fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
-              {isExpanded ? '▾' : '▸'}
-            </span>
-          )}
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: '230px', verticalAlign: 'middle' }} title={r.name}>{r.name}</span>
-          {canExpand && (
-            <span onClick={e => { e.stopPropagation(); onToggleExpand(r.id) }}
-              style={{ marginLeft: '6px', fontSize: '10.5px', background: '#EEF2FB', color: C.navy,
-                padding: '2px 8px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer' }}>
-              {activeLots.length}병{multiLocation ? ' · 위치별 보기' : ''}
-            </span>
-          )}
-          {r.reagent_type === 'self_made' && <span style={{ marginLeft: '6px', fontSize: '9.5px', background: '#EAF1FB',
-            color: '#1F4E96', padding: '1px 7px', borderRadius: '999px', fontWeight: '700' }}>직접제조</span>}
-          {isLow && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
-            color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
-          {hasPendingConfirm && (
-            <span
-              onClick={isAdmin ? e => { e.stopPropagation(); onConfirmPending(r) } : undefined}
-              title={isAdmin ? '클릭하여 최종 확인 처리' : '아직 관리자 최종 확인 전이에요'}
-              style={{ marginLeft: '6px', fontSize: '10px', background: '#E3F2FD',
-                color: '#1565C0', padding: '1px 6px', borderRadius: '8px', fontWeight: '700',
-                cursor: isAdmin ? 'pointer' : 'default' }}>검토대기{isAdmin ? ' ✓' : ''}</span>
-          )}
-        </td>
-        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{r.purity || '-'}</td>
-        {visibleCols.casNo && (
-          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{r.cas_no || '-'}</td>
-        )}
-        {visibleCols.company && (
-          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '110px', borderRight: `1px solid ${C.borderRow}` }} title={r.company || ''}>{r.company || '-'}</td>
-        )}
-        {visibleCols.volume && (
-          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
-            {r.volume ? `${r.volume}${r.unit}` : '-'}
-          </td>
-        )}
-        {visibleCols.stock && (
-        <td style={{ ...tdStyle, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }} onClick={e => e.stopPropagation()}>
-          {activeLots.length > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '36px', height: '6px', borderRadius: '3px', background: '#F0F2F6', overflow: 'hidden', flexShrink: 0 }}>
-                <div style={{ width: `${avgStock}%`, height: '100%', background: isLow ? '#E5484D' : '#1E9E6A' }} />
-              </div>
-              {isEditingSealed ? (
-                <input autoFocus type="number" min="0" value={editValue}
-                  onChange={e => onChangeEdit(prev => ({ ...prev, value: e.target.value }))}
-                  onKeyDown={e => { if (e.key === 'Enter') onSaveEdit(onlyLot, { advance: true, data }); if (e.key === 'Escape') onChangeEdit(null) }}
-                  onBlur={() => onSaveEdit(onlyLot)}
-                  style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
-              ) : (
-                <span onClick={e => !editMode && onlyLot && onStartEdit(onlyLot.id, r.id, 'sealed_count', totalSealed, e)}
-                  title={isAdmin && !editMode && onlyLot ? '클릭하여 수정' : !onlyLot ? '상세페이지에서 Lot별로 수정하세요' : ''}
-                  style={{ cursor: isAdmin && !editMode && onlyLot ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
-                    border: isAdmin && !editMode && onlyLot ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
-                  {totalSealed}병
-                </span>
-              )}
-              <span style={{ color: C.muted, fontSize: '11px' }}>/</span>
-              {isEditingStock ? (
-                <input autoFocus type="number" min="0" max="100" value={editValue}
-                  onChange={e => onChangeEdit(prev => ({ ...prev, value: e.target.value }))}
-                  onKeyDown={e => { if (e.key === 'Enter') onSaveEdit(onlyLot, { advance: true, data }); if (e.key === 'Escape') onChangeEdit(null) }}
-                  onBlur={() => onSaveEdit(onlyLot)}
-                  style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
-              ) : (
-                <span onClick={e => !editMode && onlyLot && onStartEdit(onlyLot.id, r.id, 'current_stock', avgStock, e)}
-                  title={isAdmin && !editMode && onlyLot ? '클릭하여 수정' : !onlyLot ? '상세페이지에서 Lot별로 수정하세요' : ''}
-                  style={{ cursor: isAdmin && !editMode && onlyLot ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
-                    border: isAdmin && !editMode && onlyLot ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
-                  {avgStock}%
-                </span>
-              )}
-            </div>
-          ) : <span style={{ color: C.muted, fontSize: '12px' }}>보유 0병</span>}
-        </td>
-        )}
-        {visibleCols.location && (
-        <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px', borderRight: `1px solid ${C.borderRow}` }}
-          title={loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : ''}>
-          {multiLocation ? '위치별 상이' : loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
-        </td>
-        )}
-        {visibleCols.lot && (
-          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{onlyLot?.lot_no || '-'}</td>
-        )}
-        {visibleCols.expiry && (
-          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{onlyLot?.expiry_date || '-'}</td>
-        )}
-        {visibleCols.category && (
-          <td style={{ ...tdStyle, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>
-            {r.category
-              ? <span style={{ background: '#EEF2FB', color: C.navy, padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600' }}>{r.category}</span>
-              : <span style={{ color: C.muted }}>-</span>}
-          </td>
-        )}
-        {visibleCols.ghs && (
-          <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }} onClick={e => e.stopPropagation()}>
-            {ghsList.length > 0
-              ? <span title={ghsList.map(g => g.label).join(', ')}>{ghsList.map(g => g.emoji).join('')}</span>
-              : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
-          </td>
-        )}
-        {visibleCols.lastConfirmed && (
-          <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted, whiteSpace: 'nowrap', borderRight: visibleCols.status ? `1px solid ${C.borderRow}` : undefined }}>
-            {r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString() : '-'}
-          </td>
-        )}
-        {visibleCols.status && (
-          <td style={tdStyle}>
-            {activeLots.length === 0
-              ? <span style={{ color: C.muted, fontWeight: '600', fontSize: '12px' }}>보유없음</span>
-              : isLow
-                ? <span style={{ color: C.danger, fontWeight: '700', fontSize: '12px' }}>⚠ 부족</span>
-                : <span style={{ color: '#00875A', fontWeight: '600', fontSize: '12px' }}>✓ 정상</span>}
-          </td>
-        )}
-      </tr>
-      {isExpanded && allLots.map(lot => <LotRow key={lot.id} lot={lot} locations={locations} visibleCols={visibleCols} />)}
-    </Fragment>
-  )
-})
-
-function ReagentTable({
-  data, locations, visibleCols, checkedIds, pickedIds, editMode, isAdmin,
-  inlineEdit, setInlineEdit, expandedIds, alphabetRefs,
-  toggleCheck, togglePick, toggleAll, togglePickAll, handleRowClick, toggleExpand,
-  startInlineEdit, saveInlineEdit, confirmPending,
-}) {
-  const COLS = 3 // 체크박스 + 시약명 + 순도 (항상 표시)
-    + (visibleCols.casNo ? 1 : 0) + (visibleCols.company ? 1 : 0) + (visibleCols.volume ? 1 : 0)
-    + (visibleCols.stock ? 1 : 0) + (visibleCols.location ? 1 : 0) + (visibleCols.lastConfirmed ? 1 : 0)
-    + (visibleCols.lot ? 1 : 0) + (visibleCols.expiry ? 1 : 0)
-    + (visibleCols.category ? 1 : 0) + (visibleCols.ghs ? 1 : 0) + (visibleCols.status ? 1 : 0)
-
-  const groups = getGroupedReagents(data)
-  const letters = Object.keys(groups).sort()
-  const allChecked = data.length > 0 && checkedIds.size === data.length
-  const allPicked = data.length > 0 && data.every(r => pickedIds.has(r.id))
-
-  const renderRow = (r) => {
-    const isEditingSealed = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'sealed_count'
-    const isEditingStock = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'current_stock'
-    return (
-      <ReagentRow key={r.id} r={r} locations={locations} visibleCols={visibleCols}
-        editMode={editMode} isAdmin={isAdmin} data={data}
-        isChecked={checkedIds.has(r.id)} isPicked={pickedIds.has(r.id)} isExpanded={expandedIds.has(r.id)}
-        isEditingSealed={isEditingSealed} isEditingStock={isEditingStock}
-        editValue={(isEditingSealed || isEditingStock) ? inlineEdit.value : undefined}
-        onToggleCheck={toggleCheck} onTogglePick={togglePick} onToggleExpand={toggleExpand} onRowClick={handleRowClick}
-        onStartEdit={startInlineEdit}
-        onSaveEdit={(isEditingSealed || isEditingStock) ? saveInlineEdit : undefined}
-        onChangeEdit={(isEditingSealed || isEditingStock) ? setInlineEdit : undefined}
-        onConfirmPending={confirmPending} />
-    )
-  }
-
-  return (
-  <div style={{ overflowX: 'auto' }}>
-    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
-      <thead>
-        <tr>
-          <th style={{ ...thStyle, borderRight: `1px solid ${C.borderRow}` }}>
-            <input type="checkbox" checked={editMode ? allChecked : allPicked}
-              onChange={() => editMode ? toggleAll(data) : togglePickAll(data)}
-              style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
-          </th>
-          {[
-            '시약명',
-            '순도',
-            ...(visibleCols.casNo ? ['CAS No.'] : []),
-            ...(visibleCols.company ? ['회사'] : []),
-            ...(visibleCols.volume ? ['용량'] : []),
-            ...(visibleCols.stock ? ['재고'] : []),
-            ...(visibleCols.location ? ['위치'] : []),
-            ...(visibleCols.lot ? ['Lot No.'] : []),
-            ...(visibleCols.expiry ? ['유효기간'] : []),
-            ...(visibleCols.category ? ['성상'] : []),
-            ...(visibleCols.ghs ? ['GHS'] : []),
-            ...(visibleCols.lastConfirmed ? ['최근확인'] : []),
-            ...(visibleCols.status ? ['상태'] : []),
-          ].map(h => (
-            <th key={h} style={{ ...thStyle, borderRight: `1px solid ${C.borderRow}` }}>{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {letters.map(letter => (
-          <Fragment key={letter}>
-            <tr key={letter + '_header'} ref={el => alphabetRefs.current[letter] = el}>
-              <td colSpan={COLS} style={{
-                padding: '8px 14px',
-                background: `linear-gradient(90deg, ${C.navy}11, transparent)`,
-                fontWeight: '800', fontSize: '13px', color: C.navy,
-                borderBottom: `1px solid ${C.border}`, borderLeft: `3px solid ${C.gold}`,
-              }}>{letter}</td>
-            </tr>
-            {groups[letter].map(r => renderRow(r))}
-          </Fragment>
-        ))}
-      </tbody>
-    </table>
-    {isAdmin && !editMode && (
-      <div style={{ padding: '8px 14px', fontSize: '11px', color: C.muted, borderTop: `1px solid ${C.border}` }}>
-        💡 재고 숫자를 클릭하면 바로 수정할 수 있어요.
-      </div>
-    )}
-  </div>
-  )
-}
+import { useReagentSearch } from '../hooks/useReagentSearch'
+import AlphabetIndex from '../components/reagents/AlphabetIndex'
+import ReagentTable from '../components/reagents/ReagentTable'
+import ReagentToolbar from '../components/reagents/ReagentToolbar'
+import ReagentFilters from '../components/reagents/ReagentFilters'
+import BulkMoveModal from '../components/reagents/BulkMoveModal'
+import BulkLookupModal from '../components/reagents/BulkLookupModal'
+import RegisterReagentModal from '../components/reagents/RegisterReagentModal'
+import PickedListModal from '../components/reagents/PickedListModal'
 
 export default function ReagentList() {
   const { isAdmin, student, applySession } = useOutletContext?.() || {}
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const [locations, setLocations] = useState([])
+
+  const {
+    locations, search, setSearch, roomFilter, setRoomFilter, detailFilter, setDetailFilter,
+    results, totalCount, fetchResults,
+  } = useReagentSearch({ initialSearch: searchParams.get('q') || '' })
+
   const [expandedIds, setExpandedIds] = useState(new Set())
-  const [search, setSearch] = useState(() => searchParams.get('q') || '')
-  // 위치 필터 — 방(room) 탭 + (세부위치가 있는 방이면) 세부위치 알약 2단계 구조.
-  // roomFilter=''(전체) | 방 이름. detailFilter=''(그 방 전체) | 특정 위치 id.
-  const [roomFilter, setRoomFilter] = useState('')
-  const [detailFilter, setDetailFilter] = useState('')
   const [visibleCols, setVisibleCols] = useState({
     casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
     lot: false, expiry: false, category: false, ghs: false, status: false,
   })
-  const [results, setResults] = useState([])
-  const [totalCount, setTotalCount] = useState(0)
   const alphabetRefs = useRef({})
-  const fetchRequestRef = useRef(0)
   const rowClickTimerRef = useRef(null) // 한 번 클릭(펼치기)/더블클릭(상세페이지) 구분용
 
   useEffect(() => () => { if (rowClickTimerRef.current) clearTimeout(rowClickTimerRef.current) }, [])
@@ -465,58 +71,6 @@ export default function ReagentList() {
   const [inlineLoginError, setInlineLoginError] = useState('')
   const [inlineLoginLoading, setInlineLoginLoading] = useState(false)
   const [pendingRegisterTab, setPendingRegisterTab] = useState(null) // 로그인 확인 후 이어서 제출할 탭
-
-  useEffect(() => { fetchLocations(); fetchTotalCount() }, [])
-
-  // 검색어(홈 화면 ?q= 포함) 또는 필터가 바뀔 때마다 결과를 다시 불러온다
-  useEffect(() => {
-    fetchResults()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomFilter, detailFilter])
-
-  async function fetchLocations() {
-    const { data } = await supabase.from('locations').select('*').order('room')
-    if (data) setLocations(data)
-  }
-
-  async function fetchTotalCount() {
-    const { count } = await supabase.from('reagents').select('*', { count: 'exact', head: true }).neq('status', 'archived')
-    setTotalCount(count || 0)
-  }
-
-  async function fetchResults() {
-    const myRequestId = ++fetchRequestRef.current
-    // 목록 화면에서 실제로 쓰는 컬럼만 select — 예전엔 '*'로 모든 컬럼 + 위치 join까지
-    // 통째로 가져와서(안 쓰는 locations(*) join 포함) 1,500여 개 시약 응답이 5MB가
-    // 넘었음. 그게 페이지 진입마다 체감되는 지연의 큰 원인이라 필요한 것만 좁힘.
-    let query = supabase.from('reagents')
-      .select('id, name, cas_no, company, purity, volume, unit, category, hazard, reagent_type, pending_confirm, msds_url, last_confirmed_at, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no, expiry_date, cat_no, pending_confirm)', { count: 'exact' })
-      .neq('status', 'archived')
-    if (search.trim()) query = query.or(`name.ilike.%${search.trim()}%,cas_no.ilike.%${search.trim()}%`)
-    // detailFilter(특정 위치 하나) > roomFilter(그 방에 속한 모든 위치) > 전체(필터 없음) 순.
-    const activeLocationIds = detailFilter
-      ? [detailFilter]
-      : roomFilter ? locations.filter(l => l.room === roomFilter).map(l => l.id) : null
-    if (activeLocationIds) {
-      // 마스터(reagents.location_id)가 아니라 실제 보유중인(active) Lot의 위치를 기준으로 찾음
-      const { data: matchLots } = await supabase.from('reagent_lots')
-        .select('reagent_id').in('location_id', activeLocationIds).eq('status', 'active')
-      const matchIds = [...new Set((matchLots || []).map(l => l.reagent_id))]
-      if (fetchRequestRef.current !== myRequestId) return
-      if (matchIds.length === 0) { setResults([]); return [] }
-      query = query.in('id', matchIds)
-    }
-    const { data, count } = await query.range(0, 4999)
-    if (fetchRequestRef.current !== myRequestId) return // 늦게 도착한 응답이 최신 필터 결과를 덮어쓰지 않도록 함
-    if (count > 4999) {
-      alert(`⚠️ 시약이 ${count}개로 많아 일부만 표시됩니다. 관리자에게 문의하세요.`)
-    }
-    if (data) {
-      const sorted = data.sort((a, b) => a.name.localeCompare(b.name)).map(enrichReagent)
-      setResults(sorted)
-      return sorted
-    }
-  }
 
   // 표시 열 체크박스를 기본값으로 되돌림(기존의 검색어/위치/제조사 초기화 기능을 대체)
   function resetFilters() {
@@ -793,7 +347,7 @@ export default function ReagentList() {
   // 고정해서 모든 행에 안정적으로 내려주면서도(메모이제이션 유지), 항상 최신 필터로
   // 다시 불러오게 하기 위함(ReagentDetail.jsx의 fetchResultsRef 패턴과 동일).
   const fetchResultsRef = useRef(fetchResults)
-  fetchResultsRef.current = fetchResults
+  useEffect(() => { fetchResultsRef.current = fetchResults })
 
   // 신규/직접제조 등록으로 pending_confirm=true가 된 시약을 관리자가 목록에서 바로
   // 최종 확인 처리 — "검토대기" 배지 클릭으로 호출됨.
@@ -887,134 +441,28 @@ export default function ReagentList() {
         extra={<span style={{ fontSize: '12px', color: C.muted }}>전체 {totalCount.toLocaleString()}개 · 검색결과 {displayResults.length.toLocaleString()}개</span>} />
       <div style={{ padding: '8px 16px' }}>
 
-        {/* 검색 + 필터 바 */}
-        <div style={{
-          background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px',
-          padding: '12px 16px', boxShadow: '0 1px 3px rgba(16,24,40,.06)',
-          display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '16px',
-        }}>
-          <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '200px' }}>
-            <ReagentAutocomplete
-              value={search}
-              onChange={setSearch}
-              onSelect={r => navigate(`/reagents/${r.id}`)}
-              onEnter={() => fetchResults()}
-              placeholder="시약 이름 또는 CAS No.로 검색..."
-              inputStyle={{ ...inputStyle, width: '100%' }} />
-            <button onClick={() => fetchResults()} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>검색</button>
-          </div>
-          <button onClick={() => { setShowBulkLookupModal(true); setBulkLookupResults(null) }} style={{
-            background: C.white, color: C.text, border: `1px solid ${C.border}`,
-            padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
-            fontSize: '13px', fontWeight: '600', flexShrink: 0,
-          }}>📋 시약 일괄 검색</button>
-          <button onClick={() => { setRegisterTab('new'); setShowRegisterModal(true) }} style={{
-            background: '#F9FBFF', color: '#1F4E96', border: `1px dashed #C9DAF5`,
-            padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
-            fontSize: '13px', fontWeight: '600', flexShrink: 0,
-          }}>🆕 신규 시약 등록</button>
-          {isAdmin && displayResults.length > 0 && (
-            <button onClick={() => {
-              const activeLocationIds = detailFilter ? [detailFilter] : roomFilter ? locations.filter(l => l.room === roomFilter).map(l => l.id) : null
-              const filterLabel = detailFilter
-                ? (() => { const l = locations.find(x => x.id === detailFilter); return l ? `${l.room}${l.detail ? '_' + l.detail : ''}` : '' })()
-                : roomFilter
-              exportReagents(displayResults, locations, activeLocationIds, filterLabel)
-            }} style={{
-              background: '#1D6F42', color: 'white', border: 'none',
-              padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
-              fontSize: '13px', fontWeight: '600', flexShrink: 0,
-            }}>📥 엑셀</button>
-          )}
-          {isAdmin && displayResults.length > 0 && (
-            <button onClick={toggleEditMode} style={{
-              background: editMode ? C.navy : C.white,
-              color: editMode ? C.white : C.text,
-              border: `1px solid ${editMode ? C.navy : C.border}`,
-              padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
-              fontSize: '13px', fontWeight: '600', flexShrink: 0,
-            }}>✏️ {editMode ? '편집 종료' : '편집'}</button>
-          )}
-        </div>
+        <ReagentToolbar
+          search={search} setSearch={setSearch}
+          onSearchSelect={r => navigate(`/reagents/${r.id}`)}
+          onSearchEnter={() => fetchResults()}
+          onOpenBulkLookup={() => { setShowBulkLookupModal(true); setBulkLookupResults(null) }}
+          onOpenRegister={() => { setRegisterTab('new'); setShowRegisterModal(true) }}
+          isAdmin={isAdmin} hasResults={displayResults.length > 0}
+          editMode={editMode} onToggleEditMode={toggleEditMode}
+          onExportExcel={() => {
+            const activeLocationIds = detailFilter ? [detailFilter] : roomFilter ? locations.filter(l => l.room === roomFilter).map(l => l.id) : null
+            const filterLabel = detailFilter
+              ? (() => { const l = locations.find(x => x.id === detailFilter); return l ? `${l.room}${l.detail ? '_' + l.detail : ''}` : '' })()
+              : roomFilter
+            exportReagents(displayResults, locations, activeLocationIds, filterLabel)
+          }}
+        />
 
-        {/* 위치 필터: 방(room) 밑줄 탭 + 세부위치가 있는 방이면 알약 버튼으로 한 단계 더 좁힘 */}
-        <div style={{
-          background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px',
-          padding: '0 16px', boxShadow: '0 1px 3px rgba(16,24,40,.06)', marginBottom: '16px',
-        }}>
-          <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
-            {['', ...rooms].map(room => (
-              <button key={room || '전체'} onClick={() => { setRoomFilter(room); setDetailFilter('') }} style={{
-                padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer',
-                fontSize: '13px', fontFamily: 'inherit', fontWeight: roomFilter === room ? 700 : 500,
-                color: roomFilter === room ? C.blueDark : C.muted,
-                borderBottom: roomFilter === room ? `2px solid ${C.blue}` : '2px solid transparent',
-                marginBottom: '-1px', whiteSpace: 'nowrap',
-              }}>{room || '전체'}</button>
-            ))}
-          </div>
-          {roomFilter && locations.some(l => l.room === roomFilter && l.detail) && (
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', padding: '10px 0' }}>
-              <button onClick={() => setDetailFilter('')} style={{
-                padding: '4px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
-                border: `1px solid ${!detailFilter ? C.navy : C.border}`,
-                background: !detailFilter ? C.navy : C.white,
-                color: !detailFilter ? '#fff' : C.text, fontWeight: !detailFilter ? '700' : '400',
-              }}>전체 {roomFilter}</button>
-              {locations.filter(l => l.room === roomFilter && l.detail).map(loc => (
-                <button key={loc.id} onClick={() => setDetailFilter(loc.id)} style={{
-                  padding: '4px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
-                  border: `1px solid ${detailFilter === loc.id ? C.navy : C.border}`,
-                  background: detailFilter === loc.id ? C.navy : C.white,
-                  color: detailFilter === loc.id ? '#fff' : C.text, fontWeight: detailFilter === loc.id ? '700' : '400',
-                }}>{loc.detail}</button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* 표시 열 선택 (기본 열 + 선택 열) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '2px 4px 12px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '11.5px', color: C.muted }}>시약명·순도(고정)</span>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={visibleCols.casNo} onChange={() => setVisibleCols(v => ({ ...v, casNo: !v.casNo }))} />CAS
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={visibleCols.company} onChange={() => setVisibleCols(v => ({ ...v, company: !v.company }))} />제조사
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={visibleCols.volume} onChange={() => setVisibleCols(v => ({ ...v, volume: !v.volume }))} />규격
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={visibleCols.stock} onChange={() => setVisibleCols(v => ({ ...v, stock: !v.stock }))} />재고
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={visibleCols.location} onChange={() => setVisibleCols(v => ({ ...v, location: !v.location }))} />위치
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={visibleCols.lastConfirmed} onChange={() => setVisibleCols(v => ({ ...v, lastConfirmed: !v.lastConfirmed }))} />최근확인
-          </label>
-          <div style={{ width: '1px', alignSelf: 'stretch', background: C.border }} />
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={visibleCols.lot} onChange={() => setVisibleCols(v => ({ ...v, lot: !v.lot }))} />Lot No.
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={visibleCols.expiry} onChange={() => setVisibleCols(v => ({ ...v, expiry: !v.expiry }))} />유효기간
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={visibleCols.category} onChange={() => setVisibleCols(v => ({ ...v, category: !v.category }))} />성상
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={visibleCols.ghs} onChange={() => setVisibleCols(v => ({ ...v, ghs: !v.ghs }))} />GHS
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={visibleCols.status} onChange={() => setVisibleCols(v => ({ ...v, status: !v.status }))} />상태
-          </label>
-          <button onClick={resetFilters} style={{
-            background: 'none', border: `1px solid ${C.border}`, borderRadius: '6px',
-            padding: '4px 10px', cursor: 'pointer', fontSize: '11.5px', color: C.muted,
-          }}>필터 초기화</button>
-        </div>
+        <ReagentFilters
+          rooms={rooms} roomFilter={roomFilter} setRoomFilter={setRoomFilter}
+          detailFilter={detailFilter} setDetailFilter={setDetailFilter} locations={locations}
+          visibleCols={visibleCols} setVisibleCols={setVisibleCols} onResetFilters={resetFilters}
+        />
 
         {/* 편집 모드 액션 바 */}
         {editMode && (
@@ -1094,390 +542,43 @@ export default function ReagentList() {
           )}
       </div>
 
-      {/* 다량 위치 이동 모달 */}
       {showBulkMoveModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(26,42,94,0.55)', zIndex: 400,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setShowBulkMoveModal(false)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: C.white, borderRadius: '14px', padding: '28px',
-            width: '420px', maxWidth: '92vw', boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
-          }}>
-            <h3 style={{ margin: '0 0 4px', color: C.navy }}>📍 위치 이동</h3>
-            <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{checkedIds.size}개 시약 선택됨</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>이동할 위치 *</label>
-                <select value={bulkMoveLocation} onChange={e => setBulkMoveLocation(e.target.value)} style={inputStyle}>
-                  <option value="">선택하세요</option>
-                  {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>이동자 이름 *</label>
-                <input value={bulkMovedBy} onChange={e => setBulkMovedBy(e.target.value)} placeholder="본인 이름" style={inputStyle} />
-              </div>
-            </div>
-            {bulkMoveLocation && (
-              <div style={{ marginTop: '14px', padding: '10px 14px', background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', fontSize: '13px' }}>
-                <strong style={{ color: '#276749' }}>이동 미리보기:</strong>
-                <div style={{ marginTop: '4px', color: '#2D6A4F' }}>
-                  {checkedIds.size}개 시약 → {(() => { const l = locations.find(l => l.id === bulkMoveLocation); return l ? `${l.room}${l.detail ? ' - ' + l.detail : ''}` : '' })()}
-                </div>
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
-              <button onClick={() => setShowBulkMoveModal(false)} style={{
-                flex: 1, padding: '10px', borderRadius: '6px',
-                border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px',
-              }}>취소</button>
-              <button onClick={submitBulkMove} style={{
-                flex: 1, padding: '10px', borderRadius: '6px', border: 'none',
-                background: '#667EEA', color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px',
-              }}>이동하기</button>
-            </div>
-          </div>
-        </div>
+        <BulkMoveModal
+          checkedCount={checkedIds.size} locations={locations}
+          bulkMoveLocation={bulkMoveLocation} setBulkMoveLocation={setBulkMoveLocation}
+          bulkMovedBy={bulkMovedBy} setBulkMovedBy={setBulkMovedBy}
+          onClose={() => setShowBulkMoveModal(false)} onSubmit={submitBulkMove}
+        />
       )}
 
-      {/* 시약 일괄조회 모달 */}
       {showBulkLookupModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(26,42,94,0.55)', zIndex: 400,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
-        }} onClick={() => setShowBulkLookupModal(false)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: C.white, borderRadius: '14px', padding: '28px',
-            width: '760px', maxWidth: '95vw', maxHeight: '86vh', overflowY: 'auto',
-            boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
-          }}>
-            <h3 style={{ margin: '0 0 4px', color: C.navy }}>📋 시약 일괄 검색</h3>
-            <p style={{ margin: '0 0 16px', color: C.muted, fontSize: '12.5px' }}>
-              필요한 시약명을 한 줄에 하나씩 붙여넣으면 목록에 있는지, 위치와 잔량이 어떤지 한번에 확인할 수 있어요.
-            </p>
-            <textarea value={bulkLookupText} onChange={e => setBulkLookupText(e.target.value)}
-              placeholder={'예)\nAcetone\nHCl\nEDTA'} rows={6}
-              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
-              <button onClick={runBulkLookup} disabled={bulkLookupLoading} style={{ ...btnPrimary, padding: '9px 20px', opacity: bulkLookupLoading ? 0.6 : 1 }}>
-                {bulkLookupLoading ? '조회 중...' : '조회'}
-              </button>
-            </div>
-
-            {bulkLookupResults && (
-              <div style={{ marginTop: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>
-                    조회 결과 · 있음 {bulkLookupResults.filter(r => r.matches.length > 0).length}/{bulkLookupResults.length}건
-                  </span>
-                  {bulkLookupResults.some(r => r.matches.length > 0) && (
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      {bulkLookupResults.some(r => r.matches.some(m => m.msds_url)) && (
-                        <button onClick={downloadMsdsZip} disabled={zippingMsds} style={{
-                          background: C.white, color: C.navy, border: `1px solid ${C.border}`, padding: '7px 14px',
-                          borderRadius: '6px', cursor: 'pointer', fontSize: '12.5px', fontWeight: '600',
-                          opacity: zippingMsds ? 0.6 : 1,
-                        }}>{zippingMsds ? '압축 중...' : '📦 MSDS 일괄 다운로드'}</button>
-                      )}
-                      <button onClick={addBulkLookupMatchesToPicked} style={{
-                        background: C.navy, color: '#fff', border: 'none', padding: '7px 14px',
-                        borderRadius: '6px', cursor: 'pointer', fontSize: '12.5px', fontWeight: '600',
-                      }}>찾은 시약 모두 선택 목록에 담기</button>
-                    </div>
-                  )}
-                </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr>{['입력한 이름', '결과', '위치', '잔량', '최근확인'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {bulkLookupResults.map(({ query, matches }) => (
-                      matches.length === 0 ? (
-                        <tr key={query}>
-                          <td style={{ ...tdStyle, fontWeight: '600' }}>{query}</td>
-                          <td style={{ ...tdStyle, color: C.danger, fontWeight: '700' }}>✕ 없음</td>
-                          <td style={tdStyle}>-</td><td style={tdStyle}>-</td><td style={tdStyle}>-</td>
-                        </tr>
-                      ) : matches.map((r, i) => {
-                        const activeLots = (r.reagent_lots || []).filter(l => l.status === 'active')
-                        const avgStock = activeLots.length > 0
-                          ? Math.round(activeLots.reduce((s, l) => s + l.current_stock, 0) / activeLots.length) : 0
-                        const locIds = new Set(activeLots.map(l => l.location_id).filter(Boolean))
-                        const loc = locIds.size === 1 ? locations.find(l => l.id === activeLots[0].location_id) : null
-                        const locText = locIds.size > 1 ? '위치별 상이' : loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'
-                        return (
-                          <tr key={r.id}>
-                            <td style={{ ...tdStyle, fontWeight: '600' }}>{i === 0 ? query : ''}</td>
-                            <td style={{ ...tdStyle, color: '#00875A', fontWeight: '700' }}>{i === 0 && matches.length > 1 ? `✓ ${matches.length}건` : '✓ 있음'}</td>
-                            <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{locText}</td>
-                            <td style={{ ...tdStyle, fontSize: '12px' }}>{activeLots.length > 0 ? `${avgStock}%` : '-'}</td>
-                            <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted }}>{r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString() : '-'}</td>
-                          </tr>
-                        )
-                      })
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
-              <button onClick={() => setShowBulkLookupModal(false)} style={{ ...btnPrimary, background: C.white, color: C.text, border: `1px solid ${C.border}`, padding: '9px 18px' }}>닫기</button>
-            </div>
-          </div>
-        </div>
+        <BulkLookupModal
+          locations={locations}
+          bulkLookupText={bulkLookupText} setBulkLookupText={setBulkLookupText}
+          bulkLookupResults={bulkLookupResults} bulkLookupLoading={bulkLookupLoading} zippingMsds={zippingMsds}
+          onRun={runBulkLookup} onAddMatchesToPicked={addBulkLookupMatchesToPicked} onDownloadMsds={downloadMsdsZip}
+          onClose={() => setShowBulkLookupModal(false)}
+        />
       )}
 
-      {/* 신규 시약 등록 모달 — "신규 시약 등록"/"직접 제조 시약 등록" 탭 전환 */}
       {showRegisterModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(26,42,94,0.55)', zIndex: 400,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setShowRegisterModal(false)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: C.white, borderRadius: '14px', padding: '24px 28px 28px',
-            width: '440px', maxWidth: '92vw', maxHeight: '88vh', overflowY: 'auto',
-            boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
-          }}>
-            {showInlineLogin ? (
-              <>
-                <h3 style={{ margin: '0 0 4px', color: C.navy }}>🔑 로그인 확인</h3>
-                <p style={{ margin: '0 0 18px', color: C.muted, fontSize: '12px' }}>
-                  등록하려면 먼저 로그인 정보를 확인해야 해요. 학번·생년월일·이름을 입력하면
-                  일치하는 즉시 로그인과 등록이 함께 처리됩니다.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div>
-                    <label style={labelStyle}>학번</label>
-                    <input value={inlineLoginForm.student_id}
-                      onChange={e => { setInlineLoginForm({ ...inlineLoginForm, student_id: e.target.value }); setInlineLoginError('') }}
-                      placeholder="예) 202112345" style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>생년월일</label>
-                    <input value={inlineLoginForm.birth_date}
-                      onChange={e => { setInlineLoginForm({ ...inlineLoginForm, birth_date: e.target.value }); setInlineLoginError('') }}
-                      placeholder="YYYY-MM-DD" style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>이름</label>
-                    <input value={inlineLoginForm.name}
-                      onChange={e => { setInlineLoginForm({ ...inlineLoginForm, name: e.target.value }); setInlineLoginError('') }}
-                      placeholder="예) 이OO" style={inputStyle} />
-                  </div>
-                  {inlineLoginError && (
-                    <div style={{ fontSize: '11.5px', color: C.dangerDark, background: C.dangerTint, padding: '8px 10px', borderRadius: '8px' }}>{inlineLoginError}</div>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
-                  <button onClick={() => { setShowInlineLogin(false); setPendingRegisterTab(null); setInlineLoginError('') }} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
-                  <button onClick={submitInlineLogin} disabled={inlineLoginLoading} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.navy, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px', opacity: inlineLoginLoading ? 0.6 : 1 }}>
-                    {inlineLoginLoading ? '확인 중...' : '확인하고 등록하기'}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-            <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`, marginBottom: '18px' }}>
-              {[['new', '신규 시약 등록'], ['made', '직접 제조 시약 등록']].map(([key, label]) => (
-                <button key={key} onClick={() => setRegisterTab(key)} style={{
-                  padding: '10px 14px', border: 'none', background: 'none', cursor: 'pointer',
-                  fontSize: '13.5px', fontFamily: 'inherit', fontWeight: registerTab === key ? 700 : 500,
-                  color: registerTab === key ? C.blueDark : C.muted,
-                  borderBottom: registerTab === key ? `2px solid ${C.blue}` : '2px solid transparent',
-                  marginBottom: '-1px', whiteSpace: 'nowrap',
-                }}>{label}</button>
-              ))}
-            </div>
-
-            {registerTab === 'new' ? (
-              <>
-                <p style={{ margin: '0 0 18px', color: C.muted, fontSize: '12px' }}>구매해서 새로 들여온 시약을 등록해요. 등록 즉시 목록에 반영되고, 관리자가 최종 확인하기 전까지는 "검토대기"로 표시돼요.</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div>
-                    <label style={labelStyle}>시약명 *</label>
-                    <input value={newReagentForm.name} onChange={e => setNewReagentForm({ ...newReagentForm, name: e.target.value })} placeholder="예) Acetone" style={inputStyle} />
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    <div>
-                      <label style={labelStyle}>CAS No.</label>
-                      <input value={newReagentForm.cas_no} onChange={e => setNewReagentForm({ ...newReagentForm, cas_no: e.target.value })} style={inputStyle} />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>제조사</label>
-                      <CompanyPicker value={newReagentForm.company} onChange={v => setNewReagentForm({ ...newReagentForm, company: v })} style={inputStyle} />
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                    <div>
-                      <label style={labelStyle}>성상</label>
-                      <input value={newReagentForm.category} onChange={e => setNewReagentForm({ ...newReagentForm, category: e.target.value })} placeholder="액체/고체" style={inputStyle} />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>용량</label>
-                      <input value={newReagentForm.volume} onChange={e => setNewReagentForm({ ...newReagentForm, volume: e.target.value })} placeholder="500" style={inputStyle} />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>단위</label>
-                      <input value={newReagentForm.unit} onChange={e => setNewReagentForm({ ...newReagentForm, unit: e.target.value })} placeholder="mL" style={inputStyle} />
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    <div>
-                      <label style={labelStyle}>Cat No.</label>
-                      <input value={newReagentForm.cat_no} onChange={e => setNewReagentForm({ ...newReagentForm, cat_no: e.target.value })} style={inputStyle} />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Lot No.</label>
-                      <input value={newReagentForm.lot_no} onChange={e => setNewReagentForm({ ...newReagentForm, lot_no: e.target.value })} style={inputStyle} />
-                    </div>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>보관 위치 *</label>
-                    <select value={newReagentForm.location_id} onChange={e => setNewReagentForm({ ...newReagentForm, location_id: e.target.value })} style={inputStyle}>
-                      <option value="">선택하세요</option>
-                      {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
-                    </select>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    <div>
-                      <label style={labelStyle}>미개봉 수량</label>
-                      <input type="number" min="0" value={newReagentForm.sealed_count} onChange={e => setNewReagentForm({ ...newReagentForm, sealed_count: e.target.value })} style={inputStyle} />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>잔량(%)</label>
-                      <input type="number" min="0" max="100" value={newReagentForm.current_stock} onChange={e => setNewReagentForm({ ...newReagentForm, current_stock: e.target.value })} style={inputStyle} />
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
-                  <button onClick={() => setShowRegisterModal(false)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
-                  <button onClick={() => submitNewReagent()} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.navy, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>등록하기</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '-8px', marginBottom: '4px' }}>
-                  <span style={{ background: '#EAF1FB', color: '#1F4E96', fontSize: '10.5px', fontWeight: '700', padding: '2px 8px', borderRadius: '999px' }}>직접제조</span>
-                </div>
-                <p style={{ margin: '0 0 18px', color: C.muted, fontSize: '12px' }}>구매 시약과 달리 CAS·회사 정보가 없어요. 필요한 정보만 입력하세요. 등록 즉시 목록에 반영되고, 관리자가 최종 확인하기 전까지는 "검토대기"로 표시돼요.</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div>
-                    <label style={labelStyle}>제조한 시약명 *</label>
-                    <input value={madeForm.name} onChange={e => setMadeForm({ ...madeForm, name: e.target.value })} placeholder="예) pH 7.0 인산완충용액" style={inputStyle} />
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
-                    <div>
-                      <label style={labelStyle}>용량</label>
-                      <input value={madeForm.volume} onChange={e => setMadeForm({ ...madeForm, volume: e.target.value })} placeholder="예: 500" style={inputStyle} />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>단위</label>
-                      <input value={madeForm.unit} onChange={e => setMadeForm({ ...madeForm, unit: e.target.value })} placeholder="mL" style={inputStyle} />
-                    </div>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>제조일</label>
-                    <input type="date" value={madeForm.made_date} onChange={e => setMadeForm({ ...madeForm, made_date: e.target.value })} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>용도</label>
-                    <input value={madeForm.made_purpose} onChange={e => setMadeForm({ ...madeForm, made_purpose: e.target.value })} placeholder="예: 분광광도계 실험용 완충용액" style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>보관 위치 *</label>
-                    <select value={madeForm.location_id} onChange={e => setMadeForm({ ...madeForm, location_id: e.target.value })} style={inputStyle}>
-                      <option value="">선택하세요</option>
-                      {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
-                  <button onClick={() => setShowRegisterModal(false)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
-                  <button onClick={() => submitMade()} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.navy, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>등록하기</button>
-                </div>
-              </>
-            )}
-              </>
-            )}
-          </div>
-        </div>
+        <RegisterReagentModal
+          registerTab={registerTab} setRegisterTab={setRegisterTab}
+          newReagentForm={newReagentForm} setNewReagentForm={setNewReagentForm}
+          madeForm={madeForm} setMadeForm={setMadeForm}
+          locations={locations}
+          showInlineLogin={showInlineLogin} inlineLoginForm={inlineLoginForm} setInlineLoginForm={setInlineLoginForm}
+          inlineLoginError={inlineLoginError} setInlineLoginError={setInlineLoginError}
+          inlineLoginLoading={inlineLoginLoading} setPendingRegisterTab={setPendingRegisterTab} setShowInlineLogin={setShowInlineLogin}
+          onSubmitInlineLogin={submitInlineLogin} onSubmitNewReagent={submitNewReagent} onSubmitMade={submitMade}
+          onClose={() => setShowRegisterModal(false)}
+        />
       )}
 
-      {/* 선택 목록 모달 */}
       {showPickedModal && (
-        <Modal onClose={() => setShowPickedModal(false)}>
-          <div className="picked-print-target">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <div>
-                <div style={{ fontSize: '10px', color: C.gold, fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '4px' }}>선택 목록</div>
-                <h2 style={{ margin: 0, color: C.navy, fontSize: '18px', fontWeight: '800' }}>선택한 시약 {pickedIds.size}개</h2>
-              </div>
-              <button className="no-print" onClick={() => setShowPickedModal(false)} style={{ background: 'transparent', border: 'none', borderRadius: '6px', width: '32px', height: '32px', cursor: 'pointer', fontSize: '18px', color: '#CBD5E0' }}>×</button>
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px' }}>
-              <thead>
-                <tr>
-                  {['시약명', '규격/용량', '잔량', '위치', '최근 확인', ''].map(h => (
-                    <th key={h} style={thStyle} className={h === '' ? 'no-print' : undefined}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from(pickedIds.values()).map(r => {
-                  const activeLots = (r.reagent_lots || []).filter(l => l.status === 'active')
-                  const avgStock = activeLots.length > 0
-                    ? Math.round(activeLots.reduce((s, l) => s + l.current_stock, 0) / activeLots.length) : null
-                  const locIds = new Set(activeLots.map(l => l.location_id).filter(Boolean))
-                  const loc = locIds.size === 1 ? locations.find(l => l.id === activeLots[0].location_id) : null
-                  const locText = locIds.size > 1 ? '위치별 상이' : loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'
-                  return (
-                    <tr key={r.id}>
-                      <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>{r.name}</td>
-                      <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{r.volume ? `${r.volume}${r.unit || ''}` : '-'}</td>
-                      <td style={{ ...tdStyle, fontSize: '12px' }}>{avgStock !== null ? `${avgStock}%` : '-'}</td>
-                      <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{locText}</td>
-                      <td style={{ ...tdStyle, fontSize: '11.5px', color: C.muted }}>{r.last_confirmed_at ? new Date(r.last_confirmed_at).toLocaleDateString() : '-'}</td>
-                      <td className="no-print" style={{ ...tdStyle, textAlign: 'center' }}>
-                        <button onClick={() => setPickedIds(prev => { const next = new Map(prev); next.delete(r.id); return next })}
-                          style={{ background: 'none', border: 'none', color: C.danger, cursor: 'pointer', fontSize: '13px' }}>제거</button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div className="no-print" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-            <button onClick={() => setShowPickedModal(false)} style={{ padding: '9px 16px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>닫기</button>
-            <button onClick={() => {
-              document.body.classList.add('printing-picked-list')
-              window.print()
-              setTimeout(() => document.body.classList.remove('printing-picked-list'), 200)
-            }} style={{ padding: '9px 16px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🖨️ 인쇄/PDF</button>
-            <button onClick={() => {
-              const withMsds = Array.from(pickedIds.values()).filter(r => r.msds_url)
-              if (withMsds.length === 0) { alert('선택한 시약 중 등록된 MSDS 파일이 있는 항목이 없어요.'); return }
-              withMsds.forEach(r => window.open(r.msds_url, '_blank'))
-            }} style={{ padding: '9px 16px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
-              📄 MSDS 일괄 열기 ({Array.from(pickedIds.values()).filter(r => r.msds_url).length}건)
-            </button>
-            <button onClick={() => exportPickedReagents(Array.from(pickedIds.values()), locations)} style={{ padding: '9px 16px', borderRadius: '6px', border: 'none', background: '#1D6F42', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>📥 Excel</button>
-          </div>
-        </Modal>
+        <PickedListModal pickedIds={pickedIds} setPickedIds={setPickedIds} locations={locations} onClose={() => setShowPickedModal(false)} />
       )}
 
-    </div>
-  )
-}
-
-function Modal({ children, onClose }) {
-  return (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26,42,94,0.45)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '28px', width: '640px', maxWidth: '92vw', maxHeight: '82vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(26,42,94,0.25)' }}>
-        {children}
-      </div>
     </div>
   )
 }
