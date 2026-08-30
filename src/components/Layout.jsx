@@ -187,14 +187,6 @@ export default function Layout() {
               </NavLink>
             )
           })}
-          <button onClick={() => setDrawerOpen(true)} style={{
-            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-            justifyContent: 'center', gap: 3, border: 'none', background: 'none', cursor: 'pointer',
-            borderTop: '2px solid transparent',
-          }}>
-            <Icon name="menu" size={22} color={C.muted} />
-            <span style={{ fontSize: 10, color: C.muted }}>더보기</span>
-          </button>
         </nav>
       )}
     </div>
