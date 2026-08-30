@@ -149,7 +149,7 @@ const ReagentRow = memo(function ReagentRow({
   r, locations, visibleCols, editMode, isAdmin, data,
   isChecked, isPicked, isExpanded, isEditingSealed, isEditingStock, editValue,
   onToggleCheck, onTogglePick, onToggleExpand, onRowClick,
-  onStartEdit, onSaveEdit, onChangeEdit,
+  onStartEdit, onSaveEdit, onChangeEdit, onConfirmPending,
 }) {
   const allLots = r.reagent_lots || []
   const activeLots = r._activeLots
@@ -207,8 +207,14 @@ const ReagentRow = memo(function ReagentRow({
             color: '#1F4E96', padding: '1px 7px', borderRadius: '999px', fontWeight: '700' }}>직접제조</span>}
           {isLow && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
             color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
-          {hasPendingConfirm && <span title="실사 반영됨 · 최종 확정 대기 중" style={{ marginLeft: '6px', fontSize: '10px', background: '#E3F2FD',
-            color: '#1565C0', padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>검토대기</span>}
+          {hasPendingConfirm && (
+            <span
+              onClick={isAdmin ? e => { e.stopPropagation(); onConfirmPending(r) } : undefined}
+              title={isAdmin ? '클릭하여 최종 확인 처리' : '아직 관리자 최종 확인 전이에요'}
+              style={{ marginLeft: '6px', fontSize: '10px', background: '#E3F2FD',
+                color: '#1565C0', padding: '1px 6px', borderRadius: '8px', fontWeight: '700',
+                cursor: isAdmin ? 'pointer' : 'default' }}>검토대기{isAdmin ? ' ✓' : ''}</span>
+          )}
         </td>
         {visibleCols.casNo && (
           <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{r.cas_no || '-'}</td>
@@ -311,7 +317,7 @@ function ReagentTable({
   data, locations, visibleCols, checkedIds, pickedIds, editMode, isAdmin,
   inlineEdit, setInlineEdit, expandedIds, alphabetRefs,
   toggleCheck, togglePick, toggleAll, togglePickAll, handleRowClick, toggleExpand,
-  startInlineEdit, saveInlineEdit,
+  startInlineEdit, saveInlineEdit, confirmPending,
 }) {
   const COLS = 2 // 체크박스 + 시약명 (항상 표시)
     + (visibleCols.casNo ? 1 : 0) + (visibleCols.company ? 1 : 0) + (visibleCols.volume ? 1 : 0)
@@ -336,7 +342,8 @@ function ReagentTable({
         onToggleCheck={toggleCheck} onTogglePick={togglePick} onToggleExpand={toggleExpand} onRowClick={handleRowClick}
         onStartEdit={startInlineEdit}
         onSaveEdit={(isEditingSealed || isEditingStock) ? saveInlineEdit : undefined}
-        onChangeEdit={(isEditingSealed || isEditingStock) ? setInlineEdit : undefined} />
+        onChangeEdit={(isEditingSealed || isEditingStock) ? setInlineEdit : undefined}
+        onConfirmPending={confirmPending} />
     )
   }
 
@@ -438,7 +445,13 @@ export default function ReagentList() {
   const [zippingMsds, setZippingMsds] = useState(false)
 
   // 직접제조시약
-  const [showMadeModal, setShowMadeModal] = useState(false)
+  // 신규 시약 등록 모달 — "신규 시약 등록"/"직접 제조 시약 등록" 두 탭을 하나의 모달에서 전환
+  const [showRegisterModal, setShowRegisterModal] = useState(false)
+  const [registerTab, setRegisterTab] = useState('new') // 'new' | 'made'
+  const [newReagentForm, setNewReagentForm] = useState({
+    name: '', cas_no: '', company: '', category: '', volume: '', unit: '',
+    cat_no: '', lot_no: '', location_id: '', sealed_count: '1', current_stock: '100',
+  })
   const [madeForm, setMadeForm] = useState({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
 
   useEffect(() => { fetchLocations(); fetchTotalCount() }, [])
@@ -691,17 +704,58 @@ export default function ReagentList() {
       name: madeForm.name, volume: madeForm.volume || null, unit: madeForm.unit || null,
       location_id: madeForm.location_id, reagent_type: 'self_made',
       made_date: madeForm.made_date, made_purpose: madeForm.made_purpose,
-      registered_by: student.student_id,
+      registered_by: student.student_id, pending_confirm: true,
     }).select().single()
     if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
     await supabase.from('reagent_lots').insert({
       reagent_id: reagent.id, sealed_count: 0, current_stock: 100, received_date: madeForm.made_date,
+      pending_confirm: true,
     })
-    alert('직접 제조 시약이 등록되었어요!')
-    setShowMadeModal(false)
+    alert('직접 제조 시약이 등록됐어요! 관리자가 최종 확인하기 전까지는 목록에 "검토대기"로 표시돼요.')
+    setShowRegisterModal(false)
     setMadeForm({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
     fetchResults()
   }
+
+  async function submitNewReagent() {
+    if (!newReagentForm.name.trim()) { alert('시약명을 입력해주세요'); return }
+    if (!newReagentForm.location_id) { alert('보관 위치를 선택해주세요'); return }
+    if (!student) { alert('로그인 후 이용해주세요'); return }
+    const { data: reagent, error } = await supabase.from('reagents').insert({
+      name: newReagentForm.name, cas_no: newReagentForm.cas_no || null, company: newReagentForm.company || null,
+      category: newReagentForm.category || null, volume: newReagentForm.volume || null, unit: newReagentForm.unit || null,
+      registered_by: student.student_id, pending_confirm: true,
+    }).select().single()
+    if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
+    await supabase.from('reagent_lots').insert({
+      reagent_id: reagent.id, location_id: newReagentForm.location_id,
+      lot_no: newReagentForm.lot_no || null, cat_no: newReagentForm.cat_no || null,
+      sealed_count: Number(newReagentForm.sealed_count) || 0, current_stock: Number(newReagentForm.current_stock) || 0,
+      received_date: new Date().toISOString().split('T')[0], pending_confirm: true,
+    })
+    alert('신규 시약이 등록됐어요! 관리자가 최종 확인하기 전까지는 목록에 "검토대기"로 표시돼요.')
+    setShowRegisterModal(false)
+    setNewReagentForm({ name: '', cas_no: '', company: '', category: '', volume: '', unit: '', cat_no: '', lot_no: '', location_id: '', sealed_count: '1', current_stock: '100' })
+    fetchResults()
+  }
+
+  // 매 렌더마다 최신 fetchResults를 가리키게 갱신 — confirmPending을 useCallback([])으로
+  // 고정해서 모든 행에 안정적으로 내려주면서도(메모이제이션 유지), 항상 최신 필터로
+  // 다시 불러오게 하기 위함(ReagentDetail.jsx의 fetchResultsRef 패턴과 동일).
+  const fetchResultsRef = useRef(fetchResults)
+  fetchResultsRef.current = fetchResults
+
+  // 신규/직접제조 등록으로 pending_confirm=true가 된 시약을 관리자가 목록에서 바로
+  // 최종 확인 처리 — "검토대기" 배지 클릭으로 호출됨.
+  const confirmPending = useCallback(async (r) => {
+    if (!window.confirm(`"${r.name}"의 등록 내용을 최종 확인 처리할까요?\n확인 후엔 "검토대기" 표시가 사라집니다.`)) return
+    await supabase.from('reagents').update({ pending_confirm: false }).eq('id', r.id)
+    const pendingLotIds = (r.reagent_lots || []).filter(l => l.pending_confirm).map(l => l.id)
+    if (pendingLotIds.length > 0) {
+      await supabase.from('reagent_lots').update({ pending_confirm: false }).in('id', pendingLotIds)
+    }
+    fetchResultsRef.current()
+  }, [])
 
   const startInlineEdit = useCallback((lotId, reagentId, field, currentValue, e) => {
     e.stopPropagation()
@@ -804,11 +858,11 @@ export default function ReagentList() {
             padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
             fontSize: '13px', fontWeight: '600', flexShrink: 0,
           }}>📋 시약 일괄 검색</button>
-          <button onClick={() => setShowMadeModal(true)} style={{
+          <button onClick={() => { setRegisterTab('new'); setShowRegisterModal(true) }} style={{
             background: '#F9FBFF', color: '#1F4E96', border: `1px dashed #C9DAF5`,
             padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
             fontSize: '13px', fontWeight: '600', flexShrink: 0,
-          }}>🧪 직접 제조 시약 등록</button>
+          }}>🆕 신규 시약 등록</button>
           {isAdmin && displayResults.length > 0 && (
             <button onClick={() => {
               const activeLocationIds = detailFilter ? [detailFilter] : roomFilter ? locations.filter(l => l.room === roomFilter).map(l => l.id) : null
@@ -981,7 +1035,8 @@ export default function ReagentList() {
                     inlineEdit={inlineEdit} setInlineEdit={setInlineEdit} expandedIds={expandedIds} alphabetRefs={alphabetRefs}
                     toggleCheck={toggleCheck} togglePick={togglePick} toggleAll={toggleAll} togglePickAll={togglePickAll}
                     handleRowClick={handleRowClick} toggleExpand={toggleExpand}
-                    startInlineEdit={startInlineEdit} saveInlineEdit={saveInlineEdit} />
+                    startInlineEdit={startInlineEdit} saveInlineEdit={saveInlineEdit}
+                    confirmPending={confirmPending} />
                 </Card>
               </div>
               <AlphabetIndex data={displayResults} editMode={editMode} scrollToLetter={scrollToLetter} />
@@ -1124,56 +1179,137 @@ export default function ReagentList() {
         </div>
       )}
 
-      {/* 직접 제조 시약 등록 모달 */}
-      {showMadeModal && (
+      {/* 신규 시약 등록 모달 — "신규 시약 등록"/"직접 제조 시약 등록" 탭 전환 */}
+      {showRegisterModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(26,42,94,0.55)', zIndex: 400,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setShowMadeModal(false)}>
+        }} onClick={() => setShowRegisterModal(false)}>
           <div onClick={e => e.stopPropagation()} style={{
-            background: C.white, borderRadius: '14px', padding: '28px',
-            width: '420px', maxWidth: '92vw', boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
+            background: C.white, borderRadius: '14px', padding: '24px 28px 28px',
+            width: '440px', maxWidth: '92vw', maxHeight: '88vh', overflowY: 'auto',
+            boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-              <h3 style={{ margin: 0, color: C.navy }}>🧪 직접 제조 시약 등록</h3>
-              <span style={{ background: '#EAF1FB', color: '#1F4E96', fontSize: '10.5px', fontWeight: '700', padding: '2px 8px', borderRadius: '999px' }}>직접제조</span>
+            <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`, marginBottom: '18px' }}>
+              {[['new', '신규 시약 등록'], ['made', '직접 제조 시약 등록']].map(([key, label]) => (
+                <button key={key} onClick={() => setRegisterTab(key)} style={{
+                  padding: '10px 14px', border: 'none', background: 'none', cursor: 'pointer',
+                  fontSize: '13.5px', fontFamily: 'inherit', fontWeight: registerTab === key ? 700 : 500,
+                  color: registerTab === key ? C.blueDark : C.muted,
+                  borderBottom: registerTab === key ? `2px solid ${C.blue}` : '2px solid transparent',
+                  marginBottom: '-1px', whiteSpace: 'nowrap',
+                }}>{label}</button>
+              ))}
             </div>
-            <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '12px' }}>구매 시약과 달리 CAS·회사 정보가 없어요. 필요한 정보만 입력하세요.</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={labelStyle}>제조한 시약명 *</label>
-                <input value={madeForm.name} onChange={e => setMadeForm({ ...madeForm, name: e.target.value })} placeholder="예) pH 7.0 인산완충용액" style={inputStyle} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
-                <div>
-                  <label style={labelStyle}>용량</label>
-                  <input value={madeForm.volume} onChange={e => setMadeForm({ ...madeForm, volume: e.target.value })} placeholder="예: 500" style={inputStyle} />
+
+            {registerTab === 'new' ? (
+              <>
+                <p style={{ margin: '0 0 18px', color: C.muted, fontSize: '12px' }}>구매해서 새로 들여온 시약을 등록해요. 등록 즉시 목록에 반영되고, 관리자가 최종 확인하기 전까지는 "검토대기"로 표시돼요.</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div>
+                    <label style={labelStyle}>시약명 *</label>
+                    <input value={newReagentForm.name} onChange={e => setNewReagentForm({ ...newReagentForm, name: e.target.value })} placeholder="예) Acetone" style={inputStyle} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={labelStyle}>CAS No.</label>
+                      <input value={newReagentForm.cas_no} onChange={e => setNewReagentForm({ ...newReagentForm, cas_no: e.target.value })} style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>제조사</label>
+                      <input value={newReagentForm.company} onChange={e => setNewReagentForm({ ...newReagentForm, company: e.target.value })} style={inputStyle} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={labelStyle}>성상</label>
+                      <input value={newReagentForm.category} onChange={e => setNewReagentForm({ ...newReagentForm, category: e.target.value })} placeholder="액체/고체" style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>용량</label>
+                      <input value={newReagentForm.volume} onChange={e => setNewReagentForm({ ...newReagentForm, volume: e.target.value })} placeholder="500" style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>단위</label>
+                      <input value={newReagentForm.unit} onChange={e => setNewReagentForm({ ...newReagentForm, unit: e.target.value })} placeholder="mL" style={inputStyle} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={labelStyle}>Cat No.</label>
+                      <input value={newReagentForm.cat_no} onChange={e => setNewReagentForm({ ...newReagentForm, cat_no: e.target.value })} style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Lot No.</label>
+                      <input value={newReagentForm.lot_no} onChange={e => setNewReagentForm({ ...newReagentForm, lot_no: e.target.value })} style={inputStyle} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>보관 위치 *</label>
+                    <select value={newReagentForm.location_id} onChange={e => setNewReagentForm({ ...newReagentForm, location_id: e.target.value })} style={inputStyle}>
+                      <option value="">선택하세요</option>
+                      {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={labelStyle}>미개봉 수량</label>
+                      <input type="number" min="0" value={newReagentForm.sealed_count} onChange={e => setNewReagentForm({ ...newReagentForm, sealed_count: e.target.value })} style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>잔량(%)</label>
+                      <input type="number" min="0" max="100" value={newReagentForm.current_stock} onChange={e => setNewReagentForm({ ...newReagentForm, current_stock: e.target.value })} style={inputStyle} />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label style={labelStyle}>단위</label>
-                  <input value={madeForm.unit} onChange={e => setMadeForm({ ...madeForm, unit: e.target.value })} placeholder="mL" style={inputStyle} />
+                <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+                  <button onClick={() => setShowRegisterModal(false)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
+                  <button onClick={submitNewReagent} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.navy, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>등록하기</button>
                 </div>
-              </div>
-              <div>
-                <label style={labelStyle}>제조일</label>
-                <input type="date" value={madeForm.made_date} onChange={e => setMadeForm({ ...madeForm, made_date: e.target.value })} style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>용도</label>
-                <input value={madeForm.made_purpose} onChange={e => setMadeForm({ ...madeForm, made_purpose: e.target.value })} placeholder="예: 분광광도계 실험용 완충용액" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>보관 위치 *</label>
-                <select value={madeForm.location_id} onChange={e => setMadeForm({ ...madeForm, location_id: e.target.value })} style={inputStyle}>
-                  <option value="">선택하세요</option>
-                  {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
-                </select>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
-              <button onClick={() => setShowMadeModal(false)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
-              <button onClick={submitMade} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.navy, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>등록하기</button>
-            </div>
+              </>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '-8px', marginBottom: '4px' }}>
+                  <span style={{ background: '#EAF1FB', color: '#1F4E96', fontSize: '10.5px', fontWeight: '700', padding: '2px 8px', borderRadius: '999px' }}>직접제조</span>
+                </div>
+                <p style={{ margin: '0 0 18px', color: C.muted, fontSize: '12px' }}>구매 시약과 달리 CAS·회사 정보가 없어요. 필요한 정보만 입력하세요. 등록 즉시 목록에 반영되고, 관리자가 최종 확인하기 전까지는 "검토대기"로 표시돼요.</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div>
+                    <label style={labelStyle}>제조한 시약명 *</label>
+                    <input value={madeForm.name} onChange={e => setMadeForm({ ...madeForm, name: e.target.value })} placeholder="예) pH 7.0 인산완충용액" style={inputStyle} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={labelStyle}>용량</label>
+                      <input value={madeForm.volume} onChange={e => setMadeForm({ ...madeForm, volume: e.target.value })} placeholder="예: 500" style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>단위</label>
+                      <input value={madeForm.unit} onChange={e => setMadeForm({ ...madeForm, unit: e.target.value })} placeholder="mL" style={inputStyle} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>제조일</label>
+                    <input type="date" value={madeForm.made_date} onChange={e => setMadeForm({ ...madeForm, made_date: e.target.value })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>용도</label>
+                    <input value={madeForm.made_purpose} onChange={e => setMadeForm({ ...madeForm, made_purpose: e.target.value })} placeholder="예: 분광광도계 실험용 완충용액" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>보관 위치 *</label>
+                    <select value={madeForm.location_id} onChange={e => setMadeForm({ ...madeForm, location_id: e.target.value })} style={inputStyle}>
+                      <option value="">선택하세요</option>
+                      {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+                  <button onClick={() => setShowRegisterModal(false)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px' }}>취소</button>
+                  <button onClick={submitMade} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.navy, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>등록하기</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
