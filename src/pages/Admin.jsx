@@ -1804,7 +1804,7 @@ export function BulkEditTab({ locations, student }) {
           {rooms.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
         <CompanyPicker value={companyFilter} onChange={setCompanyFilter} onPick={v => fetchReagents(v)} onKeyDown={e => e.key === 'Enter' && fetchReagents()}
-          placeholder="제조사 검색" style={{ ...inputStyle, maxWidth: '130px' }} />
+          placeholder="제조사 검색" style={{ ...inputStyle, maxWidth: '160px' }} />
         <button onClick={fetchReagents} style={{ ...btnGhost, padding: '8px 16px' }}>필터 적용</button>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: '11.5px', color: C.muted }}>표시 열</span>
@@ -1884,7 +1884,7 @@ export function BulkEditTab({ locations, student }) {
                     {cols.company && (
                       <td style={{ ...tdStyle, ...(edit.company !== undefined ? changedStyle : {}) }}>
                         <CompanyPicker value={edit.company ?? r.company ?? ''} onChange={v => clearEditIfSame(r.id, 'company', v, r.company)}
-                          style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px', width: '80px' }} />
+                          style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px', width: '110px' }} />
                       </td>
                     )}
                     {cols.expiry && <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{lot?.expiry_date || '-'}</td>}

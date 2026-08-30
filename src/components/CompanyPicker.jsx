@@ -19,7 +19,8 @@ export const BRANDS = [
 
 // 기존 회사명 입력칸을 그대로 대체하는 용도 — value/onChange 계약은 평범한
 // <input>과 동일해서 직접 타이핑도 계속 되고(목록에 없는 회사도 많으므로),
-// 옆의 로고 버튼을 누르면 그리드가 뜨고 로고를 클릭하면 그 값으로 채워짐.
+// 입력칸을 누르면(포커스하면) 바로 아래에 로고 드롭다운이 뜨고 로고를 클릭하면
+// 그 값으로 채워짐 — 별도 버튼 없이, 다른 자동완성 입력칸들과 같은 방식.
 // onBlur/onKeyDown은 "저장은 blur/Enter 때" 패턴을 쓰는 화면(재고실사 등)을 위한 통로 —
 // 로고를 클릭했을 때도 그 화면들이 즉시 저장할 수 있도록 onPick으로 따로 알려줌
 // (onChange만으로는 "타이핑 중"인지 "로고를 확정 선택"했는지 구분이 안 되기 때문).
@@ -42,28 +43,21 @@ export default function CompanyPicker({ value, onChange, onPick, onBlur, onKeyDo
   }
 
   return (
-    <div ref={boxRef} style={{ position: 'relative', display: 'flex', gap: '4px', alignItems: 'center' }}>
+    <div ref={boxRef} style={{ position: 'relative' }}>
       <input
         ref={inputRef}
         value={value}
         disabled={disabled}
         onChange={e => onChange(e.target.value)}
+        onFocus={() => setOpen(true)}
         onBlur={onBlur}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
-        style={{ ...style, flex: 1, minWidth: 0 }}
+        style={{ ...style, width: style?.width ?? '100%' }}
       />
-      {!disabled && (
-        <button type="button" onClick={() => setOpen(o => !o)} title="제조사 로고로 선택"
-          style={{
-            flexShrink: 0, width: '28px', height: '28px', borderRadius: '6px', cursor: 'pointer',
-            border: `1px solid ${open ? C.blue : C.border}`, background: open ? '#EAF1FB' : C.white,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', padding: 0,
-          }}>🏢</button>
-      )}
-      {open && (
+      {open && !disabled && (
         <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 250,
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 250,
           background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.15)', padding: '10px', width: '300px',
         }}>
