@@ -673,7 +673,7 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
   // 검색해도 기존 목록에 전혀 없을 때, 상단 패널 안에서 바로 미등록 시약을 입력하는 모드
   // (예전엔 별도 모달이었는데, 검색→대조/수정 패널과 자연스럽게 이어지도록 통합함)
   const [newEntryMode, setNewEntryMode] = useState(false)
-  const [newEntryForm, setNewEntryForm] = useState({ name: '', purity: '', cas_no: '', company: '', cat_no: '', lot_no: '', category: '', volume: '', unit: '', location_id: '', current_stock: '100', abnormal_note: '' })
+  const [newEntryForm, setNewEntryForm] = useState({ name: '', purity: '', cas_no: '', company: '', cat_no: '', lot_no: '', category: '', volume: '', unit: '', location_id: '', current_stock: '100', abnormal_note: '', reagent_id: null })
   const inputRefs = useRef({})
   const rowRefs = useRef({})       // ← 알파벳 인덱스용 행 ref
   const searchInputRef = useRef(null)
@@ -881,12 +881,25 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
   // 입력한 시약명을 그대로 넣어두고 나머지 정보를 채운 뒤 "등록 완료"를 누르면
   // 즉시 reagents/reagent_lots를 생성하고, 이번 세션 inventory_counts에도 바로 편입시켜
   // 진행률에 포함 + "완료" 상태로 시작(실사에서 방금 발견/확인한 값이므로).
-  function startNewEntry() {
+  // "기존 목록에 없습니다"는 이번 세션의 Lot 중에는 없다는 뜻일 뿐, reagents 카탈로그
+  // 자체엔 이미 있을 수 있음(예: Lot 데이터가 통째로 초기화된 뒤 처음 시작한 세션이라면
+  // 세션 안엔 항상 아무 Lot도 없음). 여기서 카탈로그를 한 번 더 검색해서, 정확히 일치하는
+  // 시약이 있으면 그 시약에 새 Lot만 붙이고 reagents를 또 만들지 않게 함(중복 등록 방지).
+  async function startNewEntry() {
     setCompareLot(null)
     setCompareCandidates([])
-    setNewEntryMode(true)
-    setNewEntryForm({ name: search.trim(), purity: '', cas_no: '', company: '', cat_no: '', lot_no: '', category: '', volume: '', unit: '', location_id: '', current_stock: '100', abnormal_note: '' })
     setSearchOpen(false)
+    const term = search.trim()
+    const { data: matches } = await supabase.from('reagents')
+      .select('id, name, cas_no, company, category, volume, unit, purity')
+      .ilike('name', term).neq('status', 'archived').limit(5)
+    const m = matches && matches.length > 0 ? matches[0] : null
+    setNewEntryForm({
+      name: m?.name ?? term, purity: m?.purity ?? '', cas_no: m?.cas_no ?? '', company: m?.company ?? '',
+      cat_no: '', lot_no: '', category: m?.category ?? '', volume: m?.volume != null ? String(m.volume) : '', unit: m?.unit ?? '',
+      location_id: '', current_stock: '100', abnormal_note: '', reagent_id: m?.id ?? null,
+    })
+    setNewEntryMode(true)
   }
   function cancelNewEntry() {
     setNewEntryMode(false)
@@ -897,20 +910,24 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
     if (!myName.trim()) { alert('로그인 후 이용해주세요'); return }
     if (!newEntryForm.name.trim()) { alert('화학물질명을 입력해주세요'); return }
     if (!newEntryForm.location_id) { alert('위치를 선택해주세요'); return }
-    const { data: r, error } = await supabase.from('reagents').insert({
-      name: newEntryForm.name.trim(), purity: newEntryForm.purity || null, cas_no: newEntryForm.cas_no || null, company: newEntryForm.company || null,
-      category: newEntryForm.category || null, volume: newEntryForm.volume || null, unit: newEntryForm.unit || null,
-      reagent_type: 'purchased', status: 'active', registered_by: student?.student_id ?? null,
-    }).select().single()
-    if (error) { alert('시약 등록 실패: ' + error.message); return }
+    let reagentId = newEntryForm.reagent_id
+    if (!reagentId) {
+      const { data: r, error } = await supabase.from('reagents').insert({
+        name: newEntryForm.name.trim(), purity: newEntryForm.purity || null, cas_no: newEntryForm.cas_no || null, company: newEntryForm.company || null,
+        category: newEntryForm.category || null, volume: newEntryForm.volume || null, unit: newEntryForm.unit || null,
+        reagent_type: 'purchased', status: 'active', registered_by: student?.student_id ?? null,
+      }).select().single()
+      if (error) { alert('시약 등록 실패: ' + error.message); return }
+      reagentId = r.id
+    }
     const stockNum = Number(newEntryForm.current_stock) || 0
     const { data: newLot, error: lotErr } = await supabase.from('reagent_lots').insert({
-      reagent_id: r.id, lot_no: newEntryForm.lot_no || null, cat_no: newEntryForm.cat_no || null,
+      reagent_id: reagentId, lot_no: newEntryForm.lot_no || null, cat_no: newEntryForm.cat_no || null,
       sealed_count: 1, current_stock: stockNum, location_id: newEntryForm.location_id, status: 'active',
     }).select().single()
     if (lotErr) { alert('Lot 등록 실패: ' + lotErr.message); return }
     await supabase.from('inventory_counts').insert({
-      session_id: session.id, reagent_id: r.id, lot_id: newLot.id,
+      session_id: session.id, reagent_id: reagentId, lot_id: newLot.id,
       book_sealed: 0, book_stock: 0, book_status: 'active', book_location_id: newEntryForm.location_id,
       actual_sealed: 1, actual_stock: stockNum,
       abnormal_note: newEntryForm.abnormal_note.trim() || null,
@@ -921,7 +938,7 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
       target_type: 'reagent', lot_id: newLot.id, user_name: `[실사] ${myName}`,
       before_sealed: 0, after_sealed: 1, before_stock: 0, after_stock: stockNum,
     })
-    alert('미등록 시약이 입력되었습니다!')
+    alert(newEntryForm.reagent_id ? '기존 시약에 새 Lot이 등록되었습니다!' : '미등록 시약이 입력되었습니다!')
     setNewEntryMode(false)
     setSearch('')
     setDebouncedSearch('')
@@ -1184,22 +1201,28 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
               </div>
             ) : newEntryMode ? (
               <>
-                <div style={{ fontSize: '12.5px', color: '#92400E', marginBottom: '10px' }}>
-                  "{newEntryForm.name}" — 기존 목록에 없는 시약이에요. 정보를 입력하고 등록 완료를 누르세요.
-                </div>
+                {newEntryForm.reagent_id ? (
+                  <div style={{ fontSize: '12.5px', color: '#276749', marginBottom: '10px', background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', padding: '8px 12px' }}>
+                    ✓ "{newEntryForm.name}" — 이미 카탈로그에 있는 시약이에요. 새로 만들지 않고 이 시약에 새 Lot만 추가돼요(기본 정보는 카탈로그 값을 그대로 씀).
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '12.5px', color: '#92400E', marginBottom: '10px' }}>
+                    "{newEntryForm.name}" — 기존 목록에 없는 시약이에요. 정보를 입력하고 등록 완료를 누르세요.
+                  </div>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px 16px', fontSize: '13px' }}>
                   <div><div style={{ fontSize: '11px', color: C.muted }}>화학물질명 *</div>
-                    <input value={newEntryForm.name} onChange={e => setNewEntryForm({ ...newEntryForm, name: e.target.value })}
-                      style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px' }} /></div>
+                    <input value={newEntryForm.name} disabled={!!newEntryForm.reagent_id} onChange={e => setNewEntryForm({ ...newEntryForm, name: e.target.value })}
+                      style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px', background: newEntryForm.reagent_id ? C.bg : C.white }} /></div>
                   <div><div style={{ fontSize: '11px', color: C.muted }}>순도</div>
-                    <input value={newEntryForm.purity} onChange={e => setNewEntryForm({ ...newEntryForm, purity: e.target.value })} placeholder="예: 98%"
-                      style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px' }} /></div>
+                    <input value={newEntryForm.purity} disabled={!!newEntryForm.reagent_id} onChange={e => setNewEntryForm({ ...newEntryForm, purity: e.target.value })} placeholder="예: 98%"
+                      style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px', background: newEntryForm.reagent_id ? C.bg : C.white }} /></div>
                   <div><div style={{ fontSize: '11px', color: C.muted }}>CAS No.</div>
-                    <input value={newEntryForm.cas_no} onChange={e => setNewEntryForm({ ...newEntryForm, cas_no: e.target.value })}
-                      style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px' }} /></div>
+                    <input value={newEntryForm.cas_no} disabled={!!newEntryForm.reagent_id} onChange={e => setNewEntryForm({ ...newEntryForm, cas_no: e.target.value })}
+                      style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px', background: newEntryForm.reagent_id ? C.bg : C.white }} /></div>
                   <div><div style={{ fontSize: '11px', color: C.muted }}>회사</div>
-                    <input value={newEntryForm.company} onChange={e => setNewEntryForm({ ...newEntryForm, company: e.target.value })}
-                      style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px' }} /></div>
+                    <input value={newEntryForm.company} disabled={!!newEntryForm.reagent_id} onChange={e => setNewEntryForm({ ...newEntryForm, company: e.target.value })}
+                      style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px', background: newEntryForm.reagent_id ? C.bg : C.white }} /></div>
                   <div><div style={{ fontSize: '11px', color: C.muted }}>Cat No.</div>
                     <input value={newEntryForm.cat_no} onChange={e => setNewEntryForm({ ...newEntryForm, cat_no: e.target.value })}
                       style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px' }} /></div>
@@ -1207,17 +1230,17 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
                     <input value={newEntryForm.lot_no} onChange={e => setNewEntryForm({ ...newEntryForm, lot_no: e.target.value })}
                       style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px' }} /></div>
                   <div><div style={{ fontSize: '11px', color: C.muted }}>성상</div>
-                    <input value={newEntryForm.category} onChange={e => setNewEntryForm({ ...newEntryForm, category: e.target.value })}
-                      style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px' }} /></div>
+                    <input value={newEntryForm.category} disabled={!!newEntryForm.reagent_id} onChange={e => setNewEntryForm({ ...newEntryForm, category: e.target.value })}
+                      style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px', background: newEntryForm.reagent_id ? C.bg : C.white }} /></div>
                   <div>
                     <div style={{ fontSize: '11px', color: C.muted }}>규격</div>
                     <div style={{ display: 'flex', gap: '4px', marginTop: '2px', alignItems: 'center' }}>
-                      <input value={newEntryForm.volume} onChange={e => setNewEntryForm({ ...newEntryForm, volume: e.target.value })} placeholder="용량"
-                        style={{ ...inputStyle, width: '60px', padding: '5px 8px', fontSize: '13px' }} />
+                      <input value={newEntryForm.volume} disabled={!!newEntryForm.reagent_id} onChange={e => setNewEntryForm({ ...newEntryForm, volume: e.target.value })} placeholder="용량"
+                        style={{ ...inputStyle, width: '60px', padding: '5px 8px', fontSize: '13px', background: newEntryForm.reagent_id ? C.bg : C.white }} />
                       <div style={{ display: 'flex', gap: '3px' }}>
                         {['mL', 'L', 'g', 'kg'].map(u => (
-                          <button key={u} type="button" onClick={() => setNewEntryForm({ ...newEntryForm, unit: u })} style={{
-                            padding: '5px 7px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer',
+                          <button key={u} type="button" disabled={!!newEntryForm.reagent_id} onClick={() => setNewEntryForm({ ...newEntryForm, unit: u })} style={{
+                            padding: '5px 7px', borderRadius: '6px', fontSize: '11px', cursor: newEntryForm.reagent_id ? 'default' : 'pointer',
                             border: `1px solid ${newEntryForm.unit === u ? '#1565C0' : C.border}`,
                             background: newEntryForm.unit === u ? '#EAF1FB' : C.white,
                             color: newEntryForm.unit === u ? '#1565C0' : C.text, fontWeight: newEntryForm.unit === u ? '700' : '400',
