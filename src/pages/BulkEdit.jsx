@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { PageBanner } from '../design'
-import { BulkEditTab } from './Admin'
+import BulkEditTab from '../components/admin/BulkEditTab'
 
 export default function BulkEdit() {
   const { student } = useOutletContext()
