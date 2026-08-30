@@ -1,20 +1,11 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useFCM } from '../hooks/useFCM'
+import { useBreakpoint } from '../hooks/useBreakpoint'
 import { C, Icon } from '../design'
 import { readSession, revalidateSession, clearSession } from '../lib/session'
 import LoginModal from './LoginModal'
 import AdminUpgradeModal from './AdminUpgradeModal'
-
-function useBreakpoint() {
-  const [width, setWidth] = useState(window.innerWidth)
-  useEffect(() => {
-    const h = () => setWidth(window.innerWidth)
-    window.addEventListener('resize', h)
-    return () => window.removeEventListener('resize', h)
-  }, [])
-  return { isMobile: width < 768, isTablet: width >= 768 && width < 1100, isDesktop: width >= 1100 }
-}
 
 const NAV_ITEMS = [
   { to: '/',                 label: '홈',        icon: 'home',          end: true },

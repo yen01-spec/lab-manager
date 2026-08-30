@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 import { C, PageBanner, Card, btnPrimary, btnGhost, inputStyle, labelStyle, thStyle, tdStyle } from '../design'
 import DateSplitInput from '../components/DateSplitInput'
 import CompanyPicker from '../components/CompanyPicker'
+import { useBreakpoint } from '../hooks/useBreakpoint'
 
 // Supabase/PostgREST 기본 응답은 1000행으로 잘림 — 시약이 7000개가 넘는 지금은
 // 반드시 페이지네이션해야 함. queryFn(from, to)는 .range(from, to)를 적용한 쿼리를 반환.
@@ -85,6 +86,7 @@ export default function Inventory() {
   const [myCountedCount, setMyCountedCount] = useState(0) // ← 내가 이번 세션에서 이미 입력한 게 있는지("이어서 진행" 문구 판단용)
   const [pendingConfirmCount, setPendingConfirmCount] = useState(0) // ← 1단계는 지났지만 2단계 전인 Lot 수("완료 취소" 버튼 노출 판단용)
   const [pausing, setPausing] = useState(false)
+  const { isMobile } = useBreakpoint()
 
   useEffect(() => { fetchSessions(); fetchLocations() }, [])
 
@@ -407,6 +409,56 @@ export default function Inventory() {
     />
   )
 
+  // 모바일: 세션 생성/일시중단/취소/완료처리/최종반영 같은 관리 기능은 PC 전용으로 남기고
+  // "지금 진행 중인 실사에 들어가서 입력을 이어간다"는 동작 하나만 노출한다.
+  if (isMobile) return (
+    <div>
+      <PageBanner title="재고 실사" sub="Inventory Count" breadcrumb={['홈', '재고 실사']} />
+      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {!activeSession && (
+          <Card title="📋 진행 중인 실사 없음">
+            <p style={{ color: C.muted, fontSize: '14px', margin: 0 }}>
+              진행 중인 실사가 없습니다. 실사 시작은 PC에서 해주세요.
+            </p>
+          </Card>
+        )}
+
+        {activeSession && (
+          <Card
+            title={`📊 ${activeSession.year}년 재고 실사${activeSession.label ? ` · ${activeSession.label}` : ''}`}
+            sub={activeSession.purpose === 'full_census' ? '전수조사' : '현재목록 재고실사'}
+          >
+            {activeSession.status === 'paused' ? (
+              <div style={{ background: '#FFF3E0', border: '1px solid #FFB74D', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#E65100' }}>
+                <strong>⏸ 실사가 임시저장 상태로 중단되었습니다.</strong>
+                <div style={{ marginTop: '2px', fontSize: '12px', color: '#BF5700' }}>관리자가 재개할 때까지 입력이 제한됩니다.</div>
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                    <span style={{ color: C.muted }}>전체 진행률</span>
+                    <span style={{ fontWeight: '700', color: C.navy }}>{progress.done} / {progress.total}개 완료 ({progressPct}%)</span>
+                  </div>
+                  <div style={{ height: '10px', background: C.bg, borderRadius: '5px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', borderRadius: '5px', background: progressPct === 100 ? '#38A169' : C.navy, width: `${progressPct}%`, transition: 'width 0.3s' }} />
+                  </div>
+                </div>
+                {student ? (
+                  <button onClick={enterCounting} style={{ ...btnPrimary, width: '100%', padding: '14px', fontSize: '15px', minHeight: '44px' }}>
+                    {myCountedCount > 0 ? '📝 실사 이어서 진행' : '📝 실사 입력 시작'}
+                  </button>
+                ) : (
+                  <p style={{ fontSize: '13.5px', color: C.muted, textAlign: 'center', margin: 0 }}>로그인 후 이용해주세요</p>
+                )}
+              </>
+            )}
+          </Card>
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <div>
       <PageBanner title="재고 실사" sub="Inventory Count" breadcrumb={['홈', '재고 실사']} />
@@ -692,6 +744,7 @@ function SessionReviewModal({ session, onClose }) {
 //  실사 입력 화면 (학생/관리자 공용)
 // ════════════════════════════════════════════════════════════
 function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
+  const { isMobile } = useBreakpoint()
   const [lots, setLots] = useState([])
   const [counts, setCounts] = useState({})
   const [locations, setLocations] = useState([])
@@ -703,7 +756,8 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
   const [compareCandidates, setCompareCandidates] = useState([]) // ← 같은 이름의 Lot이 여러 개라 특정 못했을 때 고를 후보들
   const [savedMsg, setSavedMsg] = useState(false)      // ← "✓ 수정되었습니다" 인라인 메시지
   const [searchOpen, setSearchOpen] = useState(false)  // ← 검색창 아래 후보 드롭다운 열림 여부
-  const [filter, setFilter] = useState('all')
+  // 모바일 목록 화면은 "완료/미완료" 두 탭만 쓰므로(PC의 '전체' 탭 없음) 처음부터 미완료로 시작.
+  const [filter, setFilter] = useState(isMobile ? 'undone' : 'all')
   const [locationFilter, setLocationFilter] = useState('')
   const [capStart, setCapStart] = useState(0) // 렌더 캡 윈도우 시작 인덱스 — 알파벳 인덱스 점프 시 이동
   const [saving, setSaving] = useState({})
@@ -726,6 +780,10 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
   const savedMsgTimerRef = useRef(null)
 
   useEffect(() => { fetchLots(); fetchLocations(); fetchDisposals() }, [])
+
+  // 모바일 화면 전환(목록↔입력, 다음 항목으로 이동) 때마다 새 화면의 맨 위부터 보이게—
+  // setState가 아니라 DOM 스크롤 위치만 맞추는 것이라 effect 안에서 호출해도 무방함.
+  useEffect(() => { if (isMobile) window.scrollTo(0, 0) }, [isMobile, compareLot?.id, newEntryMode])
 
   // "폐기신청됨" 버튼 표시용 — 대기중인 폐기신청만 필요하므로(처리 완료된 건 다시 신청 가능해야
   // 함) status=pending만 가져옴. lot_id로 필터링하면 담당구역 수천 개를 URL에 나열하게 될 수
@@ -1034,7 +1092,9 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
     setSearchOpen(false)
     const c = counts[lot.id]
     setSliderDisplay(c?.actual_stock ?? c?.book_stock ?? lot.current_stock)
-    setTimeout(() => { comparePanelInputRef.current?.focus() }, 50)
+    // 모바일에서는 이 ref가 화면 아래쪽 잔량 슬라이더라 자동 포커스하면 브라우저가
+    // 그 위치로 스크롤해버려 화학물질명 등 위쪽 정보를 못 보고 시작하게 됨 — PC에서만 포커스.
+    if (!isMobile) setTimeout(() => { comparePanelInputRef.current?.focus() }, 50)
   }
 
   function saveComparePanel() {
@@ -1052,6 +1112,28 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
     setCompareLot(null)
     setSearchOpen(false)
     setTimeout(() => searchInputRef.current?.focus(), 0)
+  }
+
+  // 모바일 입력 화면 전용 — 확인창 없이 바로 저장하고, 지금 보던 목록(진입 당시의
+  // 필터/검색 범위인 filteredLots) 안에서 다음 항목으로 자동 이동. 마지막 항목이면
+  // 목록 화면으로 돌아간다(PC의 saveComparePanel과 달리 검색어를 지우지 않음 —
+  // 같은 검색 결과 안에서 여러 개를 순서대로 처리하는 상황도 있을 수 있어서).
+  function saveAndAdvanceMobile(list) {
+    if (!compareLot) return
+    const count = counts[compareLot.id]
+    const bookStock = count?.book_stock ?? compareLot.current_stock
+    const value = comparePanelInputRef.current?.value
+    saveStock(compareLot, value !== '' && value != null ? value : bookStock)
+    const idx = list.findIndex(l => l.id === compareLot.id)
+    const next = idx >= 0 ? list[idx + 1] : null
+    if (next) {
+      openComparePanel(next)
+    } else {
+      setCompareLot(null)
+      setSavedMsg(true)
+      if (savedMsgTimerRef.current) clearTimeout(savedMsgTimerRef.current)
+      savedMsgTimerRef.current = setTimeout(() => setSavedMsg(false), 2500)
+    }
   }
 
   // 지금 실사 중인 시약장(위치) 하나로 화면을 좁혀서 보는 필터 — 관리자/담당자 구분 없이
@@ -1175,7 +1257,406 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
     )
   }
 
+  // "기타조치" 모달 — 데스크톱 표 하단과 모바일 입력 화면 둘 다에서 씀(같은 상태로 열림/닫힘).
+  function renderActionModal() {
+    if (!actionModalLot) return null
+    return (
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26,42,94,0.45)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        onClick={closeActionModal}>
+        <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '24px', width: '360px', maxWidth: '92vw', boxShadow: '0 24px 64px rgba(26,42,94,0.25)' }}>
+          <h3 style={{ marginTop: 0, marginBottom: '4px', color: C.navy, fontSize: '16px' }}>기타조치</h3>
+          <p style={{ margin: '0 0 16px', fontSize: '12.5px', color: C.muted }}>{actionModalLot.reagents?.name}{actionModalLot.lot_no ? ` · Lot ${actionModalLot.lot_no}` : ''}</p>
+
+          {counts[actionModalLot.id]?.reported_missing ? (
+            <div>
+              <div style={{ padding: '10px 12px', background: '#FFF3E0', border: '1px solid #FFCC80', borderRadius: '8px', fontSize: '13px', color: '#92400E', marginBottom: '16px' }}>
+                현재 "위치 내 시약 미확인"으로 표시돼 있어요.
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={closeActionModal} style={{ ...btnGhost, flex: 1 }}>닫기</button>
+                <button onClick={cancelMissingFromModal} style={{ ...btnPrimary, flex: 1, background: '#E65100' }}>미확인 해제</button>
+              </div>
+            </div>
+          ) : disposalByLot[actionModalLot.id] ? (
+            <div>
+              <div style={{ padding: '10px 12px', background: C.dangerTint, border: '1px solid #F3D6D6', borderRadius: '8px', fontSize: '13px', color: C.dangerDark, marginBottom: '16px' }}>
+                이미 폐기신청됨 (사유: {disposalByLot[actionModalLot.id].reason})<br />
+                <span style={{ fontSize: '11px', color: C.muted }}>관리자 승인 대기 중 — 여기서 취소할 수 없어요.</span>
+              </div>
+              <button onClick={closeActionModal} style={{ ...btnGhost, width: '100%' }}>닫기</button>
+            </div>
+          ) : actionStep === 'choose' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button onClick={() => setActionStep('disposal')} style={{ ...btnGhost, textAlign: 'left', padding: '12px 14px' }}>🗑️ 폐기신청</button>
+              <button onClick={selectMissingFromModal} style={{ ...btnGhost, textAlign: 'left', padding: '12px 14px' }}>❓ 위치 내 시약 미확인</button>
+              <button onClick={closeActionModal} style={{ ...btnGhost, marginTop: '8px' }}>취소</button>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: '12px', color: C.muted, marginBottom: '8px' }}>폐기 사유를 고르거나 직접 입력하세요.</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                {DISPOSAL_REASONS.map(reason => (
+                  <button key={reason} onClick={() => setDisposalReasonInput(reason)} style={{
+                    ...smallBtnStyle(disposalReasonInput === reason, C.dangerDark, C.dangerTint), whiteSpace: 'nowrap',
+                  }}>{reason}</button>
+                ))}
+              </div>
+              <input value={disposalReasonInput} onChange={e => setDisposalReasonInput(e.target.value)}
+                placeholder="사유 직접 입력도 가능해요" style={inputStyle} />
+              <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                <button onClick={() => setActionStep('choose')} style={{ ...btnGhost, flex: 1 }}>뒤로</button>
+                <button onClick={submitDisposalFromModal} disabled={!disposalReasonInput.trim()}
+                  style={{ ...btnPrimary, flex: 1, opacity: disposalReasonInput.trim() ? 1 : 0.5, cursor: disposalReasonInput.trim() ? 'pointer' : 'default' }}>신청</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: C.muted }}>불러오는 중...</div>
+
+  // ════════════════════════════════════════════════════════════
+  //  모바일 — "한 병씩 처리하는 작업 화면". 전수조사/현재목록 재고실사 두 모드가
+  //  똑같은 목록/입력 화면을 쓴다(시작 방식만 다름). 관리 기능(구역/일시중단/최종반영
+  //  등)은 PC 전용이라 여기 없음 — compareLot 상태로 목록↔입력 화면을 그대로 오간다.
+  // ════════════════════════════════════════════════════════════
+  if (isMobile) {
+    const mobileSub = `${session.year}년 · ${session.purpose === 'full_census' ? '전수조사' : '현재목록 재고실사'}`
+
+    // ── (c) 신규 미등록 시약 등록 화면 ──
+    if (newEntryMode) {
+      return (
+        <div>
+          <PageBanner title="신규 시약 등록" sub={mobileSub} breadcrumb={['홈', '재고 실사', '신규 등록']} />
+          <div style={{ padding: '16px 16px 100px' }}>
+            <button onClick={cancelNewEntry} style={{ ...btnGhost, padding: '8px 14px', fontSize: '13px', marginBottom: '14px' }}>← 취소하고 목록으로</button>
+            {newEntryForm.reagent_id ? (
+              <div style={{ fontSize: '12.5px', color: '#276749', marginBottom: '14px', background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', padding: '10px 12px' }}>
+                ✓ "{newEntryForm.name}" — 이미 카탈로그에 있는 시약이에요. 새로 만들지 않고 새 Lot만 추가돼요.
+              </div>
+            ) : (
+              <div style={{ fontSize: '12.5px', color: '#92400E', marginBottom: '14px' }}>
+                "{newEntryForm.name}" — 기존 목록에 없는 시약이에요. 정보를 입력하고 등록 완료를 눌러주세요.
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div><label style={labelStyle}>화학물질명 *</label>
+                <input value={newEntryForm.name} disabled={!!newEntryForm.reagent_id} onChange={e => setNewEntryForm({ ...newEntryForm, name: e.target.value })}
+                  style={{ ...inputStyle, minHeight: '44px', background: newEntryForm.reagent_id ? C.bg : C.white }} /></div>
+              <div><label style={labelStyle}>순도</label>
+                <input value={newEntryForm.purity} disabled={!!newEntryForm.reagent_id} onChange={e => setNewEntryForm({ ...newEntryForm, purity: e.target.value })} placeholder="예: 98%"
+                  style={{ ...inputStyle, minHeight: '44px', background: newEntryForm.reagent_id ? C.bg : C.white }} /></div>
+              <div><label style={labelStyle}>CAS No.</label>
+                <input value={newEntryForm.cas_no} disabled={!!newEntryForm.reagent_id} onChange={e => setNewEntryForm({ ...newEntryForm, cas_no: e.target.value })}
+                  style={{ ...inputStyle, minHeight: '44px', background: newEntryForm.reagent_id ? C.bg : C.white }} /></div>
+              <div><label style={labelStyle}>회사</label>
+                <CompanyPicker value={newEntryForm.company} disabled={!!newEntryForm.reagent_id} onChange={v => setNewEntryForm({ ...newEntryForm, company: v })}
+                  style={{ minHeight: '44px', background: newEntryForm.reagent_id ? C.bg : C.white }} /></div>
+              <div><label style={labelStyle}>Cat No.</label>
+                <input value={newEntryForm.cat_no} onChange={e => setNewEntryForm({ ...newEntryForm, cat_no: e.target.value })} style={{ ...inputStyle, minHeight: '44px' }} /></div>
+              <div><label style={labelStyle}>Lot No.</label>
+                <input value={newEntryForm.lot_no} onChange={e => setNewEntryForm({ ...newEntryForm, lot_no: e.target.value })} style={{ ...inputStyle, minHeight: '44px' }} /></div>
+              <div><label style={labelStyle}>성상</label>
+                <input value={newEntryForm.category} disabled={!!newEntryForm.reagent_id} onChange={e => setNewEntryForm({ ...newEntryForm, category: e.target.value })}
+                  style={{ ...inputStyle, minHeight: '44px', background: newEntryForm.reagent_id ? C.bg : C.white }} /></div>
+              <div>
+                <label style={labelStyle}>규격</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input value={newEntryForm.volume} disabled={!!newEntryForm.reagent_id} onChange={e => setNewEntryForm({ ...newEntryForm, volume: e.target.value })} placeholder="용량"
+                    style={{ ...inputStyle, flex: 1, minHeight: '44px', background: newEntryForm.reagent_id ? C.bg : C.white }} />
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {['mL', 'L', 'g', 'kg'].map(u => (
+                      <button key={u} type="button" disabled={!!newEntryForm.reagent_id} onClick={() => setNewEntryForm({ ...newEntryForm, unit: u })} style={{
+                        padding: '10px 12px', borderRadius: '8px', fontSize: '13px', minHeight: '44px',
+                        border: `1px solid ${newEntryForm.unit === u ? '#1565C0' : C.border}`,
+                        background: newEntryForm.unit === u ? '#EAF1FB' : C.white,
+                        color: newEntryForm.unit === u ? '#1565C0' : C.text, fontWeight: newEntryForm.unit === u ? '700' : '400',
+                      }}>{u}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div><label style={labelStyle}>위치 *</label>
+                <select value={newEntryForm.location_id} onChange={e => setNewEntryForm({ ...newEntryForm, location_id: e.target.value })} style={{ ...inputStyle, minHeight: '44px' }}>
+                  <option value="">선택하세요</option>
+                  {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+                </select></div>
+              <div>
+                <label style={labelStyle}>잔량(%)</label>
+                <input type="range" min="0" max="100" step="10" value={newEntryForm.current_stock}
+                  onChange={e => setNewEntryForm({ ...newEntryForm, current_stock: e.target.value })}
+                  style={{ width: '100%', accentColor: '#1565C0' }} />
+                <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy, textAlign: 'center' }}>{newEntryForm.current_stock}%</div>
+              </div>
+              <div><label style={labelStyle}>비고</label>
+                <input value={newEntryForm.abnormal_note} onChange={e => setNewEntryForm({ ...newEntryForm, abnormal_note: e.target.value })} placeholder="메모" style={{ ...inputStyle, minHeight: '44px' }} /></div>
+            </div>
+            <button onClick={submitInlineNewReagent} style={{ ...btnPrimary, width: '100%', minHeight: '48px', fontSize: '15px', marginTop: '20px' }}>🆕 등록 완료</button>
+          </div>
+        </div>
+      )
+    }
+
+    // ── (b) 입력 화면(한 병씩 확인) ──
+    if (compareLot || compareCandidates.length > 0) {
+      const count = compareLot ? counts[compareLot.id] : null
+      const bookStock = compareLot ? (count?.book_stock ?? compareLot.current_stock) : null
+      const book = count?.book_reagent_fields || {}
+      const staged = count?.staged_reagent_fields || {}
+      const unitBookVal = book['unit'] ?? compareLot?.reagents?.unit ?? ''
+      const unitTouched = 'unit' in staged
+      const unitCurrent = unitTouched ? staged['unit'] : unitBookVal
+      const volBookVal = book['volume'] ?? compareLot?.reagents?.volume ?? ''
+      const volTouched = 'volume' in staged
+      const volDiffers = volTouched && String(staged['volume'] ?? '') !== String(volBookVal ?? '')
+      const locTouched = count?.staged_location_id !== undefined && count?.staged_location_id !== null
+      const locBookId = count?.book_location_id ?? compareLot?.location_id ?? ''
+      const locDiffers = locTouched && count.staged_location_id !== locBookId
+
+      function mField(field, label, scope = 'reagent', placeholder) {
+        const isLot = scope === 'lot'
+        const b = isLot ? (count?.book_lot_fields || {}) : book
+        const st = isLot ? (count?.staged_lot_fields || {}) : staged
+        const bookVal = b[field] ?? (isLot ? compareLot[field] : compareLot.reagents?.[field]) ?? ''
+        const touched = field in st
+        const current = touched ? st[field] : bookVal
+        const differs = touched && String(st[field] ?? '') !== String(bookVal ?? '')
+        const saveFn = isLot ? saveLotField : saveReagentField
+        if (field === 'company') {
+          return (
+            <div key={field}><label style={labelStyle}>{label}</label>
+              <StagedCompanyField value={current} bookVal={bookVal} touched={touched} differs={differs}
+                baseStyle={{ ...inputStyle, minHeight: '44px' }} onSave={v => saveFn(compareLot, field, v)} />
+            </div>
+          )
+        }
+        return (
+          <div key={field}><label style={labelStyle}>{label}</label>
+            <input defaultValue={current} placeholder={placeholder ?? bookVal}
+              onBlur={e => saveFn(compareLot, field, e.target.value !== '' ? e.target.value : bookVal)}
+              style={{ ...inputStyle, minHeight: '44px', ...diffCellStyle(touched, differs) }} />
+          </div>
+        )
+      }
+
+      return (
+        <div>
+          <PageBanner title="실사 입력" sub={mobileSub} breadcrumb={['홈', '재고 실사', '실사 입력']} />
+          <div style={{ padding: '16px 16px 100px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <button onClick={() => { setCompareLot(null); setCompareCandidates([]) }} style={{ ...btnGhost, padding: '8px 14px', fontSize: '13px' }}>← 목록으로</button>
+              <span style={{ fontSize: '12.5px', color: C.muted }}>완료 {doneCnt} / {lots.length}</span>
+            </div>
+
+            {compareCandidates.length > 0 ? (
+              <div>
+                <div style={{ fontSize: '12.5px', color: '#92400E', marginBottom: '10px' }}>
+                  같은 이름으로 등록된 Lot이 {compareCandidates.length}개예요 — 어떤 Lot을 확인할지 골라주세요.
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {compareCandidates.map(c => (
+                    <div key={c.id} onClick={() => openComparePanel(c)} style={{ padding: '12px 14px', border: `1px solid ${C.border}`, borderRadius: '10px', fontSize: '13.5px', minHeight: '44px' }}>
+                      <div>Lot {c.lot_no || '(번호 없음)'}</div>
+                      <div style={{ fontSize: '12px', color: C.muted, marginTop: '2px' }}>
+                        {c.locations?.room || '-'}{c.locations?.detail ? ` · ${c.locations.detail}` : ''} · 장부 잔량 {counts[c.id]?.book_stock ?? c.current_stock}%
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: '16px', fontWeight: '700', color: C.navy, marginBottom: '2px' }}>{compareLot.reagents?.name}</div>
+                <div style={{ fontSize: '12px', color: C.muted, marginBottom: '4px' }}>
+                  {compareLot.locations?.room || '-'}{compareLot.locations?.detail ? ` · ${compareLot.locations.detail}` : ''}{compareLot.lot_no ? ` · Lot ${compareLot.lot_no}` : ''}
+                </div>
+                {disposalByLot[compareLot.id] ? (
+                  <button onClick={() => openActionModal(compareLot)} style={{ ...smallBtnStyle(), background: C.dangerTint, borderColor: '#F3D6D6', color: C.dangerDark, marginBottom: '14px' }}>폐기신청됨</button>
+                ) : count?.reported_missing ? (
+                  <button onClick={() => openActionModal(compareLot)} style={{ ...smallBtnStyle(), background: '#FFF3E0', borderColor: '#FFCC80', color: '#E65100', marginBottom: '14px' }}>위치 내 미확인</button>
+                ) : (
+                  <button onClick={() => openActionModal(compareLot)} style={{ ...smallBtnStyle(), marginBottom: '14px' }}>⚠️ 기타조치(폐기신청/미확인)</button>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {mField('name', '화학물질명')}
+                  {mField('purity', '순도', 'reagent', '예: 98%')}
+                  {mField('cas_no', 'CAS No.')}
+                  {mField('company', '회사')}
+                  {mField('cat_no', 'Cat No.', 'lot')}
+                  {mField('lot_no', 'Lot No.', 'lot')}
+                  {mField('category', '성상')}
+                  <div>
+                    <label style={labelStyle}>규격</label>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input defaultValue={volTouched ? staged['volume'] : volBookVal} placeholder={volBookVal}
+                        onBlur={e => saveReagentField(compareLot, 'volume', e.target.value !== '' ? e.target.value : volBookVal)}
+                        style={{ ...inputStyle, flex: 1, minHeight: '44px', ...diffCellStyle(volTouched, volDiffers) }} />
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {['mL', 'L', 'g', 'kg'].map(u => (
+                          <button key={u} type="button" onClick={() => saveReagentField(compareLot, 'unit', u)} style={{
+                            padding: '10px 12px', borderRadius: '8px', fontSize: '13px', minHeight: '44px',
+                            border: `1px solid ${unitCurrent === u ? '#1565C0' : C.border}`,
+                            background: unitCurrent === u ? '#EAF1FB' : C.white,
+                            color: unitCurrent === u ? '#1565C0' : C.text, fontWeight: unitCurrent === u ? '700' : '400',
+                          }}>{u}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>위치</label>
+                    <select value={count?.staged_location_id ?? compareLot.location_id ?? ''} onChange={e => changeLocation(compareLot, e.target.value)}
+                      style={{ ...inputStyle, minHeight: '44px', ...diffCellStyle(locTouched, locDiffers) }}>
+                      <option value="">(위치 없음)</option>
+                      {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>잔량(%)</label>
+                    <div style={{ padding: '10px 12px', borderRadius: '10px', ...diffCellStyle(count?.actual_stock != null, count?.actual_stock != null && count.actual_stock !== bookStock) }}>
+                      <input key={compareLot.id} ref={comparePanelInputRef} type="range" min="0" max="100" step="10"
+                        defaultValue={count?.actual_stock ?? bookStock}
+                        onInput={e => setSliderDisplay(Number(e.target.value))}
+                        style={{ width: '100%', accentColor: '#1565C0' }} />
+                      <div style={{ fontSize: '15px', fontWeight: '700', color: C.navy, textAlign: 'center' }}>{sliderDisplay ?? (count?.actual_stock ?? bookStock)}%</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>비고</label>
+                    <input defaultValue={count?.abnormal_note || ''} placeholder="메모" onBlur={e => saveAbnormalNote(compareLot, e.target.value)} style={{ ...inputStyle, minHeight: '44px' }} />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {compareLot && compareCandidates.length === 0 && (
+            <div style={{ position: 'fixed', left: 0, right: 0, bottom: '64px', padding: '10px 16px', background: C.white, borderTop: `1px solid ${C.border}`, boxShadow: '0 -4px 12px rgba(0,0,0,0.06)' }}>
+              <button onClick={() => saveAndAdvanceMobile(filteredLots)} style={{ ...btnPrimary, width: '100%', minHeight: '48px', fontSize: '15px' }}>저장 및 다음</button>
+            </div>
+          )}
+          {renderActionModal()}
+        </div>
+      )
+    }
+
+    // ── (a) 목록 화면 ──
+    const mobileCapped = filteredLots.length > RENDER_CAP
+    const mobileVisible = mobileCapped ? filteredLots.slice(0, capStart + RENDER_CAP) : filteredLots
+    return (
+      <div>
+        <PageBanner title="실사 입력" sub={mobileSub} breadcrumb={['홈', '재고 실사', '실사 입력']} />
+        <div style={{ padding: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <button onClick={onBack} style={{ ...btnGhost, padding: '8px 14px', fontSize: '13px' }}>← 재고실사로</button>
+          </div>
+
+          {savedMsg && (
+            <div style={{ fontSize: '13px', color: '#2E7D32', background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', padding: '10px 12px', marginBottom: '12px' }}>
+              ✓ 저장되었습니다 — 목록의 마지막 항목이에요
+            </div>
+          )}
+
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '12.5px' }}>
+              <span style={{ color: C.muted }}>전체 진행률</span>
+              <span style={{ fontWeight: '700', color: C.navy }}>{doneCnt} / {lots.length}개 ({pct}%)</span>
+            </div>
+            <div style={{ height: '8px', background: C.bg, borderRadius: '4px', overflow: 'hidden' }}>
+              <div style={{ height: '100%', borderRadius: '4px', background: pct === 100 ? '#38A169' : C.navy, width: `${pct}%`, transition: 'width 0.2s' }} />
+            </div>
+          </div>
+
+          <div ref={searchBoxRef} style={{ position: 'relative', marginBottom: '14px' }}>
+            <input
+              ref={searchInputRef}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setCompareLot(null); setCompareCandidates([]); setNewEntryMode(false); setSearchOpen(true) }}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSearchEnter(); e.target.blur() } }}
+              placeholder="시약명 / CAS / Lot No. 검색"
+              style={{ ...inputStyle, minHeight: '44px', fontSize: '14px' }}
+            />
+            {searchOpen && search.trim() && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200,
+                background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: '320px', overflowY: 'auto',
+              }}>
+                {dropdownLots.length > 0 ? dropdownLots.map(lot => {
+                  const s = STATUS_BADGE[rowStatus(lot)]
+                  return (
+                    <div key={lot.id} onClick={() => openComparePanel(lot)}
+                      style={{ padding: '12px 14px', cursor: 'pointer', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px' }}>
+                      <div>
+                        <div style={{ fontSize: '13.5px', fontWeight: '600', color: C.navy }}>{lot.reagents?.name}</div>
+                        <div style={{ fontSize: '11px', color: C.muted }}>
+                          Lot {lot.lot_no || '(번호 없음)'} · {lot.locations?.room || '-'}{lot.locations?.detail ? ` · ${lot.locations.detail}` : ''}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '11px', padding: '2px 9px', borderRadius: '12px', fontWeight: '700', background: s.bg, color: s.color }}>{s.label}</span>
+                    </div>
+                  )
+                }) : (
+                  <div onClick={startNewEntry} style={{ padding: '14px', cursor: 'pointer', fontSize: '13px', color: '#92400E', minHeight: '44px' }}>
+                    "{search.trim()}" 기존 목록에 없습니다 — 눌러서 신규 등록하기
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+            {[['undone', `미완료 ${lots.length - doneCnt}`], ['done', `완료 ${doneCnt}`]].map(([key, label]) => (
+              <button key={key} onClick={() => { setFilter(key); setCapStart(0) }} style={{
+                flex: 1, padding: '10px 8px', borderRadius: '10px', minHeight: '44px', cursor: 'pointer',
+                border: `1.5px solid ${filter === key ? C.navy : C.border}`,
+                background: filter === key ? C.bg : C.white,
+                fontSize: '13.5px', fontWeight: filter === key ? '700' : '500',
+                color: filter === key ? C.navy : C.muted,
+              }}>{label}</button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {mobileVisible.length === 0 ? (
+              <div style={{ padding: '32px', textAlign: 'center', color: C.muted, fontSize: '13px' }}>해당하는 항목이 없습니다.</div>
+            ) : mobileVisible.map(lot => {
+              const c = counts[lot.id]
+              const isDone = c?.actual_stock != null
+              return (
+                <div key={lot.id} onClick={() => openComparePanel(lot)}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px',
+                    padding: '12px 14px', minHeight: '44px', background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', cursor: 'pointer',
+                  }}>
+                  <div>
+                    <div style={{ fontSize: '13.5px', fontWeight: '600', color: C.navy }}>
+                      {lot.reagents?.name}{lot.reagents?.purity ? ` (${lot.reagents.purity})` : ''}
+                    </div>
+                    <div style={{ fontSize: '11.5px', color: C.muted, marginTop: '2px' }}>
+                      {lot.locations?.room || '-'}{lot.locations?.detail ? ` · ${lot.locations.detail}` : ''}
+                      {lot.lot_no ? ` · Lot ${lot.lot_no}` : ''}
+                    </div>
+                  </div>
+                  {isDone && <span style={{ fontSize: '16px', color: '#38A169' }}>✓</span>}
+                </div>
+              )
+            })}
+          </div>
+
+          {mobileCapped && (
+            <button onClick={() => setCapStart(capStart + RENDER_CAP)} style={{ ...btnGhost, width: '100%', minHeight: '44px', marginTop: '12px' }}>
+              더 보기 ({mobileVisible.length} / {filteredLots.length})
+            </button>
+          )}
+        </div>
+        {renderActionModal()}
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -1730,59 +2211,7 @@ function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
         )}
       </div>
 
-      {actionModalLot && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(26,42,94,0.45)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={closeActionModal}>
-          <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '24px', width: '360px', maxWidth: '92vw', boxShadow: '0 24px 64px rgba(26,42,94,0.25)' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '4px', color: C.navy, fontSize: '16px' }}>기타조치</h3>
-            <p style={{ margin: '0 0 16px', fontSize: '12.5px', color: C.muted }}>{actionModalLot.reagents?.name}{actionModalLot.lot_no ? ` · Lot ${actionModalLot.lot_no}` : ''}</p>
-
-            {counts[actionModalLot.id]?.reported_missing ? (
-              <div>
-                <div style={{ padding: '10px 12px', background: '#FFF3E0', border: '1px solid #FFCC80', borderRadius: '8px', fontSize: '13px', color: '#92400E', marginBottom: '16px' }}>
-                  현재 "위치 내 시약 미확인"으로 표시돼 있어요.
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={closeActionModal} style={{ ...btnGhost, flex: 1 }}>닫기</button>
-                  <button onClick={cancelMissingFromModal} style={{ ...btnPrimary, flex: 1, background: '#E65100' }}>미확인 해제</button>
-                </div>
-              </div>
-            ) : disposalByLot[actionModalLot.id] ? (
-              <div>
-                <div style={{ padding: '10px 12px', background: C.dangerTint, border: '1px solid #F3D6D6', borderRadius: '8px', fontSize: '13px', color: C.dangerDark, marginBottom: '16px' }}>
-                  이미 폐기신청됨 (사유: {disposalByLot[actionModalLot.id].reason})<br />
-                  <span style={{ fontSize: '11px', color: C.muted }}>관리자 승인 대기 중 — 여기서 취소할 수 없어요.</span>
-                </div>
-                <button onClick={closeActionModal} style={{ ...btnGhost, width: '100%' }}>닫기</button>
-              </div>
-            ) : actionStep === 'choose' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <button onClick={() => setActionStep('disposal')} style={{ ...btnGhost, textAlign: 'left', padding: '12px 14px' }}>🗑️ 폐기신청</button>
-                <button onClick={selectMissingFromModal} style={{ ...btnGhost, textAlign: 'left', padding: '12px 14px' }}>❓ 위치 내 시약 미확인</button>
-                <button onClick={closeActionModal} style={{ ...btnGhost, marginTop: '8px' }}>취소</button>
-              </div>
-            ) : (
-              <div>
-                <div style={{ fontSize: '12px', color: C.muted, marginBottom: '8px' }}>폐기 사유를 고르거나 직접 입력하세요.</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-                  {DISPOSAL_REASONS.map(reason => (
-                    <button key={reason} onClick={() => setDisposalReasonInput(reason)} style={{
-                      ...smallBtnStyle(disposalReasonInput === reason, C.dangerDark, C.dangerTint), whiteSpace: 'nowrap',
-                    }}>{reason}</button>
-                  ))}
-                </div>
-                <input value={disposalReasonInput} onChange={e => setDisposalReasonInput(e.target.value)}
-                  placeholder="사유 직접 입력도 가능해요" style={inputStyle} />
-                <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-                  <button onClick={() => setActionStep('choose')} style={{ ...btnGhost, flex: 1 }}>뒤로</button>
-                  <button onClick={submitDisposalFromModal} disabled={!disposalReasonInput.trim()}
-                    style={{ ...btnPrimary, flex: 1, opacity: disposalReasonInput.trim() ? 1 : 0.5, cursor: disposalReasonInput.trim() ? 'pointer' : 'default' }}>신청</button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {renderActionModal()}
     </div>
   )
 }
