@@ -129,6 +129,7 @@ function LotRow({ lot, locations, visibleCols }) {
       {visibleCols.lot && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>{lot.lot_no || '-'}</td>}
       {visibleCols.expiry && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>{lot.expiry_date || '-'}</td>}
       {visibleCols.category && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
+      {visibleCols.purity && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
       {visibleCols.ghs && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
       {visibleCols.lastConfirmed && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: visibleCols.status ? `1px solid ${C.borderRow}` : undefined }}>-</td>}
       {visibleCols.status && (
@@ -287,6 +288,9 @@ const ReagentRow = memo(function ReagentRow({
               : <span style={{ color: C.muted }}>-</span>}
           </td>
         )}
+        {visibleCols.purity && (
+          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, borderRight: `1px solid ${C.borderRow}` }}>{r.purity || '-'}</td>
+        )}
         {visibleCols.ghs && (
           <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }} onClick={e => e.stopPropagation()}>
             {ghsList.length > 0
@@ -324,7 +328,7 @@ function ReagentTable({
     + (visibleCols.casNo ? 1 : 0) + (visibleCols.company ? 1 : 0) + (visibleCols.volume ? 1 : 0)
     + (visibleCols.stock ? 1 : 0) + (visibleCols.location ? 1 : 0) + (visibleCols.lastConfirmed ? 1 : 0)
     + (visibleCols.lot ? 1 : 0) + (visibleCols.expiry ? 1 : 0)
-    + (visibleCols.category ? 1 : 0) + (visibleCols.ghs ? 1 : 0) + (visibleCols.status ? 1 : 0)
+    + (visibleCols.category ? 1 : 0) + (visibleCols.purity ? 1 : 0) + (visibleCols.ghs ? 1 : 0) + (visibleCols.status ? 1 : 0)
 
   const groups = getGroupedReagents(data)
   const letters = Object.keys(groups).sort()
@@ -368,6 +372,7 @@ function ReagentTable({
             ...(visibleCols.lot ? ['Lot No.'] : []),
             ...(visibleCols.expiry ? ['유효기간'] : []),
             ...(visibleCols.category ? ['성상'] : []),
+            ...(visibleCols.purity ? ['순도'] : []),
             ...(visibleCols.ghs ? ['GHS'] : []),
             ...(visibleCols.lastConfirmed ? ['최근확인'] : []),
             ...(visibleCols.status ? ['상태'] : []),
@@ -414,7 +419,7 @@ export default function ReagentList() {
   const [detailFilter, setDetailFilter] = useState('')
   const [visibleCols, setVisibleCols] = useState({
     casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
-    lot: false, expiry: false, category: false, ghs: false, status: false,
+    lot: false, expiry: false, category: false, ghs: false, status: false, purity: false,
   })
   const [results, setResults] = useState([])
   const [totalCount, setTotalCount] = useState(0)
@@ -486,7 +491,7 @@ export default function ReagentList() {
     // 통째로 가져와서(안 쓰는 locations(*) join 포함) 1,500여 개 시약 응답이 5MB가
     // 넘었음. 그게 페이지 진입마다 체감되는 지연의 큰 원인이라 필요한 것만 좁힘.
     let query = supabase.from('reagents')
-      .select('id, name, cas_no, company, volume, unit, category, hazard, reagent_type, pending_confirm, msds_url, last_confirmed_at, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no, expiry_date, cat_no, pending_confirm)', { count: 'exact' })
+      .select('id, name, cas_no, company, purity, volume, unit, category, hazard, reagent_type, pending_confirm, msds_url, last_confirmed_at, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no, expiry_date, cat_no, pending_confirm)', { count: 'exact' })
       .neq('status', 'archived')
     if (search.trim()) query = query.or(`name.ilike.%${search.trim()}%,cas_no.ilike.%${search.trim()}%`)
     // detailFilter(특정 위치 하나) > roomFilter(그 방에 속한 모든 위치) > 전체(필터 없음) 순.
@@ -518,7 +523,7 @@ export default function ReagentList() {
   function resetFilters() {
     setVisibleCols({
       casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
-      lot: false, expiry: false, category: false, ghs: false, status: false,
+      lot: false, expiry: false, category: false, ghs: false, status: false, purity: false,
     })
   }
 
@@ -999,6 +1004,9 @@ export default function ReagentList() {
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
             <input type="checkbox" checked={visibleCols.category} onChange={() => setVisibleCols(v => ({ ...v, category: !v.category }))} />성상
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleCols.purity} onChange={() => setVisibleCols(v => ({ ...v, purity: !v.purity }))} />순도
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
             <input type="checkbox" checked={visibleCols.ghs} onChange={() => setVisibleCols(v => ({ ...v, ghs: !v.ghs }))} />GHS

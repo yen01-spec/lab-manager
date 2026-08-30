@@ -28,156 +28,48 @@ function smallBtnStyle(active, activeColor = C.navy, activeBg = C.bg) {
   }
 }
 
-function ZoneBadge({ status }) {
-  const map = {
-    pending:     { label: '대기중', bg: '#FFF3E0', color: '#E65100' },
-    in_progress: { label: '진행중', bg: '#E3F2FD', color: '#1565C0' },
-    done:        { label: '완료',   bg: '#E8F5E9', color: '#2E7D32' },
-  }
-  const s = map[status] || { label: status, bg: '#F5F5F5', color: '#616161' }
-  return (
-    <span style={{ background: s.bg, color: s.color, padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '700' }}>
-      {s.label}
-    </span>
-  )
-}
-
-function ZoneProgressCard({ zone, members, zoneProgress, onComplete, onUndo, isAdmin }) {
-  const info = zoneProgress[zone] || { total: 0, done: 0 }
-  const pct = info.total > 0 ? Math.round(info.done / info.total * 100) : 0
-  const isCompleted = members.every(a => a.completed_at)
-  const allDone = pct === 100 && info.total > 0
-  const started = info.done > 0
-
-  const badgeStyle = isCompleted
-    ? { bg: '#E8F5E9', color: '#2E7D32', label: '✅ 완료확정' }
-    : allDone
-    ? { bg: '#C8E6C9', color: '#1B5E20', label: '입력완료' }
-    : started
-    ? { bg: '#E3F2FD', color: '#1565C0', label: '진행중' }
-    : { bg: '#FFF3E0', color: '#E65100', label: '대기중' }
-
-  const barColor = isCompleted || allDone ? '#38A169' : started ? C.navy : C.border
-
-  return (
-    <div style={{ background: C.white, border: `1px solid ${allDone ? '#A5D6A7' : C.border}`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <div style={{ fontSize: '14px', fontWeight: '700', color: C.navy }}>📍 {zone}</div>
-          <div style={{ fontSize: '11px', color: C.muted, marginTop: '2px' }}>담당자 {members.length}명</div>
-        </div>
-        <span style={{ background: badgeStyle.bg, color: badgeStyle.color, fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '12px' }}>
-          {badgeStyle.label}
-        </span>
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-        {members.map(a => (
-          <span key={a.id} style={{ fontSize: '11px', color: C.text, background: C.bg, border: `1px solid ${C.border}`, padding: '3px 10px', borderRadius: '20px' }}>
-            👤 {a.assigned_to}
-          </span>
-        ))}
-      </div>
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '5px' }}>
-          <span style={{ color: C.muted }}>진행률</span>
-          <span style={{ fontWeight: '700', color: isCompleted ? '#2E7D32' : allDone ? '#1B5E20' : C.navy }}>
-            {info.done} / {info.total}개 ({pct}%)
-          </span>
-        </div>
-        <div style={{ height: '6px', background: C.bg, borderRadius: '3px', overflow: 'hidden' }}>
-          <div style={{ height: '100%', borderRadius: '3px', background: barColor, width: `${pct}%`, transition: 'width 0.4s ease' }} />
-        </div>
-      </div>
-      {isAdmin && !isCompleted && (
-        <button onClick={onComplete} disabled={!allDone} style={{
-          padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '700',
-          border: `1px solid ${allDone ? '#38A169' : C.border}`,
-          background: allDone ? '#E8F5E9' : C.bg,
-          color: allDone ? '#2E7D32' : C.muted,
-          cursor: allDone ? 'pointer' : 'not-allowed',
-        }}>
-          {allDone ? '✅ 구역 완료 처리' : '⏳ 입력 완료 후 확정 가능'}
-        </button>
-      )}
-      {isCompleted && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
-          <div style={{ fontSize: '11px', color: '#2E7D32' }}>
-            {new Date(members[0].completed_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })} 완료 처리(검토 대기)
-          </div>
-          {isAdmin && onUndo && (
-            <button onClick={onUndo} style={{
-              padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: '700',
-              border: `1px solid ${C.danger}`, background: C.white, color: C.danger, cursor: 'pointer',
-            }}>↩ 완료 취소</button>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export default function Inventory() {
   const { isAdmin, student } = useOutletContext?.() || {}
   const myName = student?.name || ''
   const [view, setView] = useState('main')
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
-  const [assignments, setAssignments] = useState([])
   const [locations, setLocations] = useState([])
-  const [myAssignments, setMyAssignments] = useState([])
-  const [startForm, setStartForm] = useState({ year: new Date().getFullYear(), start_date: '', created_by: '', label: '', zones: [] })
+  const [startForm, setStartForm] = useState({ year: new Date().getFullYear(), start_date: '', created_by: '', label: '', zones: [], mode: 'current_list' })
   const [zoneMode, setZoneMode] = useState('all') // 'all' | 'select' — startForm.zones에 가짜 플레이스홀더를 넣지 않기 위한 별도 UI 상태
   const [showStartModal, setShowStartModal] = useState(false)
   const [reviewSession, setReviewSession] = useState(null) // 완료된 회차의 신규등록 교차확인 모달 대상
-  const [assignForm, setAssignForm] = useState({ zone: '', assigned_to: '' })
   const [progress, setProgress] = useState({ total: 0, done: 0 })
   const [myCountedCount, setMyCountedCount] = useState(0) // ← 내가 이번 세션에서 이미 입력한 게 있는지("이어서 진행" 문구 판단용)
-  const [zoneProgress, setZoneProgress] = useState({})
+  const [pendingConfirmCount, setPendingConfirmCount] = useState(0) // ← 1단계는 지났지만 2단계 전인 Lot 수("완료 취소" 버튼 노출 판단용)
   const [pausing, setPausing] = useState(false)
 
   useEffect(() => { fetchSessions(); fetchLocations() }, [])
 
   useEffect(() => {
     if (activeSession) {
-      fetchAssignments()
       fetchProgress()
+      fetchPendingConfirmCount()
       const channel = supabase.channel('inventory_counts_' + activeSession.id)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_counts', filter: `session_id=eq.${activeSession.id}` }, () => {
-          fetchProgress(); fetchZoneProgress()
+          fetchProgress()
         })
         .subscribe()
       return () => supabase.removeChannel(channel)
     }
   }, [activeSession])
 
-  useEffect(() => {
-    if (activeSession && assignments.length > 0) fetchZoneProgress()
-  }, [assignments])
-
   // 다른 페이지에 갔다가 재고실사로 돌아와도 "실사 입력" 화면에 있던 걸 유지 —
   // Inventory 컴포넌트가 라우트 이동으로 언마운트되면서 view 상태가 사라지는 문제 보정.
   const restoredViewRef = useRef(false)
   useEffect(() => {
-    if (restoredViewRef.current || !activeSession) return
+    if (restoredViewRef.current || !activeSession || !student) return
     let saved
     try { saved = JSON.parse(sessionStorage.getItem('inv_count_view') || 'null') } catch { saved = null }
     if (!saved || saved.sessionId !== activeSession.id) return
-    if (isAdmin) {
-      restoredViewRef.current = true
-      setMyAssignments([])
-      setView('count')
-    } else if (assignments.length > 0) {
-      const myZones = assignments.filter(a =>
-        (a.assigned_student_id && a.assigned_student_id === student?.student_id) ||
-        (!a.assigned_student_id && a.assigned_to === student?.name)
-      )
-      if (myZones.length > 0) {
-        restoredViewRef.current = true
-        setMyAssignments(myZones)
-        setView('count')
-      }
-    }
-  }, [activeSession, assignments, isAdmin, student])
+    restoredViewRef.current = true
+    setView('count')
+  }, [activeSession, student])
 
   async function fetchSessions() {
     const { data } = await supabase.from('inventory_sessions').select('*').order('created_at', { ascending: false })
@@ -193,12 +85,6 @@ export default function Inventory() {
     if (data) setLocations(data)
   }
 
-  async function fetchAssignments() {
-    if (!activeSession) return
-    const { data } = await supabase.from('inventory_assignments').select('*').eq('session_id', activeSession.id).order('zone')
-    if (data) setAssignments(data)
-  }
-
   async function fetchProgress() {
     if (!activeSession) return
     const { count: total } = await supabase.from('inventory_counts').select('*', { count: 'exact', head: true }).eq('session_id', activeSession.id)
@@ -211,24 +97,14 @@ export default function Inventory() {
     }
   }
 
-  async function fetchZoneProgress() {
+  // 1단계(완료 처리)는 지났지만 2단계(최종 DB 반영) 전인 Lot이 있는지 — "완료 취소" 버튼
+  // 노출 여부 판단용. inventory_counts를 reagent_lots와 조인해 세션 범위 안에서만 셈.
+  async function fetchPendingConfirmCount() {
     if (!activeSession) return
-    const counts = await fetchAllPages((from, to) => supabase.from('inventory_counts')
-      .select('lot_id, actual_sealed, book_location_id')
-      .eq('session_id', activeSession.id).range(from, to))
-    if (!counts) return
-    const zones = [...new Set(assignments.map(a => a.zone))]
-    const result = {}
-    for (const zone of zones) {
-      const isAlpha = /^[A-Z]-[A-Z]$/.test(zone)
-      const zoneItems = counts.filter(c => {
-        const loc = locations.find(l => l.id === c.book_location_id)
-        if (isAlpha) return true
-        return loc?.detail === zone || loc?.room === zone
-      })
-      result[zone] = { total: zoneItems.length, done: zoneItems.filter(c => c.actual_sealed != null).length }
-    }
-    setZoneProgress(result)
+    const { count } = await supabase.from('inventory_counts')
+      .select('id, reagent_lots!inner(pending_confirm)', { count: 'exact', head: true })
+      .eq('session_id', activeSession.id).eq('reagent_lots.pending_confirm', true)
+    setPendingConfirmCount(count || 0)
   }
 
   async function startSession() {
@@ -236,7 +112,7 @@ export default function Inventory() {
     if (!startForm.start_date) { alert('날짜를 선택해주세요'); return }
     const { data } = await supabase.from('inventory_sessions').insert({
       year: startForm.year, start_date: startForm.start_date, created_by: startForm.created_by, label: startForm.label.trim() || null,
-      purpose: 'comprehensive', zones: startForm.zones?.length ? startForm.zones : null,
+      purpose: startForm.mode, zones: startForm.zones?.length ? startForm.zones : null,
     }).select().single()
     if (data) {
       // 구역이 지정된 경우, 전체 active Lot을 내려받아 클라이언트에서 거르지 않고
@@ -248,7 +124,7 @@ export default function Inventory() {
       if (hasZones && matchLocIds.length === 0) { alert('해당 구역에 등록된 위치가 없습니다.'); return }
       const lots = await fetchAllPages((from, to) => {
         let q = supabase.from('reagent_lots')
-          .select('id, reagent_id, sealed_count, current_stock, status, location_id, cat_no, lot_no, reagents(name, cas_no, company, hazard, category, volume, unit)')
+          .select('id, reagent_id, sealed_count, current_stock, status, location_id, cat_no, lot_no, reagents(name, cas_no, company, hazard, category, volume, unit, purity)')
           .eq('status', 'active')
         if (matchLocIds) q = q.in('location_id', matchLocIds)
         return q.range(from, to)
@@ -261,6 +137,7 @@ export default function Inventory() {
           book_reagent_fields: {
             name: l.reagents?.name ?? '', cas_no: l.reagents?.cas_no ?? '', company: l.reagents?.company ?? '',
             hazard: l.reagents?.hazard ?? '', category: l.reagents?.category ?? '', volume: l.reagents?.volume ?? '', unit: l.reagents?.unit ?? '',
+            purity: l.reagents?.purity ?? '',
           },
           book_lot_fields: { cat_no: l.cat_no ?? '', lot_no: l.lot_no ?? '' },
         }))
@@ -269,41 +146,12 @@ export default function Inventory() {
         await Promise.all(chunks.map(c => supabase.from('inventory_counts').insert(c)))
         setActiveSession(data)
         setShowStartModal(false)
-        setStartForm({ year: new Date().getFullYear(), start_date: '', created_by: '', label: '', zones: [] })
+        setStartForm({ year: new Date().getFullYear(), start_date: '', created_by: '', label: '', zones: [], mode: 'current_list' })
         setZoneMode('all')
-        fetchSessions(); fetchAssignments(); fetchProgress()
+        fetchSessions(); fetchProgress()
         alert(`실사가 시작되었습니다! 총 ${rows.length}개 Lot`)
       }
     }
-  }
-
-  async function addAssignment() {
-    if (!assignForm.zone || !assignForm.assigned_to.trim()) { alert('구역과 담당자를 입력해주세요'); return }
-    const name = assignForm.assigned_to.trim()
-    const exists = assignments.find(a => a.zone === assignForm.zone && a.assigned_to === name)
-    if (exists) { alert('이미 배정된 담당자입니다'); return }
-    // 이름만으로는 동명이인을 구분 못하므로, 학번을 같이 저장해서 정확히 그 학생과 매칭되게 함
-    const { data: matches } = await supabase.from('students').select('student_id, name').eq('name', name)
-    let assignedStudentId = null
-    if (matches && matches.length === 1) {
-      assignedStudentId = matches[0].student_id
-    } else if (matches && matches.length > 1) {
-      const picked = window.prompt(`"${name}"인 학생이 ${matches.length}명 있어요. 배정할 학생의 학번을 입력해주세요:\n${matches.map(m => `- ${m.student_id}`).join('\n')}`)
-      if (picked === null) return
-      const found = matches.find(m => m.student_id === picked.trim())
-      if (!found) { alert('입력한 학번과 일치하는 학생이 없습니다. 다시 시도해주세요.'); return }
-      assignedStudentId = found.student_id
-    }
-    // matches가 0건이면(등록 안 된 이름 등) 학번 없이 이름만으로 배정 — 기존 방식 그대로 유지
-    await supabase.from('inventory_assignments').insert({ session_id: activeSession.id, zone: assignForm.zone, assigned_to: name, assigned_student_id: assignedStudentId })
-    setAssignForm({ ...assignForm, assigned_to: '' })
-    fetchAssignments()
-  }
-
-  async function deleteAssignment(id) {
-    if (!window.confirm('배정을 삭제하시겠습니까?')) return
-    await supabase.from('inventory_assignments').delete().eq('id', id)
-    fetchAssignments()
   }
 
   async function pauseSession() {
@@ -329,29 +177,7 @@ export default function Inventory() {
     fetchSessions()
   }
 
-  async function resetZone(zone) {
-    if (!window.confirm(`'${zone}' 구역의 입력값을 초기화하시겠습니까?\n담당자가 처음부터 다시 입력해야 합니다.`)) return
-    const counts = await fetchAllPages((from, to) => supabase.from('inventory_counts')
-      .select('id, book_location_id').eq('session_id', activeSession.id).range(from, to))
-    if (counts) {
-      const zoneCountIds = counts.filter(c => {
-        const loc = locations.find(l => l.id === c.book_location_id)
-        return loc?.detail === zone || loc?.room === zone
-      }).map(c => c.id)
-      if (zoneCountIds.length === 0) { alert('초기화할 입력값이 없습니다.'); return }
-      await supabase.from('inventory_counts').update({
-        actual_sealed: null, actual_stock: null, counted_by: null, counted_at: null,
-        reported_missing: false, abnormal_note: null, staged_location_id: null, staged_reagent_fields: null,
-      }).in('id', zoneCountIds)
-    }
-    for (const a of assignments.filter(a => a.zone === zone)) {
-      await supabase.from('inventory_assignments').update({ completed_at: null }).eq('id', a.id)
-    }
-    fetchAssignments(); fetchProgress(); fetchZoneProgress()
-    alert(`'${zone}' 구역 입력값이 초기화되었습니다.`)
-  }
-
-  // 1단계 반영 공통 로직 — completeZone/completeSession이 공유. 실제 reagent_lots 반영 +
+  // 1단계 반영 공통 로직 — completeSession/undoSessionCompletion이 공유. 실제 reagent_lots 반영 +
   // pending_confirm:true(2단계 최종 반영 전까지 화면에 연한 배경으로 표시) + 이력(stock_logs/location_history) 기록.
   async function applyCounts(counts) {
     const lowIds = []
@@ -423,39 +249,21 @@ export default function Inventory() {
     }
   }
 
-  async function completeZone(zone) {
-    if (!window.confirm(`'${zone}' 구역 실사를 완료 처리하시겠습니까?\n해당 구역의 실측 수량이 재고에 반영됩니다(검토 대기 상태로 표시).`)) return
-    const counts = await fetchAllPages((from, to) => supabase.from('inventory_counts')
-      .select('*').eq('session_id', activeSession.id)
-      .or('actual_sealed.not.is.null,is_new_registration.eq.true,staged_reagent_fields.not.is.null').range(from, to))
-    if (counts) {
-      const zoneCounts = counts.filter(c => {
-        const loc = locations.find(l => l.id === c.book_location_id)
-        return loc?.detail === zone || loc?.room === zone
-      })
-      await applyCounts(zoneCounts)
-    }
-    for (const a of assignments.filter(a => a.zone === zone)) {
-      await supabase.from('inventory_assignments').update({ completed_at: new Date().toISOString() }).eq('id', a.id)
-    }
-    fetchAssignments(); fetchProgress()
-    alert(`'${zone}' 구역 완료 처리되었습니다! (관리자 검토 후 "최종 DB 반영하기"를 눌러야 확정됩니다)`)
-  }
-
+  // 1단계 — 지금까지 입력된 실측값을 전부 반영(검토 대기 상태로 표시). 구역 배정이 없어졌으므로
+  // 세션 전체를 대상으로 한 번에 처리.
   async function completeSession() {
-    if (!window.confirm('남은 미완료분을 포함해 실사를 완료 처리하시겠습니까?\n실측 수량이 재고에 반영됩니다(검토 대기 상태로 표시).')) return
+    if (!window.confirm('지금까지 입력된 내용을 완료 처리하시겠습니까?\n실측 수량이 재고에 반영됩니다(검토 대기 상태로 표시).')) return
     const counts = await fetchAllPages((from, to) => supabase.from('inventory_counts').select('*').eq('session_id', activeSession.id)
       .or('actual_sealed.not.is.null,is_new_registration.eq.true,staged_reagent_fields.not.is.null').range(from, to))
     if (counts) await applyCounts(counts)
-    await supabase.from('inventory_assignments').update({ completed_at: new Date().toISOString() }).eq('session_id', activeSession.id).is('completed_at', null)
-    fetchAssignments(); fetchProgress()
+    fetchProgress(); fetchPendingConfirmCount()
     alert('실사가 완료 처리되었습니다! 관리자 검토 후 "최종 DB 반영하기"를 눌러야 확정됩니다.')
   }
 
   // 2단계 — 관리자가 전체 변경사항을 검토한 뒤 최종 확정. 값은 이미 1단계에서 반영돼
   // 있으므로 pending_confirm만 끄고 세션을 completed로 닫는다(재기록 없음).
   async function finalizeSession() {
-    if (!window.confirm('모든 변경사항을 최종 DB에 반영하시겠습니까?\n반영 후에는 구역별 되돌리기가 불가능합니다.')) return
+    if (!window.confirm('모든 변경사항을 최종 DB에 반영하시겠습니까?\n반영 후에는 되돌리기가 불가능합니다.')) return
     const counts = await fetchAllPages((from, to) => supabase.from('inventory_counts').select('lot_id, reagent_id').eq('session_id', activeSession.id)
       .or('actual_sealed.not.is.null,is_new_registration.eq.true,staged_reagent_fields.not.is.null').range(from, to))
     const lotIds = [...new Set((counts || []).map(c => c.lot_id))]
@@ -477,20 +285,16 @@ export default function Inventory() {
     fetchSessions()
   }
 
-  // 구역 완료 취소(되돌리기) — 1단계는 지났지만(pending_confirm=true) 아직 2단계(최종 반영) 전인 구역 대상.
-  async function undoZoneCompletion(zone) {
-    if (!window.confirm(`'${zone}' 구역의 완료 처리를 취소하고 실사 이전 값으로 되돌리시겠습니까?`)) return
+  // 완료 취소(되돌리기) — 1단계는 지났지만(pending_confirm=true) 아직 2단계(최종 반영) 전인 세션 전체 대상.
+  // 예전엔 구역 단위로만 되돌릴 수 있었는데, 구역 배정 기능이 없어졌으므로 세션 전체를 한 번에 되돌림.
+  async function undoSessionCompletion() {
+    if (!window.confirm('완료 처리를 취소하고 실사 이전 값으로 되돌리시겠습니까?')) return
     const counts = await fetchAllPages((from, to) => supabase.from('inventory_counts')
-      .select('*').eq('session_id', activeSession.id).range(from, to))
+      .select('*, reagent_lots!inner(pending_confirm)').eq('session_id', activeSession.id)
+      .eq('reagent_lots.pending_confirm', true).range(from, to))
     if (counts) {
-      // book_location_id(실사 배정 당시 위치)로 구역을 매칭한다 — 1단계에서 현재 위치가 이미
-      // 바뀌었을 수 있어(위치변경 반영) 현재 위치로 매칭하면 원래 구역을 못 찾는다.
-      const zoneCounts = counts.filter(c => {
-        const loc = locations.find(l => l.id === c.book_location_id)
-        return loc?.detail === zone || loc?.room === zone
-      })
       const revertedReagentFields = new Set() // reagent_id — 같은 시약의 Lot이 여럿이어도 정보 되돌리기는 1회만
-      for (const c of zoneCounts) {
+      for (const c of counts) {
         if (c.staged_reagent_fields && c.book_reagent_fields && !c.is_new_registration && !revertedReagentFields.has(c.reagent_id)) {
           revertedReagentFields.add(c.reagent_id)
           await supabase.from('reagents').update({ ...c.book_reagent_fields, pending_confirm: false }).eq('id', c.reagent_id)
@@ -519,21 +323,12 @@ export default function Inventory() {
         }
       }
     }
-    for (const a of assignments.filter(a => a.zone === zone)) {
-      await supabase.from('inventory_assignments').update({ completed_at: null }).eq('id', a.id)
-    }
-    fetchAssignments(); fetchProgress(); fetchZoneProgress()
-    alert(`'${zone}' 구역이 실사 이전 값으로 되돌려졌습니다.`)
+    fetchProgress(); fetchPendingConfirmCount()
+    alert('실사 이전 값으로 되돌려졌습니다.')
   }
 
   function enterCounting() {
     if (!student) { alert('로그인 후 이용해주세요'); return }
-    const myZones = assignments.filter(a =>
-      (a.assigned_student_id && a.assigned_student_id === student.student_id) ||
-      (!a.assigned_student_id && a.assigned_to === student.name)
-    )
-    if (myZones.length === 0 && !isAdmin) { alert('배정된 구역이 없습니다. 관리자에게 문의하세요'); return }
-    setMyAssignments(myZones)
     setView('count')
     sessionStorage.setItem('inv_count_view', JSON.stringify({ sessionId: activeSession.id }))
   }
@@ -560,20 +355,13 @@ export default function Inventory() {
     }
     return loc.room === z || loc.detail === z
   }
-  const zoneGroups = assignments.reduce((acc, a) => {
-    if (!acc[a.zone]) acc[a.zone] = []
-    acc[a.zone].push(a)
-    return acc
-  }, {})
-
   if (view === 'count') return (
     <InventoryCountView
       session={activeSession}
       myName={myName}
       student={student}
-      myAssignments={myAssignments}
       isAdmin={isAdmin}
-      onBack={() => { setView('main'); fetchProgress(); sessionStorage.removeItem('inv_count_view') }}
+      onBack={() => { setView('main'); fetchProgress(); fetchPendingConfirmCount(); sessionStorage.removeItem('inv_count_view') }}
     />
   )
 
@@ -597,7 +385,7 @@ export default function Inventory() {
           <>
             <Card
               title={`📊 ${activeSession.year}년 재고 실사${activeSession.label ? ` · ${activeSession.label}` : ''}`}
-              sub={`시작일: ${activeSession.start_date} · 시작자: ${activeSession.created_by} · 범위: ${activeSession.zones?.length ? activeSession.zones.join(', ') : '전체'}`}
+              sub={`시작일: ${activeSession.start_date} · 시작자: ${activeSession.created_by} · 범위: ${activeSession.zones?.length ? activeSession.zones.join(', ') : '전체'} · ${activeSession.purpose === 'full_census' ? '전수조사' : '현재목록 재고실사'}`}
               extra={isAdmin && (
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {activeSession.status === 'paused'
@@ -607,7 +395,10 @@ export default function Inventory() {
                   <button onClick={cancelSession} style={{ ...btnGhost, color: C.danger, borderColor: C.danger }}>🗑️ 실사 취소</button>
                   {activeSession.status !== 'paused' && (
                     <>
-                      <button onClick={completeSession} style={{ ...btnPrimary, background: '#1565C0' }}>✅ 나머지 완료 처리</button>
+                      <button onClick={completeSession} style={{ ...btnPrimary, background: '#1565C0' }}>✅ 실사 완료 처리</button>
+                      {pendingConfirmCount > 0 && (
+                        <button onClick={undoSessionCompletion} style={{ ...btnGhost, color: C.danger, borderColor: C.danger }}>↩ 완료 취소</button>
+                      )}
                       <button onClick={finalizeSession} style={{ ...btnPrimary, background: '#38A169' }}>🏁 모든 변경사항 최종 DB 반영하기</button>
                     </>
                   )}
@@ -648,59 +439,6 @@ export default function Inventory() {
                 </div>
               )}
             </Card>
-
-            {isAdmin && (
-              <Card title="🗺️ 구역 배정 및 진행 현황" sub="구역당 여러 명 배정 가능합니다">
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '24px', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: '140px' }}>
-                    <label style={labelStyle}>구역</label>
-                    <select value={assignForm.zone} onChange={e => setAssignForm({ ...assignForm, zone: e.target.value })} style={inputStyle}>
-                      <option value="">선택하세요</option>
-                      {rooms.map(r => (
-                        <optgroup key={r} label={r}>
-                          {locations.filter(l => l.room === r).map(loc => (
-                            <option key={loc.id} value={loc.detail || loc.room}>{loc.detail || loc.room}</option>
-                          ))}
-                        </optgroup>
-                      ))}
-                      <optgroup label="알파벳 구역">
-                        {['A-F', 'G-L', 'M-R', 'S-Z'].map(z => <option key={z} value={z}>{z}</option>)}
-                      </optgroup>
-                    </select>
-                  </div>
-                  <div style={{ flex: 1, minWidth: '140px' }}>
-                    <label style={labelStyle}>담당자</label>
-                    <input value={assignForm.assigned_to} onChange={e => setAssignForm({ ...assignForm, assigned_to: e.target.value })}
-                      onKeyDown={e => e.key === 'Enter' && addAssignment()} placeholder="이름 입력 후 Enter" style={inputStyle} />
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                    <button onClick={addAssignment} style={btnPrimary}>추가</button>
-                  </div>
-                </div>
-                {Object.keys(zoneGroups).length === 0
-                  ? <p style={{ color: C.muted, fontSize: '13px', textAlign: 'center', padding: '24px 0' }}>아직 배정된 구역이 없습니다.</p>
-                  : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '14px' }}>
-                      {Object.entries(zoneGroups).map(([zone, members]) => (
-                        <div key={zone}>
-                          <ZoneProgressCard zone={zone} members={members} zoneProgress={zoneProgress} onComplete={() => completeZone(zone)} onUndo={() => undoZoneCompletion(zone)} isAdmin={isAdmin} />
-                          <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                              {members.map(a => (
-                                <button key={a.id} onClick={() => deleteAssignment(a.id)} style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', border: `1px solid ${C.border}`, background: C.white, color: C.muted, cursor: 'pointer' }}>
-                                  {a.assigned_to} ✕
-                                </button>
-                              ))}
-                            </div>
-                            <button onClick={() => resetZone(zone)} style={{ fontSize: '11px', padding: '2px 10px', borderRadius: '10px', border: `1px solid ${C.danger}`, background: C.white, color: C.danger, cursor: 'pointer' }}>↺ 초기화</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                }
-              </Card>
-            )}
           </>
         )}
 
@@ -754,6 +492,24 @@ export default function Inventory() {
             <div style={{ marginBottom: '14px' }}>
               <label style={labelStyle}>관리자 이름 *</label>
               <input value={startForm.created_by} onChange={e => setStartForm({ ...startForm, created_by: e.target.value })} placeholder="본인 이름" style={inputStyle} />
+            </div>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={labelStyle}>실사 모드 *</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[
+                  ['full_census', '📋 전수조사', '검색·대조 패널로만 입력하고, 아래엔 완료/미완료 목록만 보여줘요'],
+                  ['current_list', '📊 현재목록 재고실사', '지금처럼 상단 검색과 하단 전체 편집 표를 같이 써요'],
+                ].map(([key, label, desc]) => (
+                  <button key={key} onClick={() => setStartForm({ ...startForm, mode: key })} style={{
+                    textAlign: 'left', padding: '10px 14px', borderRadius: '10px', cursor: 'pointer',
+                    border: `1.5px solid ${startForm.mode === key ? C.navy : C.border}`,
+                    background: startForm.mode === key ? C.bg : C.white,
+                  }}>
+                    <div style={{ fontSize: '13.5px', fontWeight: '700', color: startForm.mode === key ? C.navy : C.text }}>{label}</div>
+                    <div style={{ fontSize: '11.5px', color: C.muted, marginTop: '2px' }}>{desc}</div>
+                  </button>
+                ))}
+              </div>
             </div>
             <div style={{ marginBottom: '20px' }}>
               <label style={labelStyle}>실사 범위</label>
@@ -893,7 +649,7 @@ function SessionReviewModal({ session, onClose }) {
 // ════════════════════════════════════════════════════════════
 //  실사 입력 화면 (학생/관리자 공용)
 // ════════════════════════════════════════════════════════════
-function InventoryCountView({ session, myName, student, myAssignments, isAdmin, onBack }) {
+function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
   const [lots, setLots] = useState([])
   const [counts, setCounts] = useState({})
   const [locations, setLocations] = useState([])
@@ -901,6 +657,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('') // ← 목록 필터링/하이라이트용(디바운스)
   const [compareLot, setCompareLot] = useState(null)  // ← 검색어 정확히 일치 시 상단에 뜨는 대조 입력 패널 대상
+  const [sliderDisplay, setSliderDisplay] = useState(null) // ← 상단 패널 잔량 슬라이더의 현재 값(퍼센트 표시용)
   const [compareCandidates, setCompareCandidates] = useState([]) // ← 같은 이름의 Lot이 여러 개라 특정 못했을 때 고를 후보들
   const [savedMsg, setSavedMsg] = useState(false)      // ← "✓ 수정되었습니다" 인라인 메시지
   const [searchOpen, setSearchOpen] = useState(false)  // ← 검색창 아래 후보 드롭다운 열림 여부
@@ -916,7 +673,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
   // 검색해도 기존 목록에 전혀 없을 때, 상단 패널 안에서 바로 미등록 시약을 입력하는 모드
   // (예전엔 별도 모달이었는데, 검색→대조/수정 패널과 자연스럽게 이어지도록 통합함)
   const [newEntryMode, setNewEntryMode] = useState(false)
-  const [newEntryForm, setNewEntryForm] = useState({ name: '', cas_no: '', company: '', cat_no: '', lot_no: '', category: '', volume: '', unit: '', location_id: '', current_stock: '100', abnormal_note: '' })
+  const [newEntryForm, setNewEntryForm] = useState({ name: '', purity: '', cas_no: '', company: '', cat_no: '', lot_no: '', category: '', volume: '', unit: '', location_id: '', current_stock: '100', abnormal_note: '' })
   const inputRefs = useRef({})
   const rowRefs = useRef({})       // ← 알파벳 인덱스용 행 ref
   const searchInputRef = useRef(null)
@@ -962,59 +719,20 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
 
   async function fetchLots() {
     setLoading(true)
-    // 이전엔 세션 전체(수천 개)를 일단 다 받아온 뒤 내 담당 구역으로 화면에서만 걸러냈음 —
-    // 관리자가 아니고 배정된 구역이 전부 "위치" 기반(알파벳 범위 구역 없음)이면, 애초에
-    // 서버에다 그 위치의 Lot만 요청해서 안 쓰는 나머지를 통신량에서부터 빼버린다.
-    // 알파벳 범위 구역("A-G" 등, 시약명 기준)은 서버에서 걸러내기 까다로워 기존 방식 유지.
-    const alphaZones = myAssignments.filter(a => a.zone.match(/^[A-Z]-[A-Z]$/))
-    const locZones = myAssignments.filter(a => !a.zone.match(/^[A-Z]-[A-Z]$/))
-    const canScopeByLocation = !isAdmin && myAssignments.length > 0 && alphaZones.length === 0
-
-    // matchedLocIds가 null이면 제한 없음(관리자 등 전체를 봐야 하는 경우).
-    // 담당 구역에 해당하는 Lot id 목록을 먼저 통째로 받아와 .in(lot_id, [...])로 거르면
-    // 구역이 세션 전체(수천 개)에 가까울 때 URL에 UUID가 수천 개 붙어 요청 자체가 실패한다
-    // (실제로 재현됨: 414/URL too long → 브라우저에는 CORS 오류로만 보임).
-    // 그래서 lot_id 목록을 따로 안 만들고, inventory_counts를 reagent_lots와 조인해서
-    // "location_id가 내 구역에 속한 것만" 서버에서 바로 걸러낸다 — 필터 값은 위치 id
-    // 몇 개뿐이라 URL 길이 문제가 없다.
-    let matchedLocIds = null
-    if (canScopeByLocation) {
-      const { data: locs } = await supabase.from('locations').select('id, room, detail')
-      const zoneNames = new Set(locZones.map(a => a.zone))
-      matchedLocIds = (locs || []).filter(l => zoneNames.has(l.detail) || zoneNames.has(l.room)).map(l => l.id)
-      if (matchedLocIds.length === 0) { setLots([]); setCounts({}); setLoading(false); return }
-    }
-
-    const countData = await fetchAllPages((from, to) => {
-      let q = supabase.from('inventory_counts')
-        .select(matchedLocIds ? '*, reagent_lots!inner(location_id)' : '*')
-        .eq('session_id', session.id)
-      if (matchedLocIds) q = q.in('reagent_lots.location_id', matchedLocIds)
-      return q.range(from, to)
-    })
+    // 구역 배정 기능이 없어지면서 누구나(관리자/학생 구분 없이) 세션 전체를 본다 —
+    // 배정에 따른 서버측 필터링은 더 이상 필요 없음.
+    const countData = await fetchAllPages((from, to) => supabase.from('inventory_counts')
+      .select('*').eq('session_id', session.id).range(from, to))
     const lotIds = (countData || []).map(c => c.lot_id)
     if (lotIds.length === 0) { setLots([]); setCounts({}); setLoading(false); return }
     const idChunks = []
     for (let i = 0; i < lotIds.length; i += 500) idChunks.push(lotIds.slice(i, i + 500))
     const chunkResults = await Promise.all(idChunks.map(chunk => supabase.from('reagent_lots')
-      .select('id, reagent_id, location_id, lot_no, cat_no, sealed_count, current_stock, reagents(id, name, cas_no, company, category, hazard, volume, unit), locations(room, detail)')
+      .select('id, reagent_id, location_id, lot_no, cat_no, sealed_count, current_stock, reagents(id, name, cas_no, company, category, hazard, volume, unit, purity), locations(room, detail)')
       .in('id', chunk)))
     const lotData = chunkResults.flatMap(r => r.data || [])
     if (lotData) {
-      let filtered = lotData
-      if (!isAdmin && myAssignments.length > 0 && !canScopeByLocation) {
-        // 알파벳 범위 구역이 섞여 있는 경우엔 서버에서 미리 못 거르므로 기존처럼 여기서 걸러냄
-        filtered = lotData.filter(lot => myAssignments.some(a => {
-          const zone = a.zone
-          if (zone.match(/^[A-Z]-[A-Z]$/)) {
-            const [from, to] = zone.split('-')
-            const first = lot.reagents?.name?.[0]?.toUpperCase() || ''
-            return first >= from && first <= to
-          }
-          return lot.locations?.detail === zone || lot.locations?.room === zone
-        }))
-      }
-      setLots(filtered.sort((a, b) => (a.reagents?.name || '').localeCompare(b.reagents?.name || '', 'ko')))
+      setLots(lotData.sort((a, b) => (a.reagents?.name || '').localeCompare(b.reagents?.name || '', 'ko')))
     }
     if (countData) {
       const map = {}
@@ -1167,7 +885,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     setCompareLot(null)
     setCompareCandidates([])
     setNewEntryMode(true)
-    setNewEntryForm({ name: search.trim(), cas_no: '', company: '', cat_no: '', lot_no: '', category: '', volume: '', unit: '', location_id: '', current_stock: '100', abnormal_note: '' })
+    setNewEntryForm({ name: search.trim(), purity: '', cas_no: '', company: '', cat_no: '', lot_no: '', category: '', volume: '', unit: '', location_id: '', current_stock: '100', abnormal_note: '' })
     setSearchOpen(false)
   }
   function cancelNewEntry() {
@@ -1180,7 +898,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     if (!newEntryForm.name.trim()) { alert('화학물질명을 입력해주세요'); return }
     if (!newEntryForm.location_id) { alert('위치를 선택해주세요'); return }
     const { data: r, error } = await supabase.from('reagents').insert({
-      name: newEntryForm.name.trim(), cas_no: newEntryForm.cas_no || null, company: newEntryForm.company || null,
+      name: newEntryForm.name.trim(), purity: newEntryForm.purity || null, cas_no: newEntryForm.cas_no || null, company: newEntryForm.company || null,
       category: newEntryForm.category || null, volume: newEntryForm.volume || null, unit: newEntryForm.unit || null,
       reagent_type: 'purchased', status: 'active', registered_by: student?.student_id ?? null,
     }).select().single()
@@ -1261,7 +979,9 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
     setCompareLot(lot)
     setNewEntryMode(false)
     setSearchOpen(false)
-    setTimeout(() => { comparePanelInputRef.current?.focus(); comparePanelInputRef.current?.select() }, 50)
+    const c = counts[lot.id]
+    setSliderDisplay(c?.actual_stock ?? c?.book_stock ?? lot.current_stock)
+    setTimeout(() => { comparePanelInputRef.current?.focus() }, 50)
   }
 
   function saveComparePanel() {
@@ -1471,6 +1191,9 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                   <div><div style={{ fontSize: '11px', color: C.muted }}>화학물질명 *</div>
                     <input value={newEntryForm.name} onChange={e => setNewEntryForm({ ...newEntryForm, name: e.target.value })}
                       style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px' }} /></div>
+                  <div><div style={{ fontSize: '11px', color: C.muted }}>순도</div>
+                    <input value={newEntryForm.purity} onChange={e => setNewEntryForm({ ...newEntryForm, purity: e.target.value })} placeholder="예: 98%"
+                      style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px' }} /></div>
                   <div><div style={{ fontSize: '11px', color: C.muted }}>CAS No.</div>
                     <input value={newEntryForm.cas_no} onChange={e => setNewEntryForm({ ...newEntryForm, cas_no: e.target.value })}
                       style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px' }} /></div>
@@ -1488,11 +1211,19 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                       style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px' }} /></div>
                   <div>
                     <div style={{ fontSize: '11px', color: C.muted }}>규격</div>
-                    <div style={{ display: 'flex', gap: '4px', marginTop: '2px' }}>
+                    <div style={{ display: 'flex', gap: '4px', marginTop: '2px', alignItems: 'center' }}>
                       <input value={newEntryForm.volume} onChange={e => setNewEntryForm({ ...newEntryForm, volume: e.target.value })} placeholder="용량"
                         style={{ ...inputStyle, width: '60px', padding: '5px 8px', fontSize: '13px' }} />
-                      <input value={newEntryForm.unit} onChange={e => setNewEntryForm({ ...newEntryForm, unit: e.target.value })} placeholder="단위"
-                        style={{ ...inputStyle, width: '55px', padding: '5px 8px', fontSize: '13px' }} />
+                      <div style={{ display: 'flex', gap: '3px' }}>
+                        {['mL', 'L', 'g', 'kg'].map(u => (
+                          <button key={u} type="button" onClick={() => setNewEntryForm({ ...newEntryForm, unit: u })} style={{
+                            padding: '5px 7px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer',
+                            border: `1px solid ${newEntryForm.unit === u ? '#1565C0' : C.border}`,
+                            background: newEntryForm.unit === u ? '#EAF1FB' : C.white,
+                            color: newEntryForm.unit === u ? '#1565C0' : C.text, fontWeight: newEntryForm.unit === u ? '700' : '400',
+                          }}>{u}</button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                   <div>
@@ -1503,9 +1234,13 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                       {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
                     </select>
                   </div>
-                  <div><div style={{ fontSize: '11px', color: C.muted }}>잔량(%)</div>
-                    <input type="number" min="0" max="100" value={newEntryForm.current_stock} onChange={e => setNewEntryForm({ ...newEntryForm, current_stock: e.target.value })}
-                      style={{ ...inputStyle, width: '80px', padding: '5px 8px', marginTop: '2px' }} /></div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: C.muted }}>잔량(%)</div>
+                    <input type="range" min="0" max="100" step="10" value={newEntryForm.current_stock}
+                      onChange={e => setNewEntryForm({ ...newEntryForm, current_stock: e.target.value })}
+                      style={{ width: '90px', marginTop: '4px', accentColor: '#1565C0' }} />
+                    <div style={{ fontSize: '12px', fontWeight: '700', color: C.navy, textAlign: 'center' }}>{newEntryForm.current_stock}%</div>
+                  </div>
                   <div><div style={{ fontSize: '11px', color: C.muted }}>비고</div>
                     <input value={newEntryForm.abnormal_note} onChange={e => setNewEntryForm({ ...newEntryForm, abnormal_note: e.target.value })} placeholder="메모"
                       style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '12px' }} /></div>
@@ -1541,10 +1276,15 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                 )
               }
 
+              const unitBookVal = book['unit'] ?? compareLot?.reagents?.unit ?? ''
+              const unitTouched = 'unit' in staged
+              const unitCurrent = unitTouched ? staged['unit'] : unitBookVal
+
               return (
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px 16px', fontSize: '13px' }}>
                     <div><div style={{ fontSize: '11px', color: C.muted }}>화학물질명</div>{panelMasterField('name', 150)}</div>
+                    <div><div style={{ fontSize: '11px', color: C.muted }}>순도</div>{panelMasterField('purity', 90)}</div>
                     <div><div style={{ fontSize: '11px', color: C.muted }}>CAS No.</div>{panelMasterField('cas_no', 120)}</div>
                     <div><div style={{ fontSize: '11px', color: C.muted }}>회사</div>{panelMasterField('company', 120)}</div>
                     <div><div style={{ fontSize: '11px', color: C.muted }}>Cat No.</div>{panelMasterField('cat_no', 100, 'lot')}</div>
@@ -1552,7 +1292,19 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                     <div><div style={{ fontSize: '11px', color: C.muted }}>성상</div>{panelMasterField('category', 100)}</div>
                     <div>
                       <div style={{ fontSize: '11px', color: C.muted }}>규격</div>
-                      <div style={{ display: 'flex', gap: '4px', marginTop: '2px' }}>{panelMasterField('volume', 60)}{panelMasterField('unit', 55)}</div>
+                      <div style={{ display: 'flex', gap: '4px', marginTop: '2px', alignItems: 'center' }}>
+                        {panelMasterField('volume', 55)}
+                        <div style={{ display: 'flex', gap: '3px' }}>
+                          {['mL', 'L', 'g', 'kg'].map(u => (
+                            <button key={u} type="button" disabled={!compareLot} onClick={() => saveReagentField(compareLot, 'unit', u)} style={{
+                              padding: '5px 7px', borderRadius: '6px', fontSize: '11px', cursor: compareLot ? 'pointer' : 'default',
+                              border: `1px solid ${unitCurrent === u ? '#1565C0' : C.border}`,
+                              background: unitCurrent === u ? '#EAF1FB' : C.white,
+                              color: unitCurrent === u ? '#1565C0' : C.text, fontWeight: unitCurrent === u ? '700' : '400',
+                            }}>{u}</button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                     <div>
                       <div style={{ fontSize: '11px', color: C.muted }}>위치</div>
@@ -1574,10 +1326,17 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                     <div>
                       <div style={{ fontSize: '11px', color: C.muted }}>잔량(%)</div>
                       {compareLot ? (
-                        <input key={compareLot.id} ref={comparePanelInputRef} type="number" min="0" max="100" defaultValue={count?.actual_stock ?? bookStock}
-                          placeholder={String(bookStock)}
-                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); completeButtonRef.current?.focus() } }}
-                          style={{ ...inputStyle, width: '80px', padding: '5px 8px', marginTop: '2px', ...diffCellStyle(count?.actual_stock != null, count?.actual_stock != null && count.actual_stock !== bookStock) }} />
+                        <div style={{
+                          width: '100px', marginTop: '2px', padding: '4px 8px', borderRadius: '8px',
+                          ...diffCellStyle(count?.actual_stock != null, count?.actual_stock != null && count.actual_stock !== bookStock),
+                        }}>
+                          <input key={compareLot.id} ref={comparePanelInputRef} type="range" min="0" max="100" step="10"
+                            defaultValue={count?.actual_stock ?? bookStock}
+                            onInput={e => setSliderDisplay(Number(e.target.value))}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); completeButtonRef.current?.focus() } }}
+                            style={{ width: '100%', accentColor: '#1565C0' }} />
+                          <div style={{ fontSize: '12px', fontWeight: '700', color: C.navy, textAlign: 'center' }}>{sliderDisplay ?? (count?.actual_stock ?? bookStock)}%</div>
+                        </div>
                       ) : (
                         <input disabled placeholder="-" style={{ ...disabledBoxStyle, width: '80px' }} />
                       )}
@@ -1605,9 +1364,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
         {/* ── ② 진행률 · 필터 · 목록 영역 ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ minWidth: '220px' }}>
-            <div style={{ fontSize: '12px', color: C.muted, marginBottom: '4px' }}>
-              {!isAdmin && myAssignments.length > 0 ? `내 배정 구역 · ${myAssignments.map(a => a.zone).join(', ')}` : '전체 구역'}
-            </div>
+            <div style={{ fontSize: '12px', color: C.muted, marginBottom: '4px' }}>전체 구역</div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
               <span style={{ fontSize: '18px', fontWeight: '700', color: C.navy }}>{doneCnt} / {lots.length}</span>
               <span style={{ fontSize: '12px', color: C.muted }}>완료 ({pct}%)</span>
@@ -1654,27 +1411,61 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '18px', alignItems: 'center', marginBottom: '10px', fontSize: '12px', color: C.muted }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ display: 'inline-block', width: '13px', height: '13px', borderRadius: '4px', border: `2px solid ${C.border}` }} />
-            회색 테두리: 아직 확인 안 함
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ display: 'inline-block', width: '13px', height: '13px', borderRadius: '4px', border: '2px solid #1565C0', background: '#EAF1FB' }} />
-            파란색 테두리: 장부값과 일치 확인됨
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ display: 'inline-block', width: '13px', height: '13px', borderRadius: '4px', border: `2px solid ${C.danger}`, background: C.dangerTint }} />
-            빨강 테두리: 장부값과 차이 있음 — 실제 값으로 고쳐졌어요
-          </span>
-          <span style={{ fontWeight: '600', color: C.navy }}>💡 병을 확인했는데 숫자가 맞으면 아무것도 고치지 말고 Enter만 누르세요. 그대로 저장되고 다음 항목으로 넘어갑니다.</span>
-        </div>
-
         {isAdmin && (
           <NewRegistrationSummary session={session} />
         )}
 
-        {isCapped && (
+        {session.purpose === 'full_census' ? (
+          <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+            {visibleLots.length === 0 ? (
+              <div style={{ padding: '32px', textAlign: 'center', color: C.muted }}>해당하는 항목이 없습니다.</div>
+            ) : visibleLots.map(lot => {
+              const count = counts[lot.id]
+              const s = STATUS_BADGE[rowStatus(lot)]
+              const displayLocation = count?.staged_location_id
+                ? locations.find(l => l.id === count.staged_location_id)
+                : lot.locations
+              return (
+                <div key={lot.id} ref={el => rowRefs.current[lot.id] = el} onClick={() => openComparePanel(lot)}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px',
+                    padding: '10px 16px', borderBottom: `1px solid ${C.border}`, cursor: 'pointer',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <div>
+                    <div style={{ fontSize: '13.5px', fontWeight: '600', color: C.navy }}>
+                      {lot.reagents?.name}{lot.reagents?.purity ? ` (${lot.reagents.purity})` : ''}
+                    </div>
+                    <div style={{ fontSize: '11.5px', color: C.muted, marginTop: '2px' }}>
+                      {displayLocation?.room || '-'}{displayLocation?.detail ? ` · ${displayLocation.detail}` : ''}
+                      {lot.lot_no ? ` · Lot ${lot.lot_no}` : ''}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '11px', padding: '2px 9px', borderRadius: '12px', fontWeight: '700', background: s.bg, color: s.color, whiteSpace: 'nowrap' }}>{s.label}</span>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: '18px', alignItems: 'center', marginBottom: '10px', fontSize: '12px', color: C.muted }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ display: 'inline-block', width: '13px', height: '13px', borderRadius: '4px', border: `2px solid ${C.border}` }} />
+                회색 테두리: 아직 확인 안 함
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ display: 'inline-block', width: '13px', height: '13px', borderRadius: '4px', border: '2px solid #1565C0', background: '#EAF1FB' }} />
+                파란색 테두리: 장부값과 일치 확인됨
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ display: 'inline-block', width: '13px', height: '13px', borderRadius: '4px', border: `2px solid ${C.danger}`, background: C.dangerTint }} />
+                빨강 테두리: 장부값과 차이 있음 — 실제 값으로 고쳐졌어요
+              </span>
+              <span style={{ fontWeight: '600', color: C.navy }}>💡 병을 확인했는데 숫자가 맞으면 아무것도 고치지 말고 Enter만 누르세요. 그대로 저장되고 다음 항목으로 넘어갑니다.</span>
+            </div>
+
+            {isCapped && (
           <div style={{ background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#92400E' }}>
             ⚠️ 범위가 넓어 {filteredLots.length}개 중 {cappedStart + 1}~{cappedStart + visibleLots.length}번째만 표시하고 있어요. 오른쪽 알파벳 인덱스로 이동하거나, 검색·"완료"/"미완료" 탭을 사용하세요.
           </div>
@@ -1692,6 +1483,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
               <thead>
                 <tr>
                   <th style={{ ...thStyle, whiteSpace: 'nowrap' }}>화학물질명</th>
+                  <th style={{ ...thStyle, whiteSpace: 'nowrap' }}>순도</th>
                   <th style={{ ...thStyle, whiteSpace: 'nowrap' }}>CAS No.</th>
                   <th style={{ ...thStyle, whiteSpace: 'nowrap' }}>회사</th>
                   <th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Cat No.</th>
@@ -1707,7 +1499,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
               </thead>
               <tbody>
                 {visibleLots.length === 0
-                  ? <tr><td colSpan={13} style={{ padding: '32px', textAlign: 'center', color: C.muted }}>해당하는 항목이 없습니다.</td></tr>
+                  ? <tr><td colSpan={14} style={{ padding: '32px', textAlign: 'center', color: C.muted }}>해당하는 항목이 없습니다.</td></tr>
                   : visibleLots.map((lot, idx) => {
                     const count = counts[lot.id]
                     const bookStock = count?.book_stock ?? lot.current_stock
@@ -1745,6 +1537,7 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
                             />
                           </div>
                         </td>
+                        {fieldInputCell(lot, idx, 'purity', 70)}
                         {fieldInputCell(lot, idx, 'cas_no', 100)}
                         {fieldInputCell(lot, idx, 'company', 100)}
                         {fieldInputCell(lot, idx, 'cat_no', 90, 'lot')}
@@ -1849,6 +1642,8 @@ function InventoryCountView({ session, myName, student, myAssignments, isAdmin, 
             ))}
           </div>
         </div>
+          </>
+        )}
       </div>
 
       {actionModalLot && (

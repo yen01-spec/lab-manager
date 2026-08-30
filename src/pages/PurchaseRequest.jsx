@@ -12,7 +12,7 @@ function newId() { uidCounter += 1; return `local-${uidCounter}` }
 
 function emptyReagentDraft() {
   return {
-    reagent_id: null, name: '', cas_no: '', needed_amount: '', usage_place: '', purchase_reason: '', note: '',
+    reagent_id: null, name: '', purity: '', cas_no: '', needed_amount: '', usage_place: '', purchase_reason: '', note: '',
     company: '', cat_no: '', spec: '', quantity: '1',
   }
 }
@@ -87,7 +87,7 @@ export default function PurchaseRequest() {
     setReagentDraft(d => ({ ...d, [field]: value, ...(field === 'name' ? { reagent_id: null } : {}) }))
   }
   function selectReagentOption(r) {
-    setReagentDraft(d => ({ ...d, reagent_id: r.id, name: r.name, cas_no: r.cas_no || '', company: r.company || '' }))
+    setReagentDraft(d => ({ ...d, reagent_id: r.id, name: r.name, purity: r.purity || '', cas_no: r.cas_no || '', company: r.company || '' }))
     setWantsProduct(true) // DB에서 특정 제품을 찾았으니 원하는 제품 섹션을 자동으로 열어줌
   }
   function resetReagentDraft() {
@@ -170,7 +170,7 @@ export default function PurchaseRequest() {
     if (error) { alert('저장 중 오류가 발생했습니다: ' + error.message); return null }
     if (reagentItems.length > 0) {
       await supabase.from('purchase_request_reagent_items').insert(reagentItems.map(it => ({
-        request_id: log.id, reagent_id: it.reagent_id, name: it.name, cas_no: it.cas_no, state: null,
+        request_id: log.id, reagent_id: it.reagent_id, name: it.name, purity: it.purity, cas_no: it.cas_no, state: null,
         needed_amount: it.needed_amount, usage_place: it.usage_place, purchase_reason: it.purchase_reason,
         company: it.company, cat_no: it.cat_no, spec: it.spec, quantity: it.quantity, note: it.note,
       })))
@@ -270,6 +270,9 @@ export default function PurchaseRequest() {
                     onSelect={selectReagentOption}
                     placeholder="화학물질명 또는 CAS No. 입력"
                     inputStyle={inputStyle} />
+                </Field>
+                <Field label="순도">
+                  <input value={reagentDraft.purity} onChange={e => updateReagentDraft('purity', e.target.value)} placeholder="예) 98%" style={inputStyle} />
                 </Field>
                 <Field label="CAS No." required>
                   <input value={reagentDraft.cas_no} onChange={e => updateReagentDraft('cas_no', e.target.value)}
@@ -397,14 +400,15 @@ export default function PurchaseRequest() {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr>{['화학물질명', '필요용량', '사용처', '제조사', '규격', '수량', ''].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
+                    <tr>{['화학물질명', '순도', '필요용량', '사용처', '제조사', '규격', '수량', ''].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
                   </thead>
                   <tbody>
                     {reagentItems.length === 0 ? (
-                      <tr><td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: C.muted, padding: '24px' }}>담긴 시약이 없습니다. 위 폼에서 입력 후 "목록에 추가"를 눌러주세요.</td></tr>
+                      <tr><td colSpan={8} style={{ ...tdStyle, textAlign: 'center', color: C.muted, padding: '24px' }}>담긴 시약이 없습니다. 위 폼에서 입력 후 "목록에 추가"를 눌러주세요.</td></tr>
                     ) : reagentItems.map(it => (
                       <tr key={it.id} style={{ background: editingReagentId === it.id ? '#FBF0DF' : 'transparent' }}>
                         <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>{it.name}</td>
+                        <td style={{ ...tdStyle, color: C.muted }}>{it.purity || '-'}</td>
                         <td style={{ ...tdStyle, color: C.muted }}>{it.needed_amount}</td>
                         <td style={{ ...tdStyle, color: C.muted }}>{it.usage_place}</td>
                         <td style={tdStyle}>{it.wants_product ? (it.company || '-') : '-'}</td>

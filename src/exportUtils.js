@@ -184,9 +184,9 @@ export function exportPurchaseRequestForm(reagentItems, goodsItems, requesterNam
 
   if (reagentItems.length > 0) {
     // 시약 항목에는 가격 필드가 없음(요청만 하고 가격은 담당자가 처리)
-    const header = ['No.', '화학물질명', 'CAS No.', '필요한 용량', '사용처', '용도', '비고', '제조사', 'Cat No.', '규격', '수량']
+    const header = ['No.', '화학물질명', '순도', 'CAS No.', '필요한 용량', '사용처', '용도', '비고', '제조사', 'Cat No.', '규격', '수량']
     const rows = reagentItems.map((it, i) => [
-      i + 1, it.name, it.cas_no, it.needed_amount, it.usage_place, it.purchase_reason, it.note,
+      i + 1, it.name, it.purity, it.cas_no, it.needed_amount, it.usage_place, it.purchase_reason, it.note,
       it.company, it.cat_no, it.spec, it.quantity,
     ])
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows])

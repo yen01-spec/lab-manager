@@ -118,11 +118,12 @@ export default function PurchaseRequestList() {
                       <div style={{ fontSize: '12.5px', fontWeight: '700', color: C.navy, marginBottom: '6px' }}>🧪 시약 항목</div>
                       <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', background: C.white }}>
-                          <thead><tr>{['시약명', 'CAS No.', '성상', '필요용량', '사용처', '구매목적', '회사', 'Cat No.', '규격', '수량', '비고'].map(h => <th key={h} style={{ ...thStyle, fontSize: '11px' }}>{h}</th>)}</tr></thead>
+                          <thead><tr>{['시약명', '순도', 'CAS No.', '성상', '필요용량', '사용처', '구매목적', '회사', 'Cat No.', '규격', '수량', '비고'].map(h => <th key={h} style={{ ...thStyle, fontSize: '11px' }}>{h}</th>)}</tr></thead>
                           <tbody>
                             {reagentItems.map(it => (
                               <tr key={it.id}>
                                 <td style={{ ...tdStyle, fontSize: '12px', fontWeight: '600' }}>{it.name}</td>
+                                <td style={{ ...tdStyle, fontSize: '12px' }}>{it.purity || '-'}</td>
                                 <td style={{ ...tdStyle, fontSize: '12px' }}>{it.cas_no || '-'}</td>
                                 <td style={{ ...tdStyle, fontSize: '12px' }}>{it.state || '-'}</td>
                                 <td style={{ ...tdStyle, fontSize: '12px' }}>{it.needed_amount || '-'}</td>
