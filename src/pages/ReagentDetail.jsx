@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useOutletContext, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../design'
@@ -63,6 +63,18 @@ export default function ReagentDetail() {
   const [addLotForm, setAddLotForm] = useState({ lot_no: '', cat_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
   const [locations, setLocations] = useState([])
   const [history, setHistory] = useState([])
+  // 상단 버튼이 6개까지 늘어나던 걸 정리 — 자주 쓰는 재고등록/위치이동(+실사 중이면
+  // 정보맞음)만 항상 보이고, 나머지(폐기신청/정보수정/시약삭제)는 "⋯더보기" 안으로.
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const moreMenuRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) setMoreMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   useEffect(() => { fetchAll() }, [id])
   useEffect(() => { supabase.from('locations').select('*').order('room').then(({ data }) => data && setLocations(data)) }, [])
@@ -416,21 +428,47 @@ export default function ReagentDetail() {
         sub={reagent.volume ? `${reagent.volume}${reagent.unit || ''}` : undefined}
         breadcrumb={['시약', reagent.name]}
         extra={
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={() => setShowAddLotModal(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: '1px dashed #C9DAF5', background: '#F9FBFF', fontSize: '13px', color: '#1F4E96', fontWeight: '600', cursor: 'pointer' }}>📦 재고 등록</button>
-            <button onClick={openDisposalModal} disabled={activeLots.length === 0} style={{ padding: '9px 16px', borderRadius: '8px', border: '1px solid #F3D6D6', background: activeLots.length === 0 ? '#F7F7F7' : '#FDECEC', fontSize: '13px', color: activeLots.length === 0 ? C.muted : '#C13B3F', fontWeight: '600', cursor: activeLots.length === 0 ? 'default' : 'pointer' }}>🗑️ 폐기 신청</button>
             <button onClick={openMoveModal} disabled={activeLots.length === 0} style={{ padding: '9px 16px', borderRadius: '8px', border: `1px solid ${C.border}`, background: activeLots.length === 0 ? '#F7F7F7' : C.white, fontSize: '13px', color: '#586173', cursor: activeLots.length === 0 ? 'default' : 'pointer' }}>📍 위치 이동{!isAdmin && ' 신청'}</button>
-            <button onClick={() => setEditMode(v => !v)} style={{
-              padding: '9px 16px', borderRadius: '8px', border: `1px solid ${editMode ? C.navy : C.border}`,
-              background: editMode ? C.navy : C.white, fontSize: '13px', color: editMode ? '#fff' : '#586173',
-              cursor: 'pointer', fontWeight: '600',
-            }}>✏️ {editMode ? '수정 완료' : isAdmin ? '정보 수정' : '수정 신청'}</button>
             {activeInventorySession && (
               <button onClick={() => { if (!student) { alert('로그인 후 이용해주세요'); return } confirmReagent() }} style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: C.blue, fontSize: '13px', color: '#fff', fontWeight: '600', cursor: 'pointer' }}>✓ 정보 맞음 · 확인만 하기</button>
             )}
-            {isAdmin && (
-              <button onClick={archiveReagent} title="활성 재고가 없을 때만 삭제할 수 있어요" style={{ padding: '9px 16px', borderRadius: '8px', border: '1px solid #F3D6D6', background: C.white, fontSize: '13px', color: '#C13B3F', cursor: 'pointer' }}>🗑 시약 종류 삭제</button>
-            )}
+            <div ref={moreMenuRef} style={{ position: 'relative' }}>
+              <button onClick={() => setMoreMenuOpen(v => !v)} style={{
+                padding: '9px 14px', borderRadius: '8px', border: `1px solid ${C.border}`,
+                background: moreMenuOpen ? C.bg : C.white, fontSize: '13px', color: '#586173', cursor: 'pointer', fontWeight: '600',
+              }}>⋯ 더보기</button>
+              {moreMenuOpen && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 200,
+                  background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.15)', padding: '6px', minWidth: '170px',
+                  display: 'flex', flexDirection: 'column', gap: '2px',
+                }}>
+                  <button onClick={() => { setEditMode(v => !v); setMoreMenuOpen(false) }} style={{
+                    padding: '8px 12px', borderRadius: '6px', border: 'none', background: 'none',
+                    fontSize: '13px', color: '#586173', cursor: 'pointer', textAlign: 'left', fontWeight: '600',
+                  }} onMouseEnter={e => e.currentTarget.style.background = C.bg} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                    ✏️ {editMode ? '수정 완료' : isAdmin ? '정보 수정' : '수정 신청'}
+                  </button>
+                  <button onClick={() => { openDisposalModal(); setMoreMenuOpen(false) }} disabled={activeLots.length === 0} style={{
+                    padding: '8px 12px', borderRadius: '6px', border: 'none', background: 'none',
+                    fontSize: '13px', color: activeLots.length === 0 ? C.muted : '#C13B3F', cursor: activeLots.length === 0 ? 'default' : 'pointer', textAlign: 'left', fontWeight: '600',
+                  }} onMouseEnter={e => { if (activeLots.length > 0) e.currentTarget.style.background = '#FDECEC' }} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                    🗑️ 폐기 신청
+                  </button>
+                  {isAdmin && (
+                    <button onClick={() => { setMoreMenuOpen(false); archiveReagent() }} title="활성 재고가 없을 때만 삭제할 수 있어요" style={{
+                      padding: '8px 12px', borderRadius: '6px', border: 'none', background: 'none',
+                      fontSize: '13px', color: '#C13B3F', cursor: 'pointer', textAlign: 'left', fontWeight: '600',
+                    }} onMouseEnter={e => e.currentTarget.style.background = '#FDECEC'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                      🗑 시약 종류 삭제
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         }
       />
