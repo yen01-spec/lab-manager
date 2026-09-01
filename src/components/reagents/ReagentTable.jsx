@@ -51,10 +51,14 @@ export default function ReagentTable({
     <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
       <thead>
         <tr>
-          <th style={{ ...thStyle, borderRight: `1px solid ${C.borderRow}` }}>
+          <th style={{ ...thStyle, borderRight: `1px solid ${C.borderRow}` }}
+            title={editMode ? '일괄편집 대상으로 선택' : '선택 목록에 담기'}>
             <input type="checkbox" checked={editMode ? allChecked : allPicked}
               onChange={() => editMode ? toggleAll(data) : togglePickAll(data)}
               style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+            <div style={{ fontSize: '9.5px', fontWeight: '400', color: C.muted, marginTop: '2px', whiteSpace: 'nowrap' }}>
+              {editMode ? '편집' : '담기'}
+            </div>
           </th>
           {[
             '시약명',

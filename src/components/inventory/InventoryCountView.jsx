@@ -451,6 +451,11 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
 
   const doneCnt = lots.filter(l => counts[l.id]?.actual_stock != null).length
   const pct = lots.length > 0 ? Math.round(doneCnt / lots.length * 100) : 0
+  // 모바일 목록 화면에서 "내가 확인한 수"를 보여주기 위함 — 여러 명이 동시에 나눠서
+  // 실사할 때 "나는 얼마나 했지"를 전체 진행률과 별도로 확인할 수 있게.
+  const myDoneCnt = student?.student_id
+    ? lots.filter(l => counts[l.id]?.actual_stock != null && counts[l.id]?.counted_by_student_id === student.student_id).length
+    : 0
 
   // 상태 배지: 일치(장부=실측, 초록) / 미입력(회색) / 차이있음(장부≠실측, 빨강)
   function rowStatus(lot) {
@@ -785,7 +790,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
 
           <div style={{ marginBottom: '14px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '12.5px' }}>
-              <span style={{ color: C.muted }}>전체 진행률</span>
+              <span style={{ color: C.muted }}>전체 진행률{myDoneCnt > 0 ? ` · 내가 확인 ${myDoneCnt}개` : ''}</span>
               <span style={{ fontWeight: '700', color: C.navy }}>{doneCnt} / {lots.length}개 ({pct}%)</span>
             </div>
             <div style={{ height: '8px', background: C.bg, borderRadius: '4px', overflow: 'hidden' }}>

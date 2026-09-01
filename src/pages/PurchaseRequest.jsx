@@ -21,9 +21,11 @@ function emptyGoodsDraft() {
   return { name: '', cat_no: '', spec: '', quantity: '1', unit_price: '', shipping_fee: '0', purpose: '', note: '', link: '' }
 }
 // 시약 항목에는 가격 필드가 없음 — 요청만 하고 가격은 담당자가 처리하는 구조
+// 비고는 "추가로 할 말이 있을 때" 쓰는 선택 필드라 필수에서 뺌 — 필수로 걸려있으면
+// 실제로 할 말이 없는 사람도 "없음"/"-" 같은 의미 없는 값을 억지로 채우게 됨.
 const REQUIRED_REAGENT_FIELDS = [
   ['name', '화학물질명'], ['cas_no', 'CAS No.'], ['needed_amount', '필요한 용량'],
-  ['usage_place', '사용처'], ['purchase_reason', '용도'], ['note', '비고'],
+  ['usage_place', '사용처'], ['purchase_reason', '용도'],
 ]
 const REQUIRED_GOODS_FIELDS = [['name', '제품명'], ['quantity', '수량'], ['unit_price', '단가']]
 
@@ -288,8 +290,8 @@ export default function PurchaseRequest() {
                 <Field label="용도" required>
                   <AutoTextarea value={reagentDraft.purchase_reason} onChange={v => updateReagentDraft('purchase_reason', v)} placeholder="예) 적정 실험용" />
                 </Field>
-                <Field label="비고" required>
-                  <AutoTextarea value={reagentDraft.note} onChange={v => updateReagentDraft('note', v)} />
+                <Field label="비고">
+                  <AutoTextarea value={reagentDraft.note} onChange={v => updateReagentDraft('note', v)} placeholder="선택사항" />
                 </Field>
               </div>
 
