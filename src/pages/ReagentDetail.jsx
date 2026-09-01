@@ -484,54 +484,8 @@ export default function ReagentDetail() {
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '20px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-          {/* 기본정보 */}
-          <div style={cardStyle}>
-            <div style={{ ...cardHeadStyle, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              기본정보
-              {reagent?.pending_confirm && (
-                <span title="실사 반영됨 · 최종 확정 대기 중" style={{ fontSize: '10px', fontWeight: '700', color: '#1565C0', background: '#E3F2FD', padding: '1px 6px', borderRadius: '8px' }}>검토대기</span>
-              )}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px', padding: '18px 20px' }}>
-              {fieldRows.map(([field, label, value, source]) => {
-                const pending = pendingChanges.find(p => p.field_name === field)
-                const isEditing = editMode && editingField === field
-                return (
-                  <div key={field} style={{ background: pending ? '#FBF0DF' : 'transparent', borderRadius: '8px', padding: pending ? '8px 10px' : 0, margin: pending ? '-8px -10px' : 0 }}>
-                    {pending && (
-                      <div style={{ fontSize: '10.5px', color: '#8A5A16', marginBottom: '3px', fontWeight: '600' }}>
-                        {isAdmin ? `${pending.requested_by} 제안 · 대기중` : '수정 제안됨 · 대기중'}
-                      </div>
-                    )}
-                    <div style={{ fontSize: '11px', color: C.muted, marginBottom: '4px' }}>{label}</div>
-                    {isEditing && field === 'company' ? (
-                      <CompanyPicker value={editingValue} onChange={setEditingValue}
-                        onPick={v => saveField(field, v, source ? `${field}_source` : null)}
-                        onKeyDown={e => { if (e.key === 'Enter') saveField(field, editingValue, source ? `${field}_source` : null) }}
-                        onBlur={() => saveField(field, editingValue, source ? `${field}_source` : null)}
-                        style={{ ...inputStyle, padding: '4px 8px', fontSize: '13px' }} />
-                    ) : isEditing ? (
-                      <input autoFocus value={editingValue} onChange={e => setEditingValue(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') saveField(field, editingValue, source ? `${field}_source` : null) }}
-                        onBlur={() => saveField(field, editingValue, source ? `${field}_source` : null)}
-                        style={{ ...inputStyle, padding: '4px 8px', fontSize: '13px' }} />
-                    ) : (
-                      <div style={{ fontSize: '13.5px', color: C.text, cursor: editMode ? 'text' : 'default' }}
-                        onClick={() => { if (editMode) { setEditingField(field); setEditingValue(value || '') } }}>
-                        {value || '-'}
-                        {source === 'auto_ghs' && (
-                          <span title="국가유해물질정보 자동조회로 채워졌어요" style={{ marginLeft: '6px', fontSize: '9.5px', color: C.muted, background: '#F3F4F6', padding: '1px 6px', borderRadius: '8px' }}>🔎 MSDS 자동조회</span>
-                        )}
-                        {pending && <span style={{ marginLeft: '6px', fontSize: '11px', color: '#8A5A16' }}>→ {pending.new_value}</span>}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* 재고정보 */}
+          {/* 재고정보 — 학생이 상세페이지를 열었을 때 가장 먼저 궁금한 건 "어디 있는지,
+              몇 병 남았는지"라 기본정보(CAS·제조사 등)보다 위로 올림. */}
           <div style={cardStyle}>
             <div style={cardHeadStyle}>재고정보 {lots.length > 1 && <span style={{ fontWeight: 400, color: C.muted, fontSize: '12px' }}>· Lot {lots.length}개</span>}</div>
             <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -601,6 +555,53 @@ export default function ReagentDetail() {
                 )
               })}
               {lots.length === 0 && <div style={{ color: C.muted, fontSize: '13px' }}>등록된 Lot이 없습니다. "📦 재고 등록"으로 추가하세요.</div>}
+            </div>
+          </div>
+
+          {/* 기본정보 */}
+          <div style={cardStyle}>
+            <div style={{ ...cardHeadStyle, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              기본정보
+              {reagent?.pending_confirm && (
+                <span title="실사 반영됨 · 최종 확정 대기 중" style={{ fontSize: '10px', fontWeight: '700', color: '#1565C0', background: '#E3F2FD', padding: '1px 6px', borderRadius: '8px' }}>검토대기</span>
+              )}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px', padding: '18px 20px' }}>
+              {fieldRows.map(([field, label, value, source]) => {
+                const pending = pendingChanges.find(p => p.field_name === field)
+                const isEditing = editMode && editingField === field
+                return (
+                  <div key={field} style={{ background: pending ? '#FBF0DF' : 'transparent', borderRadius: '8px', padding: pending ? '8px 10px' : 0, margin: pending ? '-8px -10px' : 0 }}>
+                    {pending && (
+                      <div style={{ fontSize: '10.5px', color: '#8A5A16', marginBottom: '3px', fontWeight: '600' }}>
+                        {isAdmin ? `${pending.requested_by} 제안 · 대기중` : '수정 제안됨 · 대기중'}
+                      </div>
+                    )}
+                    <div style={{ fontSize: '11px', color: C.muted, marginBottom: '4px' }}>{label}</div>
+                    {isEditing && field === 'company' ? (
+                      <CompanyPicker value={editingValue} onChange={setEditingValue}
+                        onPick={v => saveField(field, v, source ? `${field}_source` : null)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveField(field, editingValue, source ? `${field}_source` : null) }}
+                        onBlur={() => saveField(field, editingValue, source ? `${field}_source` : null)}
+                        style={{ ...inputStyle, padding: '4px 8px', fontSize: '13px' }} />
+                    ) : isEditing ? (
+                      <input autoFocus value={editingValue} onChange={e => setEditingValue(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveField(field, editingValue, source ? `${field}_source` : null) }}
+                        onBlur={() => saveField(field, editingValue, source ? `${field}_source` : null)}
+                        style={{ ...inputStyle, padding: '4px 8px', fontSize: '13px' }} />
+                    ) : (
+                      <div style={{ fontSize: '13.5px', color: C.text, cursor: editMode ? 'text' : 'default' }}
+                        onClick={() => { if (editMode) { setEditingField(field); setEditingValue(value || '') } }}>
+                        {value || '-'}
+                        {source === 'auto_ghs' && (
+                          <span title="국가유해물질정보 자동조회로 채워졌어요" style={{ marginLeft: '6px', fontSize: '9.5px', color: C.muted, background: '#F3F4F6', padding: '1px 6px', borderRadius: '8px' }}>🔎 MSDS 자동조회</span>
+                        )}
+                        {pending && <span style={{ marginLeft: '6px', fontSize: '11px', color: '#8A5A16' }}>→ {pending.new_value}</span>}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
 
