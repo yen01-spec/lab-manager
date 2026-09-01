@@ -37,8 +37,8 @@ const ReagentRow = memo(function ReagentRow({
   return (
     <Fragment>
       <tr
-        onClick={e => editMode ? onToggleCheck(r.id, e, data) : onRowClick(r, canExpand)}
-        title={!editMode ? (canExpand ? '한 번 클릭: Lot 목록 펼치기 · 더블클릭: 상세페이지' : '더블클릭: 상세페이지') : ''}
+        onClick={e => editMode ? onToggleCheck(r.id, e, data) : onRowClick(r)}
+        title={!editMode ? '클릭: 상세페이지' + (canExpand ? ' · ▸ 아이콘: Lot 목록 펼치기' : '') : ''}
         style={{
           background: isSelected ? selectedBg : baseBg,
           cursor: 'pointer',

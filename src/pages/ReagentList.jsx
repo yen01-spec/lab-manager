@@ -5,8 +5,10 @@ import { C, PageBanner, Card } from '../design'
 import { exportReagents } from '../exportUtils'
 import { lookupStudent, writeSession } from '../lib/session'
 import { useReagentSearch } from '../hooks/useReagentSearch'
+import { useBreakpoint } from '../hooks/useBreakpoint'
 import AlphabetIndex from '../components/reagents/AlphabetIndex'
 import ReagentTable from '../components/reagents/ReagentTable'
+import MobileReagentCard from '../components/reagents/MobileReagentCard'
 import ReagentToolbar from '../components/reagents/ReagentToolbar'
 import ReagentFilters from '../components/reagents/ReagentFilters'
 import BulkMoveModal from '../components/reagents/BulkMoveModal'
@@ -18,6 +20,7 @@ export default function ReagentList() {
   const { isAdmin, student, applySession } = useOutletContext?.() || {}
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { isMobile } = useBreakpoint()
 
   const {
     locations, search, setSearch, roomFilter, setRoomFilter, detailFilter, setDetailFilter,
@@ -30,9 +33,6 @@ export default function ReagentList() {
     lot: false, expiry: false, category: false, ghs: false, status: false,
   })
   const alphabetRefs = useRef({})
-  const rowClickTimerRef = useRef(null) // 한 번 클릭(펼치기)/더블클릭(상세페이지) 구분용
-
-  useEffect(() => () => { if (rowClickTimerRef.current) clearTimeout(rowClickTimerRef.current) }, [])
 
   // 편집 모드
   const [editMode, setEditMode] = useState(false)
@@ -61,7 +61,12 @@ export default function ReagentList() {
   const [newReagentForm, setNewReagentForm] = useState({
     name: '', cas_no: '', company: '', category: '', volume: '', unit: '',
     cat_no: '', lot_no: '', location_id: '', sealed_count: '1', current_stock: '100',
+    reagent_id: null,
   })
+  // 시약명을 입력하고 칸을 벗어나면(blur) 카탈로그에서 같은 이름을 찾아 후보로 보여줌 —
+  // 이미 있는 시약을 모르고 또 새로 등록하는 걸 막기 위함(재고실사/관리자 시약추가에
+  // 이미 있는 "기존 시약에 Lot 추가" 흐름을 신규 시약 등록 모달에도 동일하게 적용).
+  const [dupCandidates, setDupCandidates] = useState([])
   const [madeForm, setMadeForm] = useState({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
   // 등록하기를 눌렀는데 로그인이 안 되어 있으면, 별도 로그인 버튼으로 보내는 대신
   // 이 모달 안에서 바로 학번/생년월일/이름을 확인 → 맞으면 로그인 처리와 동시에
@@ -286,26 +291,55 @@ export default function ReagentList() {
     fetchResults()
   }
 
+  // 시약명을 입력하고 칸을 벗어나면 카탈로그에서 같은 이름을 찾아 후보로 보여줌 —
+  // "이미 있는 시약인데 모르고 또 등록"하는 걸 막기 위함(재고실사/관리자 시약추가와
+  // 동일한 패턴). 후보를 고르면 나머지 필드가 그 시약 값으로 채워지고 잠기며,
+  // 제출 시 reagents를 또 만들지 않고 그 시약에 새 Lot만 붙인다.
+  async function searchDuplicateReagents() {
+    const term = newReagentForm.name.trim()
+    if (!term) { setDupCandidates([]); return }
+    const { data } = await supabase.from('reagents')
+      .select('id, name, cas_no, company, category, volume, unit, purity')
+      .ilike('name', `%${term}%`).neq('status', 'archived').limit(5)
+    setDupCandidates(data || [])
+  }
+  function pickDuplicateReagent(r) {
+    setNewReagentForm(prev => ({
+      ...prev, name: r.name, cas_no: r.cas_no || '', company: r.company || '',
+      category: r.category || '', volume: r.volume != null ? String(r.volume) : '', unit: r.unit || '',
+      reagent_id: r.id,
+    }))
+    setDupCandidates([])
+  }
+  function clearDuplicateMatch() {
+    setNewReagentForm(prev => ({ ...prev, reagent_id: null }))
+  }
+
   async function submitNewReagent(studentOverride) {
     const activeStudent = studentOverride || student
     if (!newReagentForm.name.trim()) { alert('시약명을 입력해주세요'); return }
     if (!newReagentForm.location_id) { alert('보관 위치를 선택해주세요'); return }
     if (!activeStudent) { setPendingRegisterTab('new'); setShowInlineLogin(true); return }
-    const { data: reagent, error } = await supabase.from('reagents').insert({
-      name: newReagentForm.name, cas_no: newReagentForm.cas_no || null, company: newReagentForm.company || null,
-      category: newReagentForm.category || null, volume: newReagentForm.volume || null, unit: newReagentForm.unit || null,
-      registered_by: activeStudent.student_id, pending_confirm: true,
-    }).select().single()
-    if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
+    let reagentId = newReagentForm.reagent_id
+    if (!reagentId) {
+      const { data: reagent, error } = await supabase.from('reagents').insert({
+        name: newReagentForm.name, cas_no: newReagentForm.cas_no || null, company: newReagentForm.company || null,
+        category: newReagentForm.category || null, volume: newReagentForm.volume || null, unit: newReagentForm.unit || null,
+        registered_by: activeStudent.student_id, pending_confirm: true,
+      }).select().single()
+      if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
+      reagentId = reagent.id
+    }
     await supabase.from('reagent_lots').insert({
-      reagent_id: reagent.id, location_id: newReagentForm.location_id,
+      reagent_id: reagentId, location_id: newReagentForm.location_id,
       lot_no: newReagentForm.lot_no || null, cat_no: newReagentForm.cat_no || null,
       sealed_count: Number(newReagentForm.sealed_count) || 0, current_stock: Number(newReagentForm.current_stock) || 0,
       received_date: new Date().toISOString().split('T')[0], pending_confirm: true,
     })
-    alert('신규 시약이 등록됐어요! 관리자가 최종 확인하기 전까지는 목록에 "검토대기"로 표시돼요.')
+    alert(newReagentForm.reagent_id ? '기존 시약에 새 Lot이 등록됐어요! 관리자가 최종 확인하기 전까지는 "검토대기"로 표시돼요.' : '신규 시약이 등록됐어요! 관리자가 최종 확인하기 전까지는 목록에 "검토대기"로 표시돼요.')
     setShowRegisterModal(false)
-    setNewReagentForm({ name: '', cas_no: '', company: '', category: '', volume: '', unit: '', cat_no: '', lot_no: '', location_id: '', sealed_count: '1', current_stock: '100' })
+    setNewReagentForm({ name: '', cas_no: '', company: '', category: '', volume: '', unit: '', cat_no: '', lot_no: '', location_id: '', sealed_count: '1', current_stock: '100', reagent_id: null })
+    setDupCandidates([])
     fetchResults()
   }
 
@@ -406,23 +440,13 @@ export default function ReagentList() {
     })
   }, [])
 
-  // 한 번 클릭 = Lot/위치별 목록 펼치기, 더블클릭 = 상세페이지 이동.
-  // 펼치기 클릭은 테이블 전체가 리렌더되면서 DOM 노드가 새로 생성돼 브라우저 네이티브
-  // dblclick 감지(같은 노드 기준)가 깨지므로, 클릭 타이밍을 직접 재서 구분한다.
-  const handleRowClick = useCallback((r, canExpand) => {
-    // Lot 개수와 무관하게 더블클릭은 항상 상세페이지로 통일. 한 번 클릭은 펼칠
-    // Lot이 있을 때만 목록을 펼치고, 펼칠 게 없으면(Lot 1개) 아무 동작도 하지 않는다.
-    if (rowClickTimerRef.current) {
-      clearTimeout(rowClickTimerRef.current)
-      rowClickTimerRef.current = null
-      navigate(`/reagents/${r.id}`)
-      return
-    }
-    rowClickTimerRef.current = setTimeout(() => {
-      rowClickTimerRef.current = null
-      if (canExpand) toggleExpand(r.id)
-    }, 250)
-  }, [navigate, toggleExpand])
+  // 행 클릭 = 바로 상세페이지 이동. Lot/위치별 목록 펼치기는 이름 옆 ▸ 아이콘이나
+  // "N병" 배지를 눌러야만 동작(둘 다 stopPropagation으로 행 클릭과 분리돼 있음) —
+  // 예전엔 한 번 클릭=펼치기·더블클릭=상세페이지로 나눴었는데, Lot이 1개뿐인 대부분의
+  // 행에서는 한 번 클릭이 아무 반응도 없는 "죽은 클릭"이 돼서 오히려 헷갈렸음.
+  const handleRowClick = useCallback((r) => {
+    navigate(`/reagents/${r.id}`)
+  }, [navigate])
 
   const scrollToLetter = (letter) => {
     const el = alphabetRefs.current[letter]
@@ -523,7 +547,19 @@ export default function ReagentList() {
           ? <div style={{ textAlign: 'center', padding: '60px 0', color: C.muted, fontSize: '13px' }}>
               {results.length > 0 ? '보유 재고가 있는 시약이 없습니다. "재고 0 포함"을 켜보세요.' : '조건에 맞는 시약이 없습니다.'}
             </div>
-          : (
+          : isMobile ? (
+            // 모바일 — PC의 minWidth:900px 표는 휴대폰에서 계속 가로 스크롤이 생겨
+            // 시약장을 돌아다니며 검색하기 불편함. 카드형 목록으로 대체(관리자 편집
+            // 모드·일괄이동 등 관리 기능은 PC 전용으로 남기고 카드 탭 = 상세페이지,
+            // 체크박스 = 선택목록 담기만 지원).
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {displayResults.map(r => (
+                <MobileReagentCard key={r.id} r={r} locations={locations}
+                  isPicked={pickedIds.has(r.id)} onTogglePick={togglePick}
+                  onOpenDetail={r2 => navigate(`/reagents/${r2.id}`)} />
+              ))}
+            </div>
+          ) : (
             <div style={{ display: 'flex', alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Card noPadding>
@@ -570,6 +606,8 @@ export default function ReagentList() {
           showInlineLogin={showInlineLogin} inlineLoginForm={inlineLoginForm} setInlineLoginForm={setInlineLoginForm}
           inlineLoginError={inlineLoginError} setInlineLoginError={setInlineLoginError}
           inlineLoginLoading={inlineLoginLoading} setPendingRegisterTab={setPendingRegisterTab} setShowInlineLogin={setShowInlineLogin}
+          dupCandidates={dupCandidates} onSearchDuplicates={searchDuplicateReagents}
+          onPickDuplicate={pickDuplicateReagent} onClearDuplicate={clearDuplicateMatch}
           onSubmitInlineLogin={submitInlineLogin} onSubmitNewReagent={submitNewReagent} onSubmitMade={submitMade}
           onClose={() => setShowRegisterModal(false)}
         />

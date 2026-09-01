@@ -12,6 +12,7 @@ export default function RegisterReagentModal({
   locations,
   showInlineLogin, inlineLoginForm, setInlineLoginForm, inlineLoginError, setInlineLoginError,
   inlineLoginLoading, setPendingRegisterTab, setShowInlineLogin,
+  dupCandidates, onSearchDuplicates, onPickDuplicate, onClearDuplicate,
   onSubmitInlineLogin, onSubmitNewReagent, onSubmitMade, onClose,
 }) {
   return (
@@ -81,30 +82,65 @@ export default function RegisterReagentModal({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={labelStyle}>시약명 *</label>
-                <input value={newReagentForm.name} onChange={e => setNewReagentForm({ ...newReagentForm, name: e.target.value })} placeholder="예) Acetone" style={inputStyle} />
+                <input value={newReagentForm.name}
+                  onChange={e => setNewReagentForm({ ...newReagentForm, name: e.target.value, reagent_id: null })}
+                  onBlur={onSearchDuplicates} placeholder="예) Acetone" style={inputStyle} />
+                {dupCandidates?.length > 0 && (
+                  <div style={{ marginTop: '8px', border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
+                    <div style={{ padding: '6px 10px', fontSize: '11px', color: '#92400E', background: '#FFF8E7' }}>
+                      이미 등록된 시약이 있어요 — 같은 제품이면 골라서 새 Lot(병)만 추가하세요.
+                    </div>
+                    {dupCandidates.map(c => (
+                      <div key={c.id} onClick={() => onPickDuplicate(c)}
+                        style={{ padding: '8px 10px', cursor: 'pointer', borderTop: `1px solid ${C.border}`, fontSize: '12.5px' }}
+                        onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                        onMouseLeave={e => e.currentTarget.style.background = C.white}>
+                        <div style={{ fontWeight: '600', color: C.navy }}>{c.name}</div>
+                        <div style={{ color: C.muted, fontSize: '11.5px', marginTop: '2px' }}>
+                          {[c.company, c.cas_no, c.volume ? `${c.volume}${c.unit || ''}` : null, c.category].filter(Boolean).join(' · ') || '-'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {newReagentForm.reagent_id && (
+                  <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', padding: '8px 10px' }}>
+                    <span style={{ fontSize: '12px', color: '#276749' }}>✓ 기존 시약에 새 Lot만 추가돼요(기본 정보는 그대로 씀)</span>
+                    <button type="button" onClick={onClearDuplicate}
+                      style={{ background: 'none', border: 'none', color: '#276749', textDecoration: 'underline', cursor: 'pointer', fontSize: '11.5px', flexShrink: 0, marginLeft: '8px' }}>
+                      다른 시약이에요
+                    </button>
+                  </div>
+                )}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <div>
                   <label style={labelStyle}>CAS No.</label>
-                  <input value={newReagentForm.cas_no} onChange={e => setNewReagentForm({ ...newReagentForm, cas_no: e.target.value })} style={inputStyle} />
+                  <input value={newReagentForm.cas_no} disabled={!!newReagentForm.reagent_id} onChange={e => setNewReagentForm({ ...newReagentForm, cas_no: e.target.value })}
+                    style={{ ...inputStyle, background: newReagentForm.reagent_id ? C.bg : C.white }} />
                 </div>
                 <div>
                   <label style={labelStyle}>제조사</label>
-                  <CompanyPicker value={newReagentForm.company} onChange={v => setNewReagentForm({ ...newReagentForm, company: v })} style={inputStyle} />
+                  <CompanyPicker value={newReagentForm.company} disabled={!!newReagentForm.reagent_id} onChange={v => setNewReagentForm({ ...newReagentForm, company: v })}
+                    style={{ background: newReagentForm.reagent_id ? C.bg : C.white }} />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                 <div>
                   <label style={labelStyle}>성상</label>
-                  <input value={newReagentForm.category} onChange={e => setNewReagentForm({ ...newReagentForm, category: e.target.value })} placeholder="액체/고체" style={inputStyle} />
+                  <input value={newReagentForm.category} disabled={!!newReagentForm.reagent_id} onChange={e => setNewReagentForm({ ...newReagentForm, category: e.target.value })} placeholder="액체/고체"
+                    style={{ ...inputStyle, background: newReagentForm.reagent_id ? C.bg : C.white }} />
                 </div>
                 <div>
                   <label style={labelStyle}>용량</label>
-                  <input value={newReagentForm.volume} onChange={e => setNewReagentForm({ ...newReagentForm, volume: e.target.value })} placeholder="500" style={inputStyle} />
+                  <input value={newReagentForm.volume} disabled={!!newReagentForm.reagent_id} onChange={e => setNewReagentForm({ ...newReagentForm, volume: e.target.value })} placeholder="500"
+                    style={{ ...inputStyle, background: newReagentForm.reagent_id ? C.bg : C.white }} />
                 </div>
                 <div>
                   <label style={labelStyle}>단위</label>
-                  <input value={newReagentForm.unit} onChange={e => setNewReagentForm({ ...newReagentForm, unit: e.target.value })} placeholder="mL" style={inputStyle} />
+                  <input value={newReagentForm.unit} disabled={!!newReagentForm.reagent_id} onChange={e => setNewReagentForm({ ...newReagentForm, unit: e.target.value })} placeholder="mL"
+                    style={{ ...inputStyle, background: newReagentForm.reagent_id ? C.bg : C.white }} />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>

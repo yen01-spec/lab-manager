@@ -1,10 +1,32 @@
+import { useEffect, useRef, useState } from 'react'
 import { C } from '../../design'
 
-// 위치 필터(방 탭 + 세부위치 알약) + 표시 열 선택 체크박스 줄.
+const COL_ITEMS = [
+  ['casNo', 'CAS'], ['company', '제조사'], ['volume', '규격'], ['stock', '재고'],
+  ['location', '위치'], ['lastConfirmed', '최근확인'],
+]
+const COL_ITEMS_EXTRA = [
+  ['lot', 'Lot No.'], ['expiry', '유효기간'], ['category', '성상'], ['ghs', 'GHS'], ['status', '상태'],
+]
+
+// 위치 필터(방 탭 + 세부위치 알약) + 표시 열 선택 버튼(누르면 체크 목록이 드롭다운으로 열림).
 export default function ReagentFilters({
   rooms, roomFilter, setRoomFilter, detailFilter, setDetailFilter, locations,
   visibleCols, setVisibleCols, onResetFilters,
 }) {
+  const [colMenuOpen, setColMenuOpen] = useState(false)
+  const colMenuRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (colMenuRef.current && !colMenuRef.current.contains(e.target)) setColMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const visibleCount = Object.values(visibleCols).filter(Boolean).length
+
   return (
     <>
       {/* 위치 필터: 방(room) 밑줄 탭 + 세부위치가 있는 방이면 알약 버튼으로 한 단계 더 좁힘 */}
@@ -43,47 +65,44 @@ export default function ReagentFilters({
         )}
       </div>
 
-      {/* 표시 열 선택 (기본 열 + 선택 열) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '2px 4px 12px', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '11.5px', color: C.muted }}>시약명·순도(고정)</span>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-          <input type="checkbox" checked={visibleCols.casNo} onChange={() => setVisibleCols(v => ({ ...v, casNo: !v.casNo }))} />CAS
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-          <input type="checkbox" checked={visibleCols.company} onChange={() => setVisibleCols(v => ({ ...v, company: !v.company }))} />제조사
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-          <input type="checkbox" checked={visibleCols.volume} onChange={() => setVisibleCols(v => ({ ...v, volume: !v.volume }))} />규격
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-          <input type="checkbox" checked={visibleCols.stock} onChange={() => setVisibleCols(v => ({ ...v, stock: !v.stock }))} />재고
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-          <input type="checkbox" checked={visibleCols.location} onChange={() => setVisibleCols(v => ({ ...v, location: !v.location }))} />위치
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-          <input type="checkbox" checked={visibleCols.lastConfirmed} onChange={() => setVisibleCols(v => ({ ...v, lastConfirmed: !v.lastConfirmed }))} />최근확인
-        </label>
-        <div style={{ width: '1px', alignSelf: 'stretch', background: C.border }} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-          <input type="checkbox" checked={visibleCols.lot} onChange={() => setVisibleCols(v => ({ ...v, lot: !v.lot }))} />Lot No.
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-          <input type="checkbox" checked={visibleCols.expiry} onChange={() => setVisibleCols(v => ({ ...v, expiry: !v.expiry }))} />유효기간
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-          <input type="checkbox" checked={visibleCols.category} onChange={() => setVisibleCols(v => ({ ...v, category: !v.category }))} />성상
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-          <input type="checkbox" checked={visibleCols.ghs} onChange={() => setVisibleCols(v => ({ ...v, ghs: !v.ghs }))} />GHS
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.text, cursor: 'pointer' }}>
-          <input type="checkbox" checked={visibleCols.status} onChange={() => setVisibleCols(v => ({ ...v, status: !v.status }))} />상태
-        </label>
-        <button onClick={onResetFilters} style={{
-          background: 'none', border: `1px solid ${C.border}`, borderRadius: '6px',
-          padding: '4px 10px', cursor: 'pointer', fontSize: '11.5px', color: C.muted,
-        }}>필터 초기화</button>
+      {/* 표시 열 선택 — 기본은 "시약명·순도(고정)"만 보이고, 버튼을 눌러야 나머지 체크 목록이 열림 */}
+      <div ref={colMenuRef} style={{ position: 'relative', marginBottom: '12px' }}>
+        <button onClick={() => setColMenuOpen(v => !v)} style={{
+          display: 'flex', alignItems: 'center', gap: '6px',
+          background: colMenuOpen ? C.bg : C.white, border: `1px solid ${C.border}`,
+          borderRadius: '8px', padding: '6px 12px', cursor: 'pointer',
+          fontSize: '12.5px', color: C.text, fontWeight: '600',
+        }}>
+          ⚙️ 표시 항목 <span style={{ color: C.muted, fontWeight: '400' }}>({visibleCount}개 표시 중)</span>
+          <span style={{ fontSize: '10px', color: C.muted }}>{colMenuOpen ? '▲' : '▼'}</span>
+        </button>
+        {colMenuOpen && (
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 200,
+            background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '12px 14px', minWidth: '260px',
+          }}>
+            <div style={{ fontSize: '11px', color: C.muted, marginBottom: '8px' }}>시약명·순도는 항상 고정으로 표시돼요</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
+              {COL_ITEMS.map(([key, label]) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12.5px', color: C.text, cursor: 'pointer', minWidth: '80px' }}>
+                  <input type="checkbox" checked={visibleCols[key]} onChange={() => setVisibleCols(v => ({ ...v, [key]: !v[key] }))} />{label}
+                </label>
+              ))}
+            </div>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
+              {COL_ITEMS_EXTRA.map(([key, label]) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12.5px', color: C.text, cursor: 'pointer', minWidth: '80px' }}>
+                  <input type="checkbox" checked={visibleCols[key]} onChange={() => setVisibleCols(v => ({ ...v, [key]: !v[key] }))} />{label}
+                </label>
+              ))}
+            </div>
+            <button onClick={onResetFilters} style={{
+              background: 'none', border: `1px solid ${C.border}`, borderRadius: '6px',
+              padding: '4px 10px', cursor: 'pointer', fontSize: '11.5px', color: C.muted, width: '100%',
+            }}>필터 초기화</button>
+          </div>
+        )}
       </div>
     </>
   )
