@@ -1,22 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../supabase'
 
-const GHS_MAP = [
-  { keywords: ['인화', '발화', '가연', 'flammable', 'flame'],        emoji: '🔥', label: '인화성' },
-  { keywords: ['독성', '독극', 'toxic', 'poison', '독'],              emoji: '💀', label: '독성' },
-  { keywords: ['부식', '산', '염기', 'corrosive', 'acid', 'base'],    emoji: '🧪', label: '부식성' },
-  { keywords: ['폭발', 'explosi', '폭'],                              emoji: '💥', label: '폭발성' },
-  { keywords: ['산화', 'oxidiz', 'oxidis'],                           emoji: '🔶', label: '산화성' },
-  { keywords: ['가스', '고압', 'gas', 'pressure'],                    emoji: '🫧', label: '고압가스' },
-  { keywords: ['자극', '경고', 'irritant', 'warning', '유해'],        emoji: '⚠️', label: '유해성' },
-  { keywords: ['환경', '수생', 'environment', 'aquatic'],             emoji: '🌊', label: '환경유해' },
-  { keywords: ['발암', '생식', '변이', 'carcinogen', 'mutagen'],      emoji: '☣️', label: '발암성' },
-]
+// 국가유해물질정보(KECO) GHS 조회 API의 공식 픽토그램 코드(pctgrmCd) → 표시용 매핑.
+// ReagentDetail.jsx의 GHS_PICTOGRAM_MAP과 동일 — 목록 화면 전용 훅이라 별도 파일에 둠.
+const GHS_PICTOGRAM_MAP = {
+  GHS01: { emoji: '💥', label: '폭발성' },
+  GHS02: { emoji: '🔥', label: '인화성' },
+  GHS03: { emoji: '🔥', label: '산화성' },
+  GHS04: { emoji: '🫧', label: '고압가스' },
+  GHS05: { emoji: '🧪', label: '부식성' },
+  GHS06: { emoji: '💀', label: '급성독성' },
+  GHS07: { emoji: '⚠️', label: '유해성·자극성' },
+  GHS08: { emoji: '☣️', label: '건강유해성' },
+  GHS09: { emoji: '🌊', label: '환경유해성' },
+}
 
-function getGhsEmojis(hazard) {
-  if (!hazard) return []
-  const lower = hazard.toLowerCase()
-  return GHS_MAP.filter(g => g.keywords.some(k => lower.includes(k)))
+function getGhsPictograms(codes) {
+  if (!codes) return []
+  return codes.split('^').filter(Boolean).map(code => ({ code, ...(GHS_PICTOGRAM_MAP[code] || { emoji: '❓', label: code }) }))
 }
 
 // Lot 필터링/평균 계산/GHS 매칭처럼 시약 데이터 자체(Lot 목록·유해성 문구)에만 좌우되고
@@ -39,7 +40,7 @@ function enrichReagent(r) {
     _avgStock: avgStock,
     _isLow: isLow,
     _hasPendingConfirm: hasPendingConfirm,
-    _ghsList: getGhsEmojis(r.hazard),
+    _ghsList: getGhsPictograms(r.ghs_pictograms),
     _onlyLot: activeLots.length === 1 ? activeLots[0] : null,
     _canExpand: allLots.length > 1,
     _activeLocIds: activeLocIds,
@@ -84,7 +85,7 @@ export function useReagentSearch({ initialSearch = '' } = {}) {
     // 통째로 가져와서(안 쓰는 locations(*) join 포함) 1,500여 개 시약 응답이 5MB가
     // 넘었음. 그게 페이지 진입마다 체감되는 지연의 큰 원인이라 필요한 것만 좁힘.
     let query = supabase.from('reagents')
-      .select('id, name, cas_no, company, purity, volume, unit, category, hazard, reagent_type, pending_confirm, msds_url, last_confirmed_at, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no, expiry_date, cat_no, pending_confirm)', { count: 'exact' })
+      .select('id, name, cas_no, company, purity, volume, unit, category, hazard, ghs_pictograms, reagent_type, pending_confirm, msds_url, last_confirmed_at, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no, expiry_date, cat_no, pending_confirm)', { count: 'exact' })
       .neq('status', 'archived')
     if (search.trim()) query = query.or(`name.ilike.%${search.trim()}%,cas_no.ilike.%${search.trim()}%`)
     // detailFilter(특정 위치 하나) > roomFilter(그 방에 속한 모든 위치) > 전체(필터 없음) 순.

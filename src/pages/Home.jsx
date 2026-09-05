@@ -41,7 +41,7 @@ export default function Home() {
   }
 
   const FIELD_LABELS = {
-    cas_no: 'CAS 번호', company: '제조사', category: '유별/성질', volume: '용량',
+    cas_no: 'CAS 번호', company: '제조사', category: '성상', volume: '용량',
     manager: '담당자', msds_url: 'MSDS URL', notes: '비고', name: '시약명',
     sealed_count: '미개봉 병 수', current_stock: '잔량',
   }

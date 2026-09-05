@@ -43,7 +43,7 @@ export default function ChangeRequestTab({ student }) {
     fetchRequests()
   }
 
-  const fieldLabels = { name: '시약명', volume: '용량', unit: '단위', category: '성상/유별', hazard: '유해위험성', cas_no: 'CAS No.', company: '회사', manager: '담당자', msds_url: 'MSDS URL', notes: '비고' }
+  const fieldLabels = { name: '시약명', volume: '용량', unit: '단위', category: '성상', hazard: '유해위험성', cas_no: 'CAS No.', company: '회사', manager: '담당자', msds_url: 'MSDS URL', notes: '비고' }
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter)
   const counts = { all: requests.length, pending: 0, approved: 0, rejected: 0 }
   requests.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++ })

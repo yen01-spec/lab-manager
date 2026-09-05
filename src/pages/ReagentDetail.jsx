@@ -4,25 +4,27 @@ import { supabase } from '../supabase'
 import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../design'
 import CompanyPicker from '../components/CompanyPicker'
 
-const GHS_MAP = [
-  { keywords: ['인화', '발화', '가연', 'flammable', 'flame'],        emoji: '🔥', label: '인화성' },
-  { keywords: ['독성', '독극', 'toxic', 'poison', '독'],              emoji: '💀', label: '독성' },
-  { keywords: ['부식', '산', '염기', 'corrosive', 'acid', 'base'],    emoji: '🧪', label: '부식성' },
-  { keywords: ['폭발', 'explosi', '폭'],                              emoji: '💥', label: '폭발성' },
-  { keywords: ['산화', 'oxidiz', 'oxidis'],                           emoji: '🔶', label: '산화성' },
-  { keywords: ['가스', '고압', 'gas', 'pressure'],                    emoji: '🫧', label: '고압가스' },
-  { keywords: ['자극', '경고', 'irritant', 'warning', '유해'],        emoji: '⚠️', label: '유해성' },
-  { keywords: ['환경', '수생', 'environment', 'aquatic'],             emoji: '🌊', label: '환경유해' },
-  { keywords: ['발암', '생식', '변이', 'carcinogen', 'mutagen'],      emoji: '☣️', label: '발암성' },
-]
-function getGhsEmojis(hazard) {
-  if (!hazard) return []
-  const lower = hazard.toLowerCase()
-  return GHS_MAP.filter(g => g.keywords.some(k => lower.includes(k)))
+// 국가유해물질정보(KECO) GHS 조회 API가 주는 공식 픽토그램 코드(pctgrmCd) → 표시용 매핑.
+// 예전엔 hazard 텍스트에서 키워드를 추측해서 이모지를 붙였는데, 이 API 응답에 이미
+// 정확한 GHS01~09 코드가 와 있어서(예: "GHS02^GHS07^GHS08") 그걸 그대로 쓴다.
+const GHS_PICTOGRAM_MAP = {
+  GHS01: { emoji: '💥', label: '폭발성' },
+  GHS02: { emoji: '🔥', label: '인화성' },
+  GHS03: { emoji: '🔥', label: '산화성' },
+  GHS04: { emoji: '🫧', label: '고압가스' },
+  GHS05: { emoji: '🧪', label: '부식성' },
+  GHS06: { emoji: '💀', label: '급성독성' },
+  GHS07: { emoji: '⚠️', label: '유해성·자극성' },
+  GHS08: { emoji: '☣️', label: '건강유해성' },
+  GHS09: { emoji: '🌊', label: '환경유해성' },
+}
+function getGhsPictograms(codes) {
+  if (!codes) return []
+  return codes.split('^').filter(Boolean).map(code => ({ code, ...(GHS_PICTOGRAM_MAP[code] || { emoji: '❓', label: code }) }))
 }
 
 const FIELD_LABELS = {
-  name: '시약명', cas_no: 'CAS 번호', company: '제조사', category: '유별/성질', volume: '용량', unit: '단위', hazard: '유해정보',
+  name: '시약명', cas_no: 'CAS 번호', company: '제조사', category: '성상', volume: '용량', unit: '단위', hazard: '유해정보',
   manager: '담당자', msds_url: 'MSDS URL', notes: '비고',
 }
 
@@ -148,10 +150,11 @@ export default function ReagentDetail() {
             const korName = first.sbstnNmKor || ''
             const isYudok = first.sbstnTypeUnqno ? first.sbstnTypeUnqno.split('^')[0] : ''
             const hazard = first.hrmflnList ? first.hrmflnList.map(h => h.hrmflnClsfArtclNm).join(', ') : ''
-            setReagent(prev => ({ ...prev, hazard: prev.hazard || hazard, ghs_live: { korName, isYudok, hazard } }))
+            const pictograms = first.pctgrmCd || ''
+            setReagent(prev => ({ ...prev, hazard: prev.hazard || hazard, ghs_pictograms: prev.ghs_pictograms || pictograms, ghs_live: { korName, isYudok, hazard, pictograms } }))
             if (!data.hazard && hazard) {
-              await supabase.from('reagents').update({ hazard, hazard_source: 'auto_ghs' }).eq('id', id)
-              setReagent(prev => ({ ...prev, hazard, hazard_source: 'auto_ghs' }))
+              await supabase.from('reagents').update({ hazard, hazard_source: 'auto_ghs', ghs_pictograms: pictograms }).eq('id', id)
+              setReagent(prev => ({ ...prev, hazard, hazard_source: 'auto_ghs', ghs_pictograms: pictograms }))
             }
           }
         }
@@ -397,14 +400,14 @@ export default function ReagentDetail() {
   if (loading) return <div style={{ padding: '60px', textAlign: 'center', color: C.muted }}>불러오는 중...</div>
   if (!reagent) return <div style={{ padding: '60px', textAlign: 'center', color: C.muted }}>시약을 찾을 수 없습니다.</div>
 
-  const ghsList = getGhsEmojis(reagent.hazard || reagent.ghs_live?.hazard)
+  const ghsList = getGhsPictograms(reagent.ghs_pictograms || reagent.ghs_live?.pictograms)
   const cardStyle = { background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 1px 3px rgba(16,24,40,.06)', overflow: 'hidden' }
   const cardHeadStyle = { padding: '14px 20px', borderBottom: `1px solid ${C.border}`, fontSize: '13.5px', fontWeight: '700', color: C.navy }
 
   const fieldRows = [
     ['cas_no', 'CAS 번호', reagent.cas_no, reagent.cas_source],
     ['company', '제조사', reagent.company, reagent.company_source],
-    ['category', '유별/성질', reagent.category, reagent.category_source],
+    ['category', '성상', reagent.category, reagent.category_source],
     ['volume', '용량', reagent.volume ? `${reagent.volume} ${reagent.unit || ''}` : '', reagent.volume_source],
     ['hazard', '유해정보', reagent.hazard, reagent.hazard_source],
   ]
@@ -612,7 +615,7 @@ export default function ReagentDetail() {
               {ghsList.length > 0 && (
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {ghsList.map(g => (
-                    <span key={g.label} style={{ background: '#FDECEC', color: '#C13B3F', fontSize: '11px', fontWeight: '700', padding: '4px 10px', borderRadius: '999px' }}>{g.emoji} {g.label}</span>
+                    <span key={g.code} title={g.code} style={{ background: '#FDECEC', color: '#C13B3F', fontSize: '11px', fontWeight: '700', padding: '4px 10px', borderRadius: '999px' }}>{g.emoji} {g.label}</span>
                   ))}
                 </div>
               )}

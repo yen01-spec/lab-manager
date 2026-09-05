@@ -245,7 +245,7 @@ try {
         <div><label style={labelStyle}>유해·위험성</label>
           <input value={form.hazard} placeholder="예: 인화성 액체"
             onChange={e => setForm({ ...form, hazard: e.target.value })} style={inputStyle} /></div>
-        <div><label style={labelStyle}>유별/성질</label>
+        <div><label style={labelStyle}>성상</label>
           <input value={form.category} placeholder="예: 액체"
             onChange={e => setForm({ ...form, category: e.target.value })} style={inputStyle} /></div>
         <div><label style={labelStyle}>용량</label>
