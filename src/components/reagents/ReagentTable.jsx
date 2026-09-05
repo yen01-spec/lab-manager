@@ -22,7 +22,7 @@ export default function ReagentTable({
     + (visibleCols.casNo ? 1 : 0) + (visibleCols.company ? 1 : 0) + (visibleCols.volume ? 1 : 0)
     + (visibleCols.stock ? 1 : 0) + (visibleCols.location ? 1 : 0) + (visibleCols.lastConfirmed ? 1 : 0)
     + (visibleCols.lot ? 1 : 0) + (visibleCols.expiry ? 1 : 0)
-    + (visibleCols.category ? 1 : 0) + (visibleCols.ghs ? 1 : 0) + (visibleCols.status ? 1 : 0)
+    + (visibleCols.category ? 1 : 0) + (visibleCols.fireClass ? 1 : 0) + (visibleCols.ghs ? 1 : 0) + (visibleCols.status ? 1 : 0)
 
   const groups = getGroupedReagents(data)
   const letters = Object.keys(groups).sort()
@@ -71,6 +71,7 @@ export default function ReagentTable({
             ...(visibleCols.lot ? ['Lot No.'] : []),
             ...(visibleCols.expiry ? ['유효기간'] : []),
             ...(visibleCols.category ? ['성상'] : []),
+            ...(visibleCols.fireClass ? ['위험물유별'] : []),
             ...(visibleCols.ghs ? ['GHS'] : []),
             ...(visibleCols.lastConfirmed ? ['최근확인'] : []),
             ...(visibleCols.status ? ['상태'] : []),

@@ -6,14 +6,17 @@ const COL_ITEMS = [
   ['location', '위치'], ['lastConfirmed', '최근확인'],
 ]
 const COL_ITEMS_EXTRA = [
-  ['lot', 'Lot No.'], ['expiry', '유효기간'], ['category', '성상'], ['ghs', 'GHS'], ['status', '상태'],
+  ['lot', 'Lot No.'], ['expiry', '유효기간'], ['category', '성상'], ['fireClass', '위험물유별'], ['ghs', 'GHS'], ['status', '상태'],
 ]
+// 위험물안전관리법 유별 — 학교 "성상별 분류 방법" 문서 기준 고정 목록(제1류~6류)
+const FIRE_CLASSES = ['제1류', '제2류', '제3류', '제4류', '제5류', '제6류']
 
 // 위치 필터(방 탭 + 세부위치 알약) + 표시 열 선택 버튼(누르면 체크 목록이 드롭다운으로 열림).
 export default function ReagentFilters({
   rooms, roomFilter, setRoomFilter, detailFilter, setDetailFilter, locations,
   visibleCols, setVisibleCols, onResetFilters,
   hazardClassOptions = [], hazardClassFilter, setHazardClassFilter,
+  fireClassFilter, setFireClassFilter,
 }) {
   const [colMenuOpen, setColMenuOpen] = useState(false)
   const colMenuRef = useRef(null)
@@ -35,6 +38,14 @@ export default function ReagentFilters({
     setHazardClassFilter(prev => {
       const next = new Set(prev)
       next.has(name) ? next.delete(name) : next.add(name)
+      return next
+    })
+  }
+
+  function toggleFireClass(cls) {
+    setFireClassFilter(prev => {
+      const next = new Set(prev)
+      next.has(cls) ? next.delete(cls) : next.add(cls)
       return next
     })
   }
@@ -78,7 +89,7 @@ export default function ReagentFilters({
       </div>
 
       {/* 표시 열 선택 — 기본은 "시약명·순도(고정)"만 보이고, 버튼을 눌러야 나머지 체크 목록이 열림 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
       <div ref={colMenuRef} style={{ position: 'relative' }}>
         <button onClick={() => setColMenuOpen(v => !v)} style={{
           display: 'flex', alignItems: 'center', gap: '6px',
@@ -150,6 +161,17 @@ export default function ReagentFilters({
             }}>선택 초기화</button>
           </div>
         )}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <span style={{ fontSize: '11px', color: C.muted, marginRight: '2px' }}>위험물유별</span>
+        {FIRE_CLASSES.map(cls => (
+          <button key={cls} onClick={() => toggleFireClass(cls)} style={{
+            padding: '4px 10px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
+            border: `1px solid ${fireClassFilter.has(cls) ? '#C13B3F' : C.border}`,
+            background: fireClassFilter.has(cls) ? '#FDECEC' : C.white,
+            color: fireClassFilter.has(cls) ? '#C13B3F' : C.text, fontWeight: fireClassFilter.has(cls) ? '700' : '400',
+          }}>{cls}</button>
+        ))}
       </div>
       </div>
     </>

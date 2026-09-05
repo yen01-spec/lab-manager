@@ -3,6 +3,7 @@ import { useParams, useOutletContext, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../design'
 import CompanyPicker from '../components/CompanyPicker'
+import { getHazardCategory } from '../lib/hazardCategory'
 
 // 국가유해물질정보(KECO) GHS 조회 API가 주는 공식 픽토그램 코드(pctgrmCd) → 표시용 매핑.
 // 예전엔 hazard 텍스트에서 키워드를 추측해서 이모지를 붙였는데, 이 API 응답에 이미
@@ -417,6 +418,7 @@ export default function ReagentDetail() {
   if (!reagent) return <div style={{ padding: '60px', textAlign: 'center', color: C.muted }}>시약을 찾을 수 없습니다.</div>
 
   const ghsList = getGhsPictograms(reagent.ghs_pictograms || reagent.ghs_live?.pictograms)
+  const hazardCategoryInfo = getHazardCategory(reagent.hazard_classifications || reagent.ghs_live?.classifications)
   const cardStyle = { background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 1px 3px rgba(16,24,40,.06)', overflow: 'hidden' }
   const cardHeadStyle = { padding: '14px 20px', borderBottom: `1px solid ${C.border}`, fontSize: '13.5px', fontWeight: '700', color: C.navy }
 
@@ -628,6 +630,18 @@ export default function ReagentDetail() {
           <div style={cardStyle}>
             <div style={cardHeadStyle}>안전정보</div>
             <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {hazardCategoryInfo.category !== '일반' && (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ background: '#EEF2FB', color: C.navy, fontSize: '11px', fontWeight: '700', padding: '4px 10px', borderRadius: '999px' }}>
+                    성상구분: {hazardCategoryInfo.category}
+                  </span>
+                  {hazardCategoryInfo.fireSafetyClass && (
+                    <span title="위험물안전관리법" style={{ background: '#FDECEC', color: '#C13B3F', fontSize: '11px', fontWeight: '700', padding: '4px 10px', borderRadius: '999px' }}>
+                      위험물 {hazardCategoryInfo.fireSafetyClass}
+                    </span>
+                  )}
+                </div>
+              )}
               {ghsList.length > 0 && (
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {ghsList.map(g => (

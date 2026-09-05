@@ -150,6 +150,13 @@ const ReagentRow = memo(function ReagentRow({
               : <span style={{ color: C.muted }}>-</span>}
           </td>
         )}
+        {visibleCols.fireClass && (
+          <td style={{ ...tdStyle, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>
+            {r._fireSafetyClass
+              ? <span style={{ background: '#FDECEC', color: '#C13B3F', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700' }}>{r._fireSafetyClass}</span>
+              : <span style={{ color: C.muted }}>-</span>}
+          </td>
+        )}
         {visibleCols.ghs && (
           <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }} onClick={e => e.stopPropagation()}>
             {ghsList.length > 0
