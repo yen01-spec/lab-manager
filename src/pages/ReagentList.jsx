@@ -32,6 +32,8 @@ export default function ReagentList() {
     casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
     lot: false, expiry: false, category: false, ghs: false, status: false,
   })
+  // 인화성(GHS02) 시약만 보기 — 인화성 시약을 한 시약장에 모으려는 실사용 계획을 위한 필터
+  const [flammableOnly, setFlammableOnly] = useState(false)
   const alphabetRefs = useRef({})
 
   // 편집 모드
@@ -83,6 +85,7 @@ export default function ReagentList() {
       casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
       lot: false, expiry: false, category: false, ghs: false, status: false,
     })
+    setFlammableOnly(false)
   }
 
   // 편집 모드 토글
@@ -457,7 +460,7 @@ export default function ReagentList() {
 
   // 시약 종류(마스터)는 보유중인 Lot이 하나도 없어도(전부 폐기/사용완료) 목록에서 사라지지 않고
   // "보유 0병"으로 계속 표시됨 — 다시 구매해서 재고를 등록할 때 신규 등록할 필요가 없도록
-  const displayResults = results
+  const displayResults = flammableOnly ? results.filter(r => r._ghsList?.some(g => g.code === 'GHS02')) : results
 
   return (
     <div>
@@ -486,6 +489,7 @@ export default function ReagentList() {
           rooms={rooms} roomFilter={roomFilter} setRoomFilter={setRoomFilter}
           detailFilter={detailFilter} setDetailFilter={setDetailFilter} locations={locations}
           visibleCols={visibleCols} setVisibleCols={setVisibleCols} onResetFilters={resetFilters}
+          flammableOnly={flammableOnly} setFlammableOnly={setFlammableOnly}
         />
 
         {/* 편집 모드 액션 바 */}

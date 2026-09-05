@@ -12,7 +12,7 @@ const COL_ITEMS_EXTRA = [
 // 위치 필터(방 탭 + 세부위치 알약) + 표시 열 선택 버튼(누르면 체크 목록이 드롭다운으로 열림).
 export default function ReagentFilters({
   rooms, roomFilter, setRoomFilter, detailFilter, setDetailFilter, locations,
-  visibleCols, setVisibleCols, onResetFilters,
+  visibleCols, setVisibleCols, onResetFilters, flammableOnly, setFlammableOnly,
 }) {
   const [colMenuOpen, setColMenuOpen] = useState(false)
   const colMenuRef = useRef(null)
@@ -66,7 +66,8 @@ export default function ReagentFilters({
       </div>
 
       {/* 표시 열 선택 — 기본은 "시약명·순도(고정)"만 보이고, 버튼을 눌러야 나머지 체크 목록이 열림 */}
-      <div ref={colMenuRef} style={{ position: 'relative', marginBottom: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+      <div ref={colMenuRef} style={{ position: 'relative' }}>
         <button onClick={() => setColMenuOpen(v => !v)} style={{
           display: 'flex', alignItems: 'center', gap: '6px',
           background: colMenuOpen ? C.bg : C.white, border: `1px solid ${C.border}`,
@@ -103,6 +104,14 @@ export default function ReagentFilters({
             }}>필터 초기화</button>
           </div>
         )}
+      </div>
+      <button onClick={() => setFlammableOnly(v => !v)} title="GHS 픽토그램이 인화성(GHS02)인 시약만 표시" style={{
+        display: 'flex', alignItems: 'center', gap: '6px',
+        background: flammableOnly ? '#FDECEC' : C.white,
+        border: `1px solid ${flammableOnly ? '#C13B3F' : C.border}`,
+        borderRadius: '8px', padding: '6px 12px', cursor: 'pointer',
+        fontSize: '12.5px', color: flammableOnly ? '#C13B3F' : C.text, fontWeight: '600',
+      }}>🔥 인화성만 보기</button>
       </div>
     </>
   )
