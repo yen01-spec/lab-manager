@@ -149,12 +149,28 @@ export default function ReagentDetail() {
           if (first) {
             const korName = first.sbstnNmKor || ''
             const isYudok = first.sbstnTypeUnqno ? first.sbstnTypeUnqno.split('^')[0] : ''
-            const hazard = first.hrmflnList ? first.hrmflnList.map(h => h.hrmflnClsfArtclNm).join(', ') : ''
+            // hrmflnList: 유해분류마다 이름/H코드/등급/예방조치문구가 딸린 배열 — "인화성만 보기" 같은
+            // 필터링을 위해 이름만 뽑아 텍스트로 뭉치지 않고 구조 그대로 보존해서 저장한다.
+            const classifications = (first.hrmflnList || []).map(h => ({
+              name: h.hrmflnClsfArtclNm, hCode: h.hrmDngrCd, grade: h.clsfGrd,
+              pCodes: h.hrmPrevntCd ? h.hrmPrevntCd.split('^') : [],
+            }))
+            const hazard = classifications.map(c => c.name).join(', ')
             const pictograms = first.pctgrmCd || ''
-            setReagent(prev => ({ ...prev, hazard: prev.hazard || hazard, ghs_pictograms: prev.ghs_pictograms || pictograms, ghs_live: { korName, isYudok, hazard, pictograms } }))
-            if (!data.hazard && hazard) {
-              await supabase.from('reagents').update({ hazard, hazard_source: 'auto_ghs', ghs_pictograms: pictograms }).eq('id', id)
-              setReagent(prev => ({ ...prev, hazard, hazard_source: 'auto_ghs', ghs_pictograms: pictograms }))
+            setReagent(prev => ({
+              ...prev,
+              hazard: prev.hazard || hazard,
+              ghs_pictograms: prev.ghs_pictograms || pictograms,
+              hazard_classifications: prev.hazard_classifications || classifications,
+              ghs_live: { korName, isYudok, hazard, pictograms, classifications },
+            }))
+            const dbUpdate = {}
+            if (!data.hazard && hazard) { dbUpdate.hazard = hazard; dbUpdate.hazard_source = 'auto_ghs' }
+            if (!data.ghs_pictograms && pictograms) dbUpdate.ghs_pictograms = pictograms
+            if (!data.hazard_classifications && classifications.length > 0) dbUpdate.hazard_classifications = classifications
+            if (Object.keys(dbUpdate).length > 0) {
+              await supabase.from('reagents').update(dbUpdate).eq('id', id)
+              setReagent(prev => ({ ...prev, ...dbUpdate }))
             }
           }
         }

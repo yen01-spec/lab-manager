@@ -12,20 +12,32 @@ const COL_ITEMS_EXTRA = [
 // 위치 필터(방 탭 + 세부위치 알약) + 표시 열 선택 버튼(누르면 체크 목록이 드롭다운으로 열림).
 export default function ReagentFilters({
   rooms, roomFilter, setRoomFilter, detailFilter, setDetailFilter, locations,
-  visibleCols, setVisibleCols, onResetFilters, flammableOnly, setFlammableOnly,
+  visibleCols, setVisibleCols, onResetFilters,
+  hazardClassOptions = [], hazardClassFilter, setHazardClassFilter,
 }) {
   const [colMenuOpen, setColMenuOpen] = useState(false)
   const colMenuRef = useRef(null)
+  const [hazardMenuOpen, setHazardMenuOpen] = useState(false)
+  const hazardMenuRef = useRef(null)
 
   useEffect(() => {
     function handleClickOutside(e) {
       if (colMenuRef.current && !colMenuRef.current.contains(e.target)) setColMenuOpen(false)
+      if (hazardMenuRef.current && !hazardMenuRef.current.contains(e.target)) setHazardMenuOpen(false)
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   const visibleCount = Object.values(visibleCols).filter(Boolean).length
+
+  function toggleHazardClass(name) {
+    setHazardClassFilter(prev => {
+      const next = new Set(prev)
+      next.has(name) ? next.delete(name) : next.add(name)
+      return next
+    })
+  }
 
   return (
     <>
@@ -105,13 +117,40 @@ export default function ReagentFilters({
           </div>
         )}
       </div>
-      <button onClick={() => setFlammableOnly(v => !v)} title="GHS 픽토그램이 인화성(GHS02)인 시약만 표시" style={{
-        display: 'flex', alignItems: 'center', gap: '6px',
-        background: flammableOnly ? '#FDECEC' : C.white,
-        border: `1px solid ${flammableOnly ? '#C13B3F' : C.border}`,
-        borderRadius: '8px', padding: '6px 12px', cursor: 'pointer',
-        fontSize: '12.5px', color: flammableOnly ? '#C13B3F' : C.text, fontWeight: '600',
-      }}>🔥 인화성만 보기</button>
+      <div ref={hazardMenuRef} style={{ position: 'relative' }}>
+        <button onClick={() => setHazardMenuOpen(v => !v)} disabled={hazardClassOptions.length === 0} style={{
+          display: 'flex', alignItems: 'center', gap: '6px',
+          background: hazardClassFilter.size > 0 ? '#FDECEC' : (hazardMenuOpen ? C.bg : C.white),
+          border: `1px solid ${hazardClassFilter.size > 0 ? '#C13B3F' : C.border}`,
+          borderRadius: '8px', padding: '6px 12px', cursor: hazardClassOptions.length === 0 ? 'default' : 'pointer',
+          fontSize: '12.5px', color: hazardClassFilter.size > 0 ? '#C13B3F' : C.text, fontWeight: '600',
+          opacity: hazardClassOptions.length === 0 ? 0.5 : 1,
+        }}>
+          ⚠️ 유해분류 {hazardClassFilter.size > 0 && <span>({hazardClassFilter.size}개 선택)</span>}
+          <span style={{ fontSize: '10px', color: C.muted }}>{hazardMenuOpen ? '▲' : '▼'}</span>
+        </button>
+        {hazardMenuOpen && (
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 200,
+            background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '12px 14px', minWidth: '240px',
+            maxHeight: '280px', overflowY: 'auto',
+          }}>
+            <div style={{ fontSize: '11px', color: C.muted, marginBottom: '8px' }}>현재 검색결과에 있는 유해분류 중에서 골라 필터링</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+              {hazardClassOptions.map(name => (
+                <label key={name} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: C.text, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={hazardClassFilter.has(name)} onChange={() => toggleHazardClass(name)} />{name}
+                </label>
+              ))}
+            </div>
+            <button onClick={() => setHazardClassFilter(new Set())} style={{
+              background: 'none', border: `1px solid ${C.border}`, borderRadius: '6px',
+              padding: '4px 10px', cursor: 'pointer', fontSize: '11.5px', color: C.muted, width: '100%',
+            }}>선택 초기화</button>
+          </div>
+        )}
+      </div>
       </div>
     </>
   )
