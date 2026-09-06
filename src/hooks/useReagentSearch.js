@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../supabase'
 import { getHazardCategory } from '../lib/hazardCategory'
+import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
 
 // 국가유해물질정보(KECO) GHS 조회 API의 공식 픽토그램 코드(pctgrmCd) → 표시용 매핑.
 // ReagentDetail.jsx의 GHS_PICTOGRAM_MAP과 동일 — 목록 화면 전용 훅이라 별도 파일에 둠.
@@ -46,6 +47,7 @@ function enrichReagent(r) {
     _hazardClassNames: (r.hazard_classifications || []).map(c => c.name),
     _hazardCategory: hazardCategory.category,
     _fireSafetyClass: hazardCategory.fireSafetyClass,
+    _specialManagement: getSpecialManagementInfo(r.cas_no),
     _onlyLot: activeLots.length === 1 ? activeLots[0] : null,
     _canExpand: allLots.length > 1,
     _activeLocIds: activeLocIds,

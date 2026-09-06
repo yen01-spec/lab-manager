@@ -30,7 +30,7 @@ export default function ReagentList() {
   const [expandedIds, setExpandedIds] = useState(new Set())
   const [visibleCols, setVisibleCols] = useState({
     casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
-    lot: false, expiry: false, category: false, fireClass: false, ghs: false, status: false,
+    lot: false, expiry: false, category: false, fireClass: false, special: false, ghs: false, status: false,
   })
   // 유해분류(인화성/급성독성 등)로 보기 — 예: 인화성 시약을 한 시약장에 모으려는 계획처럼,
   // 특정 유해분류에 해당하는 시약만 걸러보기 위한 필터. 빈 Set이면 필터 없음.
@@ -38,6 +38,8 @@ export default function ReagentList() {
   // 위험물안전관리법 유별(제1류~6류)로 보기 — 학교 "성상별 분류 방법" 문서 기준으로
   // 유별별 시약장을 실제로 분리할 계획이라, 류 단위로 바로 걸러볼 수 있게 함
   const [fireClassFilter, setFireClassFilter] = useState(new Set())
+  // 특별관리물질(산업안전보건기준에관한 규칙 별표12, 44종)만 보기 — CAS 기준 매칭
+  const [specialOnly, setSpecialOnly] = useState(false)
   const alphabetRefs = useRef({})
 
   // 편집 모드
@@ -87,10 +89,11 @@ export default function ReagentList() {
   function resetFilters() {
     setVisibleCols({
       casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
-      lot: false, expiry: false, category: false, fireClass: false, ghs: false, status: false,
+      lot: false, expiry: false, category: false, fireClass: false, special: false, ghs: false, status: false,
     })
     setHazardClassFilter(new Set())
     setFireClassFilter(new Set())
+    setSpecialOnly(false)
   }
 
   // 편집 모드 토글
@@ -469,6 +472,7 @@ export default function ReagentList() {
   const displayResults = results.filter(r => {
     if (hazardClassFilter.size > 0 && !(r._hazardClassNames || []).some(name => hazardClassFilter.has(name))) return false
     if (fireClassFilter.size > 0 && !fireClassFilter.has(r._fireSafetyClass)) return false
+    if (specialOnly && !r._specialManagement) return false
     return true
   })
 
@@ -501,6 +505,7 @@ export default function ReagentList() {
           visibleCols={visibleCols} setVisibleCols={setVisibleCols} onResetFilters={resetFilters}
           hazardClassOptions={allHazardClassNames} hazardClassFilter={hazardClassFilter} setHazardClassFilter={setHazardClassFilter}
           fireClassFilter={fireClassFilter} setFireClassFilter={setFireClassFilter}
+          specialOnly={specialOnly} setSpecialOnly={setSpecialOnly}
         />
 
         {/* 편집 모드 액션 바 */}

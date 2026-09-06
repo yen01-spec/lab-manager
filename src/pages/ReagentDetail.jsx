@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../design'
 import CompanyPicker from '../components/CompanyPicker'
 import { getHazardCategory } from '../lib/hazardCategory'
+import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
 
 // 국가유해물질정보(KECO) GHS 조회 API가 주는 공식 픽토그램 코드(pctgrmCd) → 표시용 매핑.
 // 예전엔 hazard 텍스트에서 키워드를 추측해서 이모지를 붙였는데, 이 API 응답에 이미
@@ -419,6 +420,7 @@ export default function ReagentDetail() {
 
   const ghsList = getGhsPictograms(reagent.ghs_pictograms || reagent.ghs_live?.pictograms)
   const hazardCategoryInfo = getHazardCategory(reagent.hazard_classifications || reagent.ghs_live?.classifications)
+  const specialInfo = getSpecialManagementInfo(reagent.cas_no)
   const cardStyle = { background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 1px 3px rgba(16,24,40,.06)', overflow: 'hidden' }
   const cardHeadStyle = { padding: '14px 20px', borderBottom: `1px solid ${C.border}`, fontSize: '13.5px', fontWeight: '700', color: C.navy }
 
@@ -630,6 +632,12 @@ export default function ReagentDetail() {
           <div style={cardStyle}>
             <div style={cardHeadStyle}>안전정보</div>
             <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {specialInfo && (
+                <span title="산업안전보건기준에관한 규칙 [별표12] — 특수건강검진 대상, 취급일지 작성 필요" style={{
+                  background: '#FFF3CD', color: '#8A5A16', fontSize: '11px', fontWeight: '700',
+                  padding: '4px 10px', borderRadius: '999px', width: 'fit-content',
+                }}>🚨 특별관리물질 ({specialInfo.threshold})</span>
+              )}
               {hazardCategoryInfo.category !== '일반' && (
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{ background: '#EEF2FB', color: C.navy, fontSize: '11px', fontWeight: '700', padding: '4px 10px', borderRadius: '999px' }}>

@@ -6,7 +6,7 @@ const COL_ITEMS = [
   ['location', '위치'], ['lastConfirmed', '최근확인'],
 ]
 const COL_ITEMS_EXTRA = [
-  ['lot', 'Lot No.'], ['expiry', '유효기간'], ['category', '성상'], ['fireClass', '위험물유별'], ['ghs', 'GHS'], ['status', '상태'],
+  ['lot', 'Lot No.'], ['expiry', '유효기간'], ['category', '성상'], ['fireClass', '위험물유별'], ['special', '특별관리물질'], ['ghs', 'GHS'], ['status', '상태'],
 ]
 // 위험물안전관리법 유별 — 학교 "성상별 분류 방법" 문서 기준 고정 목록(제1류~6류)
 const FIRE_CLASSES = ['제1류', '제2류', '제3류', '제4류', '제5류', '제6류']
@@ -16,7 +16,7 @@ export default function ReagentFilters({
   rooms, roomFilter, setRoomFilter, detailFilter, setDetailFilter, locations,
   visibleCols, setVisibleCols, onResetFilters,
   hazardClassOptions = [], hazardClassFilter, setHazardClassFilter,
-  fireClassFilter, setFireClassFilter,
+  fireClassFilter, setFireClassFilter, specialOnly, setSpecialOnly,
 }) {
   const [colMenuOpen, setColMenuOpen] = useState(false)
   const colMenuRef = useRef(null)
@@ -173,6 +173,13 @@ export default function ReagentFilters({
           }}>{cls}</button>
         ))}
       </div>
+      <button onClick={() => setSpecialOnly(v => !v)} title="산업안전보건기준에관한 규칙 [별표12] 특별관리물질(44종)만 표시" style={{
+        display: 'flex', alignItems: 'center', gap: '6px',
+        background: specialOnly ? '#FDECEC' : C.white,
+        border: `1px solid ${specialOnly ? '#C13B3F' : C.border}`,
+        borderRadius: '8px', padding: '6px 12px', cursor: 'pointer',
+        fontSize: '12.5px', color: specialOnly ? '#C13B3F' : C.text, fontWeight: '600',
+      }}>🚨 특별관리물질만 보기</button>
       </div>
     </>
   )
