@@ -478,8 +478,7 @@ export default function ReagentList() {
 
   return (
     <div>
-      <PageBanner title="시약 목록" sub="Reagent List" breadcrumb={['홈', '시약 관리', '시약 목록']}
-        extra={<span style={{ fontSize: '12px', color: C.muted }}>전체 {totalCount.toLocaleString()}개 · 검색결과 {displayResults.length.toLocaleString()}개</span>} />
+      <PageBanner title="시약 목록" sub="Reagent List" breadcrumb={['홈', '시약 관리', '시약 목록']} />
       <div style={{ padding: '8px 16px' }}>
 
         <ReagentToolbar
@@ -507,6 +506,12 @@ export default function ReagentList() {
           fireClassFilter={fireClassFilter} setFireClassFilter={setFireClassFilter}
           specialOnly={specialOnly} setSpecialOnly={setSpecialOnly}
         />
+
+        {/* 필터를 조작한 시선이 바로 이어지도록, 결과 개수를 필터 바로 아래·표 바로 위에 표시 */}
+        <div style={{ margin: '0 0 12px', fontSize: '14px', color: C.text }}>
+          검색결과 <strong style={{ color: C.navy }}>{displayResults.length.toLocaleString()}개</strong>
+          <span style={{ color: C.muted, fontSize: '12.5px' }}> (전체 {totalCount.toLocaleString()}개)</span>
+        </div>
 
         {/* 편집 모드 액션 바 */}
         {editMode && (
