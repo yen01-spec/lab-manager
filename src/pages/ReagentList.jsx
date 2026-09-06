@@ -30,7 +30,7 @@ export default function ReagentList() {
   const [expandedIds, setExpandedIds] = useState(new Set())
   const [visibleCols, setVisibleCols] = useState({
     casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
-    lot: false, expiry: false, category: false, fireClass: false, special: false, ghs: false, status: false,
+    lot: false, expiry: false, category: false, fireClass: false, special: false, casCheck: false, ghs: false, status: false,
   })
   // 유해분류(인화성/급성독성 등)로 보기 — 예: 인화성 시약을 한 시약장에 모으려는 계획처럼,
   // 특정 유해분류에 해당하는 시약만 걸러보기 위한 필터. 빈 Set이면 필터 없음.
@@ -40,6 +40,10 @@ export default function ReagentList() {
   const [fireClassFilter, setFireClassFilter] = useState(new Set())
   // 특별관리물질(산업안전보건기준에관한 규칙 별표12, 44종)만 보기 — CAS 기준 매칭
   const [specialOnly, setSpecialOnly] = useState(false)
+  // CAS-이름 정합성 검증(scripts/verify-cas-consistency.mjs)에서 "불일치(의심)"로 나온
+  // 시약만 보기 — PubChem에 그 CAS 자체가 없는(not_found) 경우는 흔해서 제외, 이름이 그
+  // 물질과 다른(mismatch) 경우만 실제로 확인이 필요한 항목이라 필터 대상으로 삼음.
+  const [casMismatchOnly, setCasMismatchOnly] = useState(false)
   const alphabetRefs = useRef({})
 
   // 편집 모드
@@ -89,11 +93,12 @@ export default function ReagentList() {
   function resetFilters() {
     setVisibleCols({
       casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
-      lot: false, expiry: false, category: false, fireClass: false, special: false, ghs: false, status: false,
+      lot: false, expiry: false, category: false, fireClass: false, special: false, casCheck: false, ghs: false, status: false,
     })
     setHazardClassFilter(new Set())
     setFireClassFilter(new Set())
     setSpecialOnly(false)
+    setCasMismatchOnly(false)
   }
 
   // 편집 모드 토글
@@ -473,6 +478,7 @@ export default function ReagentList() {
     if (hazardClassFilter.size > 0 && !(r._hazardClassNames || []).some(name => hazardClassFilter.has(name))) return false
     if (fireClassFilter.size > 0 && !fireClassFilter.has(r._fireSafetyClass)) return false
     if (specialOnly && !r._specialManagement) return false
+    if (casMismatchOnly && !r._casMismatch) return false
     return true
   })
 
@@ -505,6 +511,7 @@ export default function ReagentList() {
           hazardClassOptions={allHazardClassNames} hazardClassFilter={hazardClassFilter} setHazardClassFilter={setHazardClassFilter}
           fireClassFilter={fireClassFilter} setFireClassFilter={setFireClassFilter}
           specialOnly={specialOnly} setSpecialOnly={setSpecialOnly}
+          casMismatchOnly={casMismatchOnly} setCasMismatchOnly={setCasMismatchOnly}
         />
 
         {/* 필터를 조작한 시선이 바로 이어지도록, 결과 개수를 필터 바로 아래·표 바로 위에 표시 */}

@@ -6,7 +6,7 @@ const COL_ITEMS = [
   ['location', '위치'], ['lastConfirmed', '최근확인'],
 ]
 const COL_ITEMS_EXTRA = [
-  ['lot', 'Lot No.'], ['expiry', '유효기간'], ['category', '성상'], ['fireClass', '위험물유별'], ['special', '특별관리물질'], ['ghs', 'GHS'], ['status', '상태'],
+  ['lot', 'Lot No.'], ['expiry', '유효기간'], ['category', '성상'], ['fireClass', '위험물유별'], ['special', '특별관리물질'], ['casCheck', 'CAS확인'], ['ghs', 'GHS'], ['status', '상태'],
 ]
 // 위험물안전관리법 유별 — 학교 "성상별 분류 방법" 문서 기준 고정 목록(제1류~6류)
 const FIRE_CLASSES = ['제1류', '제2류', '제3류', '제4류', '제5류', '제6류']
@@ -17,6 +17,7 @@ export default function ReagentFilters({
   visibleCols, setVisibleCols, onResetFilters,
   hazardClassOptions = [], hazardClassFilter, setHazardClassFilter,
   fireClassFilter, setFireClassFilter, specialOnly, setSpecialOnly,
+  casMismatchOnly, setCasMismatchOnly,
 }) {
   const [colMenuOpen, setColMenuOpen] = useState(false)
   const colMenuRef = useRef(null)
@@ -180,6 +181,13 @@ export default function ReagentFilters({
         borderRadius: '8px', padding: '6px 12px', cursor: 'pointer',
         fontSize: '12.5px', color: specialOnly ? '#C13B3F' : C.text, fontWeight: '600',
       }}>🚨 특별관리물질만 보기</button>
+      <button onClick={() => setCasMismatchOnly(v => !v)} title="CAS 번호로 PubChem에서 조회한 물질명이 시약명과 달라 확인이 필요한 시약만 표시" style={{
+        display: 'flex', alignItems: 'center', gap: '6px',
+        background: casMismatchOnly ? '#FDECEC' : C.white,
+        border: `1px solid ${casMismatchOnly ? '#C13B3F' : C.border}`,
+        borderRadius: '8px', padding: '6px 12px', cursor: 'pointer',
+        fontSize: '12.5px', color: casMismatchOnly ? '#C13B3F' : C.text, fontWeight: '600',
+      }}>🔍 CAS 확인필요만 보기</button>
       </div>
     </>
   )

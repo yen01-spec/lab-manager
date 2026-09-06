@@ -168,6 +168,17 @@ const ReagentRow = memo(function ReagentRow({
             {!r._specialManagement && <span style={{ color: C.muted }}>-</span>}
           </td>
         )}
+        {visibleCols.casCheck && (
+          <td style={{ ...tdStyle, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>
+            {r.cas_verification_status === 'mismatch' && (
+              <span title={`PubChem 조회 결과: ${r.cas_verification_note || ''}`} style={{ background: '#FDECEC', color: '#C13B3F', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700' }}>⚠️ 확인필요</span>
+            )}
+            {r.cas_verification_status === 'ok' && (
+              <span style={{ color: '#00875A', fontSize: '11px', fontWeight: '600' }}>✓ 확인됨</span>
+            )}
+            {(!r.cas_verification_status || r.cas_verification_status === 'not_found') && <span style={{ color: C.muted }}>-</span>}
+          </td>
+        )}
         {visibleCols.ghs && (
           <td style={{ ...tdStyle, fontSize: '16px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }} onClick={e => e.stopPropagation()}>
             {ghsList.length > 0

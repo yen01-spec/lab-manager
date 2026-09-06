@@ -656,6 +656,12 @@ export default function ReagentDetail() {
                   padding: '4px 10px', borderRadius: '999px', width: 'fit-content',
                 }}>❓ 특별관리물질 확인필요 — {specialInfo.reason}</span>
               )}
+              {reagent.cas_verification_status === 'mismatch' && (
+                <span title="시약명·CAS 정합성 자동검증(PubChem 동의어 대조) 결과, 확인이 필요해요" style={{
+                  background: '#FDECEC', color: '#C13B3F', fontSize: '11px', fontWeight: '700',
+                  padding: '4px 10px', borderRadius: '999px', width: 'fit-content',
+                }}>⚠️ CAS 확인필요 — PubChem: {reagent.cas_verification_note}</span>
+              )}
               {hazardCategoryInfo.category !== '일반' && (
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{ background: '#EEF2FB', color: C.navy, fontSize: '11px', fontWeight: '700', padding: '4px 10px', borderRadius: '999px' }}>
