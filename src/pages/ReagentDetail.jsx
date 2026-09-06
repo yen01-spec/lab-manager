@@ -168,12 +168,14 @@ export default function ReagentDetail() {
               hazard: prev.hazard || hazard,
               ghs_pictograms: prev.ghs_pictograms || pictograms,
               hazard_classifications: prev.hazard_classifications || classifications,
+              is_yudok: prev.is_yudok || isYudok,
               ghs_live: { korName, isYudok, hazard, pictograms, classifications },
             }))
             const dbUpdate = {}
             if (!data.hazard && hazard) { dbUpdate.hazard = hazard; dbUpdate.hazard_source = 'auto_ghs' }
             if (!data.ghs_pictograms && pictograms) dbUpdate.ghs_pictograms = pictograms
             if (!data.hazard_classifications && classifications.length > 0) dbUpdate.hazard_classifications = classifications
+            if (!data.is_yudok && isYudok) dbUpdate.is_yudok = isYudok
             if (Object.keys(dbUpdate).length > 0) {
               await supabase.from('reagents').update(dbUpdate).eq('id', id)
               setReagent(prev => ({ ...prev, ...dbUpdate }))
@@ -673,10 +675,10 @@ export default function ReagentDetail() {
                   ))}
                 </div>
               )}
-              {reagent.ghs_live?.isYudok && (
-                <span style={{ background: '#FDECEC', color: '#C13B3F', border: '1px solid #F3D6D6', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', width: 'fit-content' }}>⚠️ {reagent.ghs_live.isYudok}</span>
+              {(reagent.is_yudok || reagent.ghs_live?.isYudok) && (
+                <span style={{ background: '#FDECEC', color: '#C13B3F', border: '1px solid #F3D6D6', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', width: 'fit-content' }}>⚠️ {reagent.is_yudok || reagent.ghs_live?.isYudok}</span>
               )}
-              {ghsList.length === 0 && !reagent.ghs_live?.isYudok && <div style={{ fontSize: '12.5px', color: C.muted }}>등록된 위험정보가 없습니다.</div>}
+              {ghsList.length === 0 && !(reagent.is_yudok || reagent.ghs_live?.isYudok) && <div style={{ fontSize: '12.5px', color: C.muted }}>등록된 위험정보가 없습니다.</div>}
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 {reagent.msds_url ? (
                   <a href={reagent.msds_url} target="_blank" rel="noreferrer" style={{ fontSize: '12.5px' }}>📄 MSDS 문서 보기</a>

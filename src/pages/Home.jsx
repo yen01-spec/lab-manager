@@ -9,6 +9,7 @@ const QUICK_MENU = [
   { to: '/inventory',        label: '재고실사',     sub: '진행 중인 실사 이어하기', icon: 'checklist' },
   { to: '/purchase-request', label: '구매요청서',   sub: '필요 물품 담아 내보내기', icon: 'shopping_cart' },
   { to: '/notices',          label: '자료실',       sub: '안전수칙·공지·MSDS',      icon: 'description' },
+  { to: '/safety-signage',   label: '안전표지 관리', sub: '출입구 표지·용기 라벨',   icon: 'warning'   },
 ]
 
 function Card({ title, titleExtra, children, noPadding }) {

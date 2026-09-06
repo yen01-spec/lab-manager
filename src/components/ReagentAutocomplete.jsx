@@ -33,7 +33,7 @@ export default function ReagentAutocomplete({
     const myRequestId = ++requestIdRef.current
     debounceRef.current = setTimeout(async () => {
       const term = v.trim()
-      const { data } = await supabase.from('reagents').select('id, name, company, cas_no, category')
+      const { data } = await supabase.from('reagents').select('id, name, company, cas_no, category, ghs_pictograms')
         .or(`name.ilike.${term}%,cas_no.ilike.${term}%`)
         .neq('status', 'archived')
         .order('name').limit(10)
