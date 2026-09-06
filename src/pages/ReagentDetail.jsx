@@ -3,6 +3,7 @@ import { useParams, useOutletContext, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../design'
 import CompanyPicker from '../components/CompanyPicker'
+import SpecialMaterialLogModal from '../components/reagents/SpecialMaterialLogModal'
 import { getHazardCategory } from '../lib/hazardCategory'
 import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
 
@@ -67,6 +68,8 @@ export default function ReagentDetail() {
   const [addLotForm, setAddLotForm] = useState({ lot_no: '', cat_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
   const [locations, setLocations] = useState([])
   const [history, setHistory] = useState([])
+  const [showSpecialLogModal, setShowSpecialLogModal] = useState(false)
+  const [specialLogs, setSpecialLogs] = useState([])
   // 상단 버튼이 6개까지 늘어나던 걸 정리 — 자주 쓰는 재고등록/위치이동(+실사 중이면
   // 정보맞음)만 항상 보이고, 나머지(폐기신청/정보수정/시약삭제)는 "⋯더보기" 안으로.
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
@@ -105,6 +108,7 @@ export default function ReagentDetail() {
     setRegisteredByName(data.registered_by ? (rs?.name || data.registered_by) : '')
     setDisposalPending(disposal || null)
     fetchHistory()
+    fetchSpecialLogs()
 
     // 여기서 로딩을 끝냄 — 아래 CAS/GHS 외부 공공 API 조회는 느릴 수 있어(초 단위) 화면을
     // 붙잡아두지 않고 백그라운드에서 계속 돌리다가 끝나면 결과만 반영한다.
@@ -184,6 +188,12 @@ export default function ReagentDetail() {
     const { data } = await supabase.from('reagent_change_requests')
       .select('*').eq('reagent_id', id).eq('status', 'pending')
     setPendingChanges(data || [])
+  }
+
+  async function fetchSpecialLogs() {
+    const { data } = await supabase.from('special_material_logs')
+      .select('*').eq('reagent_id', id).order('handling_date', { ascending: false }).limit(20)
+    setSpecialLogs(data || [])
   }
 
   // 위치이동/폐기/필드수정/재고변경 이력을 날짜|대상|변경내용 형식으로 통일해서 한 타임라인으로 합침
@@ -691,6 +701,35 @@ export default function ReagentDetail() {
               </div>
             </div>
           </div>
+
+          {/* 특별관리물질 취급일지 — 산업안전보건기준에관한 규칙 제439조, 법정 보존 30년 */}
+          {specialInfo && (
+            <div style={cardStyle}>
+              <div style={{ ...cardHeadStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>🚨 특별관리물질 취급일지</span>
+                <button onClick={() => setShowSpecialLogModal(true)} style={{ padding: '5px 12px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, fontSize: '11.5px', color: C.navy, fontWeight: '600', cursor: 'pointer' }}>+ 기록 추가</button>
+              </div>
+              <div style={{ padding: '18px 20px' }}>
+                {specialLogs.length === 0 ? (
+                  <div style={{ fontSize: '12.5px', color: C.muted }}>취급 기록이 없습니다.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {specialLogs.map(log => (
+                      <div key={log.id} style={{ borderBottom: `1px solid ${C.border}`, paddingBottom: '8px', fontSize: '12.5px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '600', color: C.text }}>
+                          <span>{log.handling_date}{log.amount ? ` · ${log.amount}` : ''}</span>
+                          <span style={{ color: C.muted, fontWeight: '400' }}>{log.handler_name}</span>
+                        </div>
+                        <div style={{ color: C.muted, marginTop: '2px' }}>{log.work_description}</div>
+                        {log.ppe_worn && <div style={{ color: C.muted, fontSize: '11.5px' }}>보호구: {log.ppe_worn}</div>}
+                        {log.incident_details && <div style={{ color: '#C13B3F', fontSize: '11.5px' }}>⚠️ 사고: {log.incident_details}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -780,6 +819,15 @@ export default function ReagentDetail() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* 특별관리물질 취급일지 작성 모달 */}
+      {showSpecialLogModal && (
+        <SpecialMaterialLogModal
+          reagent={reagent} student={student}
+          onClose={() => setShowSpecialLogModal(false)}
+          onSaved={() => { setShowSpecialLogModal(false); fetchSpecialLogs() }}
+        />
       )}
 
       {/* 폐기 신청 모달 */}

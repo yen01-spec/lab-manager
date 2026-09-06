@@ -11,6 +11,7 @@ import PurchaseTab from '../components/admin/PurchaseTab'
 import ReceiptTab from '../components/admin/ReceiptTab'
 import ManageTab from '../components/admin/ManageTab'
 import LogTab from '../components/admin/LogTab'
+import SpecialMaterialLogTab from '../components/admin/SpecialMaterialLogTab'
 import BulkUpdateTab from '../components/admin/BulkUpdateTab'
 import ChangeRequestTab from '../components/admin/ChangeRequestTab'
 import SuperTab from '../components/admin/SuperTab'
@@ -28,6 +29,7 @@ export default function Admin() {
   { key: 'purchase', label: '구매 관리',       icon: '🛒', sub: 'Purchase' },
   { key: 'receipt',  label: '영수증 관리',     icon: '🧾', sub: 'Receipt' },
   { key: 'manage',   label: '관리',            icon: '⚠️', sub: 'Manage' },
+  { key: 'special',  label: '특별관리물질',     icon: '🚨', sub: 'Special Material' },
   { key: 'log',      label: '변경 로그',       icon: '📋', sub: 'Logs' },
   ...(isSuper ? [{ key: 'super', label: '슈퍼관리자', icon: '👑', sub: 'Super Admin' }] : []),
 ]
@@ -111,6 +113,7 @@ export default function Admin() {
           {tab === 'purchase' && <PurchaseTab onCountChange={fetchPendingCount} />}
           {tab === 'receipt'  && <ReceiptTab />}
           {tab === 'manage'   && <ManageTab />}
+          {tab === 'special'  && <SpecialMaterialLogTab student={student} />}
           {tab === 'log'      && <LogTab />}
           {tab === 'super' && isSuper && <SuperTab />}
         </div>

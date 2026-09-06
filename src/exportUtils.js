@@ -178,6 +178,28 @@ export function exportPurchaseRequests(requests) {
   downloadExcel(rows, columns, '구매요청목록')
 }
 
+// ── 특별관리물질 취급일지 내보내기 — 산업안전보건기준에관한 규칙 제439조 원본 양식 재현 ──
+// 원본 양식(강원대 연구실안전관리시스템 제공 자료)은 상단에 연구실명/연구실책임자명이
+// 있고, 그 아래 취급일자/특별관리물질명/취급량/작업내용/착용한보호구/사고내용및조치사항/
+// 취급자/확인자 표가 오는 구조 — 실사·감사 대응 시 그대로 제출할 수 있도록 동일하게 맞춤.
+export function exportSpecialMaterialLogs(logs, labName = '', labDirector = '') {
+  const header1 = ['연구실명', labName, '연구실 책임자명', labDirector]
+  const tableHeader = ['취급일자', '특별관리물질명', 'CAS No.', '취급량', '작업내용', '착용한 보호구', '사고 내용 및 조치사항', '취급자', '확인자', '비고']
+  const rows = logs.map(l => [
+    l.handling_date, l.substance_name, l.cas_no || '-', l.amount || '-', l.work_description || '-',
+    l.ppe_worn || '-', l.incident_details || '-', l.handler_name, l.confirmed_by_name || '-', l.notes || '-',
+  ])
+  const aoa = [['특별관리물질 취급일지'], header1, [], tableHeader, ...rows]
+  const ws = XLSX.utils.aoa_to_sheet(aoa)
+  ws['!cols'] = tableHeader.map((h, i) => ({
+    wch: Math.max(h.length + 2, ...rows.map(r => String(r[i] ?? '').length + 2)),
+  }))
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, '취급일지')
+  const dateStr = new Date().toLocaleDateString('ko-KR').replace(/\. /g, '-').replace('.', '')
+  XLSX.writeFile(wb, `특별관리물질_취급일지_${dateStr}.xlsx`)
+}
+
 // ── 구매요청서(시약+물품) 내보내기 — 시트 2개 ─────────────
 export function exportPurchaseRequestForm(reagentItems, goodsItems, requesterName) {
   const wb = XLSX.utils.book_new()
