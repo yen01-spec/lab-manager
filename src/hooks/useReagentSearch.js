@@ -47,7 +47,7 @@ function enrichReagent(r) {
     _hazardClassNames: (r.hazard_classifications || []).map(c => c.name),
     _hazardCategory: hazardCategory.category,
     _fireSafetyClass: hazardCategory.fireSafetyClass,
-    _specialManagement: getSpecialManagementInfo(r.cas_no),
+    _specialManagement: getSpecialManagementInfo(r.name, r.cas_no),
     _onlyLot: activeLots.length === 1 ? activeLots[0] : null,
     _canExpand: allLots.length > 1,
     _activeLocIds: activeLocIds,

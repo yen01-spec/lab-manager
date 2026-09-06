@@ -159,9 +159,13 @@ const ReagentRow = memo(function ReagentRow({
         )}
         {visibleCols.special && (
           <td style={{ ...tdStyle, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>
-            {r._specialManagement
-              ? <span title={`특별관리물질 (${r._specialManagement.threshold})`} style={{ background: '#FFF3CD', color: '#8A5A16', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700' }}>🚨 특별관리</span>
-              : <span style={{ color: C.muted }}>-</span>}
+            {r._specialManagement?.status === 'confirmed' && (
+              <span title={r._specialManagement.substance.threshold} style={{ background: '#FFF3CD', color: '#8A5A16', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700' }}>🚨 특별관리</span>
+            )}
+            {r._specialManagement?.status === 'suspected' && (
+              <span title={r._specialManagement.reason} style={{ background: '#F3F4F6', color: '#586173', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700' }}>❓ 확인필요</span>
+            )}
+            {!r._specialManagement && <span style={{ color: C.muted }}>-</span>}
           </td>
         )}
         {visibleCols.ghs && (

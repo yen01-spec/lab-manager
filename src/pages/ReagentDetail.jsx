@@ -420,7 +420,7 @@ export default function ReagentDetail() {
 
   const ghsList = getGhsPictograms(reagent.ghs_pictograms || reagent.ghs_live?.pictograms)
   const hazardCategoryInfo = getHazardCategory(reagent.hazard_classifications || reagent.ghs_live?.classifications)
-  const specialInfo = getSpecialManagementInfo(reagent.cas_no)
+  const specialInfo = getSpecialManagementInfo(reagent.name, reagent.cas_no)
   const cardStyle = { background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 1px 3px rgba(16,24,40,.06)', overflow: 'hidden' }
   const cardHeadStyle = { padding: '14px 20px', borderBottom: `1px solid ${C.border}`, fontSize: '13.5px', fontWeight: '700', color: C.navy }
 
@@ -632,11 +632,17 @@ export default function ReagentDetail() {
           <div style={cardStyle}>
             <div style={cardHeadStyle}>안전정보</div>
             <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {specialInfo && (
+              {specialInfo?.status === 'confirmed' && (
                 <span title="산업안전보건기준에관한 규칙 [별표12] — 특수건강검진 대상, 취급일지 작성 필요" style={{
                   background: '#FFF3CD', color: '#8A5A16', fontSize: '11px', fontWeight: '700',
                   padding: '4px 10px', borderRadius: '999px', width: 'fit-content',
-                }}>🚨 특별관리물질 ({specialInfo.threshold})</span>
+                }}>🚨 특별관리물질 ({specialInfo.substance.threshold})</span>
+              )}
+              {specialInfo?.status === 'suspected' && (
+                <span title={specialInfo.reason} style={{
+                  background: '#F3F4F6', color: '#586173', fontSize: '11px', fontWeight: '700',
+                  padding: '4px 10px', borderRadius: '999px', width: 'fit-content',
+                }}>❓ 특별관리물질 확인필요 — {specialInfo.reason}</span>
               )}
               {hazardCategoryInfo.category !== '일반' && (
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
