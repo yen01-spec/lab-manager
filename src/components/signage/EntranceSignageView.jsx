@@ -151,7 +151,27 @@ export default function EntranceSignageView({ reagents }) {
         </div>
       )}
 
-      <div style={{ marginTop: '30px', fontSize: '12px', color: C.muted, borderTop: `1px dashed ${C.border}`, paddingTop: '14px' }}>
+      <div style={{
+        border: `1px solid ${C.border}`, background: C.white, borderRadius: '10px',
+        display: 'flex', gap: '16px', padding: '16px 18px', alignItems: 'flex-start', marginTop: '22px',
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0, paddingTop: '2px' }}>
+          {[['#F2D200', '노란색'], ['#F2900B', '주황색'], ['#3FA535', '초록색'], [C.danger, '빨간색']].map(([color]) => (
+            <div key={color} style={{ width: '40px', height: '12px', background: color, clipPath: 'polygon(0 20%,70% 20%,70% 0,100% 50%,70% 100%,70% 80%,0 80%)' }} />
+          ))}
+        </div>
+        <div>
+          <div style={{ fontSize: '11px', color: C.muted }}>가스배관 흐름방향 표식 안내 (강원대 제공 자료 기준)</div>
+          <h4 style={{ margin: '2px 0 6px', fontSize: '15px', color: C.text }}>보유 가스 종류별 화살표 색상</h4>
+          <p style={{ margin: '0 0 4px', fontSize: '13px', color: C.text }}>노란색 — 아세틸렌·도시가스 &nbsp;/&nbsp; 주황색 — 수소 &nbsp;/&nbsp; 초록색 — 산소 &nbsp;/&nbsp; 빨간색 — 기타</p>
+          <p style={{ color: C.muted, fontSize: '12.5px', margin: 0 }}>
+            물리적 도색·부착은 직접 하셔야 하며, 이 카드는 어떤 색을 써야 하는지 안내만 제공합니다.
+            시약장·배관 명칭 표시는 별도 규정 확인 전까지 일반 안내("가스명을 배관에 표기하세요")로 대체합니다.
+          </p>
+        </div>
+      </div>
+
+      <div style={{ marginTop: '20px', fontSize: '12px', color: C.muted, borderTop: `1px dashed ${C.border}`, paddingTop: '14px' }}>
         ※ 부착상태 체크값은 현재 이 브라우저에만 저장됩니다(추후 일상점검일지 데이터와 연동 예정) · 근거: 산업안전보건법 시행규칙 별표6 / 제38~40조
       </div>
     </div>

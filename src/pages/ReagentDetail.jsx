@@ -194,7 +194,7 @@ export default function ReagentDetail() {
 
   async function fetchSpecialLogs() {
     const { data } = await supabase.from('special_material_logs')
-      .select('*').eq('reagent_id', id).order('handling_date', { ascending: false }).limit(20)
+      .select('*').eq('reagent_id', id).is('deleted_at', null).order('handling_date', { ascending: false }).limit(20)
     setSpecialLogs(data || [])
   }
 

@@ -15,7 +15,7 @@ export default function SpecialMaterialLogTab({ student }) {
 
   async function fetchLogs() {
     const { data } = await supabase.from('special_material_logs')
-      .select('*').order('handling_date', { ascending: false }).limit(500)
+      .select('*').is('deleted_at', null).order('handling_date', { ascending: false }).limit(500)
     setLogs(data || [])
   }
 
@@ -42,15 +42,16 @@ export default function SpecialMaterialLogTab({ student }) {
         <button onClick={() => exportSpecialMaterialLogs(filtered, labName, labDirector)} style={btnPrimary}>📥 원본 양식으로 내보내기</button>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr>{['취급일자', '물질명', 'CAS', '취급량', '작업내용', '보호구', '사고내용', '취급자', '확인'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+        <thead><tr>{['취급일자', '물질명', 'CAS', '최초입고량', '취급량', '작업내용', '보호구', '사고내용', '취급자', '확인'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
         <tbody>
           {filtered.length === 0
-            ? <tr><td colSpan={9} style={{ padding: '20px', color: C.muted, textAlign: 'center' }}>기록이 없습니다</td></tr>
+            ? <tr><td colSpan={10} style={{ padding: '20px', color: C.muted, textAlign: 'center' }}>기록이 없습니다</td></tr>
             : filtered.map(l => (
               <tr key={l.id}>
                 <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>{l.handling_date}</td>
                 <td style={{ ...tdStyle, fontWeight: '600' }}>{l.substance_name}</td>
                 <td style={{ ...tdStyle, color: C.muted }}>{l.cas_no || '-'}</td>
+                <td style={{ ...tdStyle, color: C.muted }}>{l.initial_amount || '-'}</td>
                 <td style={tdStyle}>{l.amount || '-'}</td>
                 <td style={{ ...tdStyle, maxWidth: '200px' }}>{l.work_description || '-'}</td>
                 <td style={{ ...tdStyle, color: C.muted }}>{l.ppe_worn || '-'}</td>

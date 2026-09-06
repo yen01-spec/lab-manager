@@ -184,9 +184,9 @@ export function exportPurchaseRequests(requests) {
 // 취급자/확인자 표가 오는 구조 — 실사·감사 대응 시 그대로 제출할 수 있도록 동일하게 맞춤.
 export function exportSpecialMaterialLogs(logs, labName = '', labDirector = '') {
   const header1 = ['연구실명', labName, '연구실 책임자명', labDirector]
-  const tableHeader = ['취급일자', '특별관리물질명', 'CAS No.', '취급량', '작업내용', '착용한 보호구', '사고 내용 및 조치사항', '취급자', '확인자', '비고']
+  const tableHeader = ['취급일자', '특별관리물질명', 'CAS No.', '최초입고량', '취급량', '작업내용', '착용한 보호구', '사고 내용 및 조치사항', '취급자', '확인자', '비고']
   const rows = logs.map(l => [
-    l.handling_date, l.substance_name, l.cas_no || '-', l.amount || '-', l.work_description || '-',
+    l.handling_date, l.substance_name, l.cas_no || '-', l.initial_amount || '-', l.amount || '-', l.work_description || '-',
     l.ppe_worn || '-', l.incident_details || '-', l.handler_name, l.confirmed_by_name || '-', l.notes || '-',
   ])
   const aoa = [['특별관리물질 취급일지'], header1, [], tableHeader, ...rows]
