@@ -200,11 +200,12 @@ export default function ReagentDetail() {
 
   // 위치이동/폐기/필드수정/재고변경 이력을 날짜|대상|변경내용 형식으로 통일해서 한 타임라인으로 합침
   async function fetchHistory() {
-    const [{ data: moves }, { data: disposals }, { data: fieldChanges }, { data: reagentLots }] = await Promise.all([
+    const [{ data: moves }, { data: disposals }, { data: fieldChanges }, { data: reagentLots }, { data: importHistory }] = await Promise.all([
       supabase.from('location_history').select('*').eq('reagent_id', id).order('created_at', { ascending: false }).limit(30),
       supabase.from('disposal_requests').select('*').eq('reagent_id', id).in('status', ['disposed', 'rejected']).order('created_at', { ascending: false }).limit(30),
       supabase.from('reagent_change_requests').select('*').eq('reagent_id', id).eq('status', 'approved').order('created_at', { ascending: false }).limit(30),
       supabase.from('reagent_lots').select('id, lot_no').eq('reagent_id', id),
+      supabase.from('reagent_import_history').select('*').eq('reagent_id', id).order('occurred_at', { ascending: false }).limit(30),
     ])
     const lotIds = (reagentLots || []).map(l => l.id)
     const lotNoById = new Map((reagentLots || []).map(l => [l.id, l.lot_no]))
@@ -241,6 +242,13 @@ export default function ReagentDetail() {
           actor: l.user_name,
         }
       }),
+      ...(importHistory || []).map(h => ({
+        date: h.occurred_at, target: h.location_text || reagent?.name || '',
+        desc: h.source === '수정이력'
+          ? `[전수조사 정리] ${h.field_name}: ${h.old_value || '-'} → ${h.new_value || '-'}`
+          : `[전수조사 검토] ${h.new_value ? h.new_value + ' — ' : ''}${h.note || ''}`,
+        actor: '전수조사 정리팀',
+      })),
     ].sort((a, b) => new Date(b.date) - new Date(a.date))
     setHistory(rows)
   }
@@ -437,6 +445,7 @@ export default function ReagentDetail() {
   const cardHeadStyle = { padding: '14px 20px', borderBottom: `1px solid ${C.border}`, fontSize: '13.5px', fontWeight: '700', color: C.navy }
 
   const fieldRows = [
+    ['name_ko', '국문 시약명', reagent.name_ko, null],
     ['cas_no', 'CAS 번호', reagent.cas_no, reagent.cas_source],
     ['company', '제조사', reagent.company, reagent.company_source],
     ['category', '성상', reagent.category, reagent.category_source],
@@ -545,6 +554,9 @@ export default function ReagentDetail() {
                       {lot.pending_confirm && (
                         <span title="실사 반영됨 · 최종 확정 대기 중" style={{ fontSize: '10px', fontWeight: '700', color: '#1565C0', background: '#E3F2FD', padding: '1px 6px', borderRadius: '8px' }}>검토대기</span>
                       )}
+                      {lot.needs_action && (
+                        <span title={`2026-2 전수조사 "조치필요" 항목 — ${lot.action_note || '실물 확인이 필요합니다.'}`} style={{ fontSize: '10px', fontWeight: '700', color: '#C13B3F', background: '#FDECEC', padding: '1px 6px', borderRadius: '8px' }}>⚠️ 확인필요</span>
+                      )}
                       {isAdmin && lot.status === 'active' && (
                         <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
                           <button onClick={() => setLotStatus(lot, 'used_up')} style={{ fontSize: '10.5px', color: C.muted, background: 'none', border: `1px solid ${C.border}`, borderRadius: '5px', padding: '2px 7px', cursor: 'pointer' }}>사용완료로 표시</button>
@@ -579,7 +591,7 @@ export default function ReagentDetail() {
                             style={{ fontSize: '13.5px', color: C.text, cursor: canEdit ? 'text' : 'default' }}>{lot.current_stock}%</div>
                         )}
                       </div>
-                      <InfoRow label="위치" value={lotLoc ? `${lotLoc.room}${lotLoc.detail ? ' · ' + lotLoc.detail : ''}` : ''} />
+                      <InfoRow label="위치" value={lotLoc ? `${lotLoc.room}${lotLoc.detail ? ' · ' + lotLoc.detail : ''}${lot.shelf_position ? ' · ' + lot.shelf_position : ''}` : ''} />
                       <InfoRow label="Cat No." value={lot.cat_no} />
                       <InfoRow label="입고일" value={lot.received_date} />
                       <InfoRow label="개봉일" value={lot.opened_date} />
