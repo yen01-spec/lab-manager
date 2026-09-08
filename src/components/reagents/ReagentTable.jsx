@@ -5,7 +5,8 @@ import ReagentRow from './ReagentRow'
 function getGroupedReagents(data) {
   const groups = {}
   data.forEach(r => {
-    const letter = r.name[0].toUpperCase()
+    // AlphabetIndex.jsx와 동일: sort_letter(화학명 접두어 무시한 실제 정렬 기준) 우선.
+    const letter = (r.sort_letter || r.name[0]).toUpperCase()
     if (!groups[letter]) groups[letter] = []
     groups[letter].push(r)
   })

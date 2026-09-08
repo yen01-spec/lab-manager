@@ -6,7 +6,10 @@ import { C } from '../../design'
 export default function AlphabetIndex({ data, editMode, scrollToLetter }) {
   if (editMode) return null
   const BASE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
-  const availableLetters = new Set(data.map(r => r.name[0].toUpperCase()))
+  // sort_letter가 있으면 우선 사용 — 화학명 앞의 위치번호·입체이성질체 접두어(예:
+  // "D-Raffinose"→R, "n-Butyl alcohol"→B)를 무시하고 실제 시약장에 정렬된 알파벳
+  // 기준과 맞추기 위함(2026-2 전수조사 파일의 "알파벳" 컬럼). 없으면(수동 등록 등) name[0]으로 폴백.
+  const availableLetters = new Set(data.map(r => (r.sort_letter || r.name[0]).toUpperCase()))
   // A~Z는 항상 표시(없으면 연하게, 있으면 J처럼 진하게) — 그 외 문자(숫자·한글 등)는
   // 실제 목록에 있을 때만 동적으로 추가되고, 사라지면 인덱스에서도 같이 사라짐.
   // ReagentTable의 그룹 순서(Object.keys(groups).sort() — 코드 포인트 기준 기본 정렬)와
