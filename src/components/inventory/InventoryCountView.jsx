@@ -3,6 +3,7 @@ import { supabase } from '../../supabase'
 import { C, PageBanner, btnPrimary, btnGhost, inputStyle, labelStyle, thStyle, tdStyle } from '../../design'
 import { fetchAllPages } from '../../lib/fetchAllPages'
 import { smallBtnStyle, diffCellStyle } from '../../lib/inventoryUtils'
+import { computeSortLetter } from '../../lib/sortLetter'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import CompanyPicker from '../CompanyPicker'
 import StagedCompanyField from './StagedCompanyField'
@@ -275,6 +276,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
         name: newEntryForm.name.trim(), purity: newEntryForm.purity || null, cas_no: newEntryForm.cas_no || null, company: newEntryForm.company || null,
         category: newEntryForm.category || null, volume: newEntryForm.volume || null, unit: newEntryForm.unit || null,
         reagent_type: 'purchased', status: 'active', registered_by: student?.student_id ?? null,
+        sort_letter: computeSortLetter(newEntryForm.name),
       }).select().single()
       if (error) { alert('시약 등록 실패: ' + error.message); return }
       reagentId = r.id

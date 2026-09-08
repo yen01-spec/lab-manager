@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 import { C, PageBanner, Card } from '../design'
 import { exportReagents } from '../exportUtils'
 import { lookupStudent, writeSession } from '../lib/session'
+import { computeSortLetter } from '../lib/sortLetter'
 import { useReagentSearch } from '../hooks/useReagentSearch'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import AlphabetIndex from '../components/reagents/AlphabetIndex'
@@ -295,6 +296,7 @@ export default function ReagentList() {
       location_id: madeForm.location_id, reagent_type: 'self_made',
       made_date: madeForm.made_date, made_purpose: madeForm.made_purpose,
       registered_by: activeStudent.student_id, pending_confirm: true,
+      sort_letter: computeSortLetter(madeForm.name),
     }).select().single()
     if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
     await supabase.from('reagent_lots').insert({
@@ -342,6 +344,7 @@ export default function ReagentList() {
         name: newReagentForm.name, cas_no: newReagentForm.cas_no || null, company: newReagentForm.company || null,
         category: newReagentForm.category || null, volume: newReagentForm.volume || null, unit: newReagentForm.unit || null,
         registered_by: activeStudent.student_id, pending_confirm: true,
+        sort_letter: computeSortLetter(newReagentForm.name),
       }).select().single()
       if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
       reagentId = reagent.id

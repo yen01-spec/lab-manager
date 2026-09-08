@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../../supabase'
 import { C, Card, inputStyle, labelStyle, btnPrimary } from '../../design'
 import CompanyPicker from '../CompanyPicker'
+import { computeSortLetter } from '../../lib/sortLetter'
 
 // ══════════════════════════════════════════════
 //  시약 추가 (CAS 자동조회 포함)
@@ -145,6 +146,7 @@ try {
       volume: form.volume || null, unit: form.unit,
       notes: form.notes,
       registered_by: student?.student_id ?? null,
+      sort_letter: computeSortLetter(form.name),
     }).select().single()
     if (r) {
       await supabase.from('reagent_lots').insert({
