@@ -70,6 +70,13 @@ const LOC = {
 
 // 전각(１ｋｇ 등) 문자를 반각으로 정규화(NFKC)한 뒤 비교 — 이전 파일의 "전각" 정리
 // 항목처럼, 같은 이름인데 숫자/문자가 전각으로 섞여 들어오면 그룹핑이 어긋날 수 있어서.
+// 원본 엑셀에서 "값 없음"을 "-"로 표기하는 관례가 있어서(CAS/순도/제조사/Cat.No/Lot.No 등),
+// 그대로 저장하면 실제 문자열 "-"가 DB에 남아 "값이 있다"로 오인됨 — 전부 null로 취급.
+function blankDash(s) {
+  const v = (s ?? '').toString().trim()
+  return v === '' || v === '-' ? null : v
+}
+
 function normalize(s) {
   return (s || '').toString().normalize('NFKC').toLowerCase().replace(/[^a-z0-9가-힣]/g, '')
 }
@@ -155,18 +162,18 @@ async function main() {
     const locResolved = resolveLocation(sigyakjang)
     if (!locResolved) report.locationMisses.push({ rowIndex: headerIdx + 2 + i, nameEn, sigyakjang })
     lotCandidates.push({
-      num, nameKo, nameEn, purity: (purity ?? '').toString(), cas: (cas || '').toString().trim(),
-      company: (company || '').toString(), catNo: catNo || '', lotNo: lotNo || '', category: category || '',
-      volume, unit, volumeRaw, remainPct: Number(remainPct) || 0, note: note || '',
-      registeredBy: (registeredBy || '').toString().trim(), locResolved, sigyakjang,
-      receivedDate: (receivedDate || '').toString().trim() || null,
+      num, nameKo: blankDash(nameKo), nameEn, purity: blankDash(purity), cas: blankDash(cas),
+      company: blankDash(company), catNo: blankDash(catNo), lotNo: blankDash(lotNo), category: blankDash(category),
+      volume, unit, volumeRaw, remainPct: Number(remainPct) || 0, note: blankDash(note),
+      registeredBy: blankDash(registeredBy), locResolved, sigyakjang,
+      receivedDate: blankDash(receivedDate),
     })
   })
 
   // ── 2. 마스터 그룹핑: (정규화 영문명, 순도, 제조사, 용량+단위) ──────────
   const groups = new Map()
   for (const c of lotCandidates) {
-    const key = [normalize(c.nameEn), c.purity.trim().toLowerCase(), c.company.trim().toLowerCase(), c.volume, (c.unit || '').trim().toLowerCase()].join('|')
+    const key = [normalize(c.nameEn), (c.purity || '').trim().toLowerCase(), (c.company || '').trim().toLowerCase(), c.volume, (c.unit || '').trim().toLowerCase()].join('|')
     if (!groups.has(key)) groups.set(key, { meta: c, lots: [] })
     groups.get(key).lots.push(c)
   }
