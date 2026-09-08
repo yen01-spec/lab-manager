@@ -125,8 +125,9 @@ export default function Home() {
       supabase.from('reagent_lots').select('*', { count: 'exact', head: true }).lte('expiry_date', soonStr).gte('expiry_date', today),
       supabase.from('reagents').select('name').neq('status', 'archived'),
       supabase.from('reagents').select('last_confirmed_at').neq('status', 'archived').gte('last_confirmed_at', yearStart).order('last_confirmed_at', { ascending: false }).limit(1),
+      supabase.from('reagent_lots').select('*', { count: 'exact', head: true }).eq('status', 'active'),
     ]
-    const [{ count: total }, { count: confirmed }, { count: expiring }, { data: allReagents }, { data: latestConfirm }] = await Promise.all(queries)
+    const [{ count: total }, { count: confirmed }, { count: expiring }, { data: allReagents }, { data: latestConfirm }, { count: bottleCount }] = await Promise.all(queries)
     // 같은 이름으로 등록된 병(위치별로 각각 한 행)이 여럿일 수 있어 종류 수는 별도로 센다
     const speciesSet = new Set((allReagents || []).map(r => r.name.trim().toLowerCase()))
     const confirmedPct = total ? Math.round((confirmed || 0) / total * 100) : 0
@@ -134,7 +135,7 @@ export default function Home() {
       ...prev,
       reagents: total || 0,
       species: speciesSet.size,
-      bottles: total || 0,
+      bottles: bottleCount || 0,
       confirmedPct,
       completedDate: confirmedPct === 100 ? latestConfirm?.[0]?.last_confirmed_at || null : null,
       expiring: expiring || 0,
