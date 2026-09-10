@@ -37,17 +37,25 @@ export default function DisposalTab({ onCountChange, student }) {
     if (!adminName.trim()) { alert('처리자 이름을 입력해주세요'); return }
     if (!window.confirm(`"${req.reagent_name}" 폐기를 완료 처리하시겠습니까?\n⚠️ 재고에서 차감됩니다.`)) return
     if (req.lot_id) {
-      const { data: lot } = await supabase.from('reagent_lots').select('*').eq('id', req.lot_id).single()
-      if (lot) {
-        const newSealed = Math.max(0, lot.sealed_count - 1)
-        // 그 Lot이 완전히 소진됐을 때만 disposed로 전환 — 마스터 자체는 절대 archived로 사라지지 않음(재구매 시 이력 단절 방지)
-        const fullyGone = newSealed <= 0 && lot.current_stock <= 0
+      // 시약 일괄정리에서 온 신청은 quantity='전체' — 그 Lot을 통째로 폐기.
+      if (req.quantity === '전체') {
         await supabase.from('reagent_lots').update({
-          sealed_count: newSealed,
-          disposal_date: new Date().toISOString().split('T')[0],
-          needs_review: false,
-          ...(fullyGone ? { status: 'disposed', current_stock: 0 } : {}),
+          sealed_count: 0, current_stock: 0, status: 'disposed',
+          disposal_date: new Date().toISOString().split('T')[0], needs_review: false,
         }).eq('id', req.lot_id)
+      } else {
+        const { data: lot } = await supabase.from('reagent_lots').select('*').eq('id', req.lot_id).single()
+        if (lot) {
+          const newSealed = Math.max(0, lot.sealed_count - 1)
+          // 그 Lot이 완전히 소진됐을 때만 disposed로 전환 — 마스터 자체는 절대 archived로 사라지지 않음(재구매 시 이력 단절 방지)
+          const fullyGone = newSealed <= 0 && lot.current_stock <= 0
+          await supabase.from('reagent_lots').update({
+            sealed_count: newSealed,
+            disposal_date: new Date().toISOString().split('T')[0],
+            needs_review: false,
+            ...(fullyGone ? { status: 'disposed', current_stock: 0 } : {}),
+          }).eq('id', req.lot_id)
+        }
       }
     }
     await supabase.from('disposal_requests').update({ status: 'disposed', disposed_at: new Date().toISOString() }).eq('id', req.id)

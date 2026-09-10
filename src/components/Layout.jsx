@@ -44,9 +44,8 @@ export default function Layout() {
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
 
   const sidebarW = isDesktop ? 210 : isTablet ? 60 : 0
-  const navItems = isAdmin
-    ? [...NAV_ITEMS.slice(0, 2), BULK_EDIT_ITEM, ...NAV_ITEMS.slice(2)]
-    : NAV_ITEMS
+  // 시약 일괄정리는 일반 사용자도 사용 가능(비관리자는 신청 → 관리자 승인 흐름).
+  const navItems = [...NAV_ITEMS.slice(0, 2), BULK_EDIT_ITEM, ...NAV_ITEMS.slice(2)]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: C.bg }}>

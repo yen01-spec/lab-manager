@@ -5,7 +5,7 @@ import { PageBanner } from '../design'
 import BulkEditTab from '../components/admin/BulkEditTab'
 
 export default function BulkEdit() {
-  const { student } = useOutletContext()
+  const { student, isAdmin } = useOutletContext()
   const [locations, setLocations] = useState([])
 
   useEffect(() => {
@@ -18,7 +18,7 @@ export default function BulkEdit() {
     <div>
       <PageBanner title="시약 일괄 정리" sub="Bulk Edit" breadcrumb={['홈', '시약 일괄정리']} />
       <div style={{ padding: '20px 40px' }}>
-        <BulkEditTab locations={locations} student={student} />
+        <BulkEditTab locations={locations} student={student} isAdmin={isAdmin} />
       </div>
     </div>
   )

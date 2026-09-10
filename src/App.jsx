@@ -37,7 +37,7 @@ function App() {
         <Route path="reagents/locations" element={<ReagentLocations />} />
         <Route path="reagents/list" element={<ReagentList />} />
         <Route path="reagents/:id" element={<ReagentDetail />} />
-        <Route path="reagents/bulk-edit" element={<RequireAdmin><BulkEdit /></RequireAdmin>} />
+        <Route path="reagents/bulk-edit" element={<BulkEdit />} />
         <Route path="safety-signage" element={<SafetySignage />} />
         <Route path="items" element={<Items />} />
         <Route path="requests" element={<Requests />} />

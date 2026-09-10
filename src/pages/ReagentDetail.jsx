@@ -395,7 +395,7 @@ export default function ReagentDetail() {
         reagent_id: id, lot_id: moveForm.lot_id, reagent_name: reagent.name,
         from_location_id: targetLot?.location_id || null, from_location_name: fromLocName,
         to_location_id: moveForm.to_location_id, to_location_name: toLocName,
-        requested_by: student.name, requested_by_student_id: student.student_id, notes: moveForm.notes, status: 'pending',
+        requested_by: student.name, notes: moveForm.notes, status: 'pending',
       })
       alert('위치 이동 신청 완료! 관리자 승인 후 처리됩니다.')
       setShowMoveModal(false)
