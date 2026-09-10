@@ -121,7 +121,7 @@ export default function ResourceGuidePage({ section, categoryKey, sectionKey, se
       )}
 
       <div ref={filesRef} style={{ marginBottom: 22 }}>
-        <ResourceFiles categoryKey={categoryKey} sectionKey={sectionKey} />
+        <ResourceFiles categoryKey={categoryKey} sectionKey={sectionKey} isAdmin={isAdmin} />
       </div>
     </div>
   )

@@ -30,7 +30,7 @@ function fileUrl(row, forceDownload) {
   return safeUrl(row.file_url)
 }
 
-export default function ResourceFileCard({ row, dim = false }) {
+export default function ResourceFileCard({ row, dim = false, admin = false, onEdit, onNewVersion, onSetCurrent, onDelete }) {
   const ext = extOf(row)
   const isView = VIEWABLE_EXT.includes(ext)
   const url = fileUrl(row, !isView)
@@ -67,6 +67,22 @@ export default function ResourceFileCard({ row, dim = false }) {
       ) : (
         <span style={{ fontSize: 11.5, color: C.danger, flexShrink: 0 }}>파일 경로를 확인할 수 없습니다.</span>
       )}
+
+      {admin && (
+        <div style={{ flexBasis: '100%', display: 'flex', gap: 6, flexWrap: 'wrap', paddingTop: 8, marginTop: 2, borderTop: `1px dashed ${C.border}` }}>
+          <button onClick={() => onEdit?.(row)} style={adminBtn()}>수정</button>
+          <button onClick={() => onNewVersion?.(row)} style={adminBtn()}>새 버전</button>
+          {!row.is_current && <button onClick={() => onSetCurrent?.(row)} style={adminBtn(C.navy, '#fff')}>현재 자료로 지정</button>}
+          <button onClick={() => onDelete?.(row)} style={adminBtn(C.dangerTint, C.dangerDark, '#F3D6D6')}>삭제</button>
+        </div>
+      )}
     </div>
   )
+}
+
+function adminBtn(bg = C.white, color = C.textSub, border = C.border) {
+  return {
+    fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+    background: bg, color, border: `1px solid ${border}`, borderRadius: 6, padding: '4px 9px',
+  }
 }
