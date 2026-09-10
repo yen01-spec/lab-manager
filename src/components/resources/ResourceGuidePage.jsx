@@ -1,17 +1,13 @@
 import { useRef } from 'react'
 import { C } from '../../design'
 import { safeUrl } from '../../lib/appSettings'
+import ResourceFiles from './ResourceFiles'
 
 // 자료 세부 페이지 공통 템플릿 (수정방안 §8, §9, §13).
 // section: resourceGuides.js의 한 섹션 객체.
 // settings: { school_safety_system_url, kosha_label_url } — 외부 링크는 여기서만 읽음(hard-code 금지).
 // onAction(a): 외부 링크가 아닌 앱 내부 액션(goto/reagent-search/contact 등) 처리 → 상위(Resources)에서.
 const SYS = '강원대학교 연구실안전관리시스템'
-const FILE_GROUPS = [
-  { key: 'form', label: '필수 양식' },
-  { key: 'official', label: '공식 지침·매뉴얼' },
-  { key: 'reference', label: '참고자료' },
-]
 const ROLE_LABELS = {
   worker: '연구활동종사자',
   manager: '연구실안전관리담당자',
@@ -29,7 +25,7 @@ function Section({ title, children }) {
   )
 }
 
-export default function ResourceGuidePage({ section, settings = {}, isAdmin, onAction, embedNode }) {
+export default function ResourceGuidePage({ section, categoryKey, sectionKey, settings = {}, isAdmin, onAction, embedNode }) {
   const filesRef = useRef(null)
   if (!section) return null
 
@@ -124,19 +120,8 @@ export default function ResourceGuidePage({ section, settings = {}, isAdmin, onA
         </Section>
       )}
 
-      <div ref={filesRef}>
-        <Section title="공식 자료 및 양식">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {FILE_GROUPS.map(g => (
-              <div key={g.key}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, marginBottom: 4 }}>{g.label}</div>
-                <div style={{ fontSize: 12, color: C.muted, padding: '8px 12px', background: C.bg, borderRadius: 8 }}>
-                  현재 등록된 공식 자료가 없습니다.{isAdmin && ' · 자료 추가는 다음 단계(5-h)에서 지원됩니다.'}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
+      <div ref={filesRef} style={{ marginBottom: 22 }}>
+        <ResourceFiles categoryKey={categoryKey} sectionKey={sectionKey} />
       </div>
     </div>
   )

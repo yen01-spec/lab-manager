@@ -180,7 +180,7 @@ export default function Resources() {
               style={{ marginBottom: 18 }}
             />
             <ResourceGuidePage
-              section={section} settings={settings} isAdmin={isAdmin} onAction={handleAction}
+              section={section} categoryKey={cat} sectionKey={sectionKey} settings={settings} isAdmin={isAdmin} onAction={handleAction}
               embedNode={section?.embed && (
                 <Suspense fallback={<div style={{ padding: 24, textAlign: 'center', color: C.muted, fontSize: 13 }}>불러오는 중...</div>}>
                   {EMBEDS[section.embed]}
