@@ -208,9 +208,16 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px',
         background: C.bg, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px 14px', marginBottom: '12px' }}>
-        <span style={{ fontSize: '12.5px', color: C.text }}>
-          <b>{reagents.length}개 시약 · {selectableLotIds.length}개 Lot</b> · <b>{checkedLotIds.size}개 Lot</b> 선택됨
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '12.5px', color: C.muted }}>
+            검색결과 <b style={{ color: C.text }}>{reagents.length}개 시약</b> · <b style={{ color: C.text }}>{selectableLotIds.length}개 Lot</b>
+          </span>
+          <span style={{
+            fontSize: '12.5px', fontWeight: '700', borderRadius: '999px', padding: '3px 12px',
+            background: checkedLotIds.size > 0 ? '#EEF2FB' : '#F0F0F0',
+            color: checkedLotIds.size > 0 ? C.navy : C.muted,
+          }}>선택됨 {checkedLotIds.size}개 Lot</span>
+        </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={() => setShowMoveModal(true)} disabled={checkedLotIds.size === 0} style={{
             background: checkedLotIds.size === 0 ? '#F7F7F7' : '#667EEA', color: checkedLotIds.size === 0 ? C.muted : '#fff',
