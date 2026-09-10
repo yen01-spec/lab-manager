@@ -1,14 +1,13 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useOutletContext, useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
-import { C, PageBanner, Card } from '../design'
+import { C, PageBanner } from '../design'
 import { exportReagents } from '../exportUtils'
 import { lookupStudent, writeSession } from '../lib/session'
 import { computeSortLetter } from '../lib/sortLetter'
 import { groupReagentsByName } from '../lib/nameGroup'
 import { useReagentSearch } from '../hooks/useReagentSearch'
 import { useBreakpoint } from '../hooks/useBreakpoint'
-import AlphabetIndex from '../components/reagents/AlphabetIndex'
 import ReagentTable from '../components/reagents/ReagentTable'
 import MobileReagentCard from '../components/reagents/MobileReagentCard'
 import ReagentToolbar from '../components/reagents/ReagentToolbar'
@@ -46,7 +45,6 @@ export default function ReagentList() {
   // 시약만 보기 — PubChem에 그 CAS 자체가 없는(not_found) 경우는 흔해서 제외, 이름이 그
   // 물질과 다른(mismatch) 경우만 실제로 확인이 필요한 항목이라 필터 대상으로 삼음.
   const [casMismatchOnly, setCasMismatchOnly] = useState(false)
-  const alphabetRefs = useRef({})
 
   // 선택 목록 (검색결과에서 여러 시약을 체크해 모아보기 — 전체 사용자). id -> reagent row
   const [pickedIds, setPickedIds] = useState(new Map())
@@ -385,11 +383,6 @@ export default function ReagentList() {
     navigate(`/reagents/${r.id}`)
   }, [navigate])
 
-  const scrollToLetter = (letter) => {
-    const el = alphabetRefs.current[letter]
-    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' })
-  }
-
   const rooms = useMemo(() => [...new Set(locations.map(l => l.room))], [locations])
 
   // 아래 파생값들은 조회 결과(results)나 필터 상태에만 좌우되는데, 예전엔 검색창 타이핑 등
@@ -492,21 +485,14 @@ export default function ReagentList() {
               ))}
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <Card noPadding>
-                  <ReagentTable
-                    data={displayResults} locations={locations} visibleCols={visibleCols}
-                    pickedIds={pickedIds} isAdmin={isAdmin}
-                    inlineEdit={inlineEdit} setInlineEdit={setInlineEdit} expandedIds={expandedIds} alphabetRefs={alphabetRefs}
-                    togglePick={togglePick} togglePickAll={togglePickAll}
-                    handleRowClick={handleRowClick} toggleExpand={toggleExpand}
-                    startInlineEdit={startInlineEdit} saveInlineEdit={saveInlineEdit}
-                    confirmPending={confirmPending} />
-                </Card>
-              </div>
-              <AlphabetIndex data={displayResults} scrollToLetter={scrollToLetter} />
-            </div>
+            <ReagentTable
+              data={displayResults} locations={locations} visibleCols={visibleCols}
+              pickedIds={pickedIds} isAdmin={isAdmin}
+              inlineEdit={inlineEdit} setInlineEdit={setInlineEdit} expandedIds={expandedIds}
+              togglePick={togglePick} togglePickAll={togglePickAll}
+              handleRowClick={handleRowClick} toggleExpand={toggleExpand}
+              startInlineEdit={startInlineEdit} saveInlineEdit={saveInlineEdit}
+              confirmPending={confirmPending} />
           )}
       </div>
 
