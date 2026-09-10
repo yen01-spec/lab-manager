@@ -5,6 +5,7 @@ import { C, PageBanner, Card } from '../design'
 import { exportReagents } from '../exportUtils'
 import { lookupStudent, writeSession } from '../lib/session'
 import { computeSortLetter } from '../lib/sortLetter'
+import { groupReagentsByName } from '../lib/nameGroup'
 import { useReagentSearch } from '../hooks/useReagentSearch'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import AlphabetIndex from '../components/reagents/AlphabetIndex'
@@ -517,9 +518,10 @@ export default function ReagentList() {
           casMismatchOnly={casMismatchOnly} setCasMismatchOnly={setCasMismatchOnly}
         />
 
-        {/* 필터를 조작한 시선이 바로 이어지도록, 결과 개수를 필터 바로 아래·표 바로 위에 표시 */}
+        {/* 필터를 조작한 시선이 바로 이어지도록, 결과 개수를 필터 바로 아래·표 바로 위에 표시.
+            홈 화면 "전체 시약 N종"과 기준을 맞추기 위해 제조사/순도 무시하고 이름만으로 센다. */}
         <div style={{ margin: '0 0 12px', fontSize: '14px', color: C.text }}>
-          검색결과 <strong style={{ color: C.navy }}>{displayResults.length.toLocaleString()}개</strong>
+          검색결과 <strong style={{ color: C.navy }}>{groupReagentsByName(displayResults).length.toLocaleString()}개</strong>
           <span style={{ color: C.muted, fontSize: '12.5px' }}> (전체 {totalCount.toLocaleString()}개)</span>
         </div>
 

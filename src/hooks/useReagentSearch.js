@@ -82,9 +82,12 @@ export function useReagentSearch({ initialSearch = '' } = {}) {
     if (data) setLocations(data)
   }
 
+  // 홈 화면의 "전체 시약 N종"과 기준을 맞추기 위해(제조사/순도 무시, 이름만 중복 제거)
+  // 단순 행 개수가 아니라 고유 이름 수를 센다.
   async function fetchTotalCount() {
-    const { count } = await supabase.from('reagents').select('*', { count: 'exact', head: true }).neq('status', 'archived')
-    setTotalCount(count || 0)
+    const { data } = await supabase.from('reagents').select('name').neq('status', 'archived')
+    const uniqueNames = new Set((data || []).map(r => r.name.trim().toLowerCase()))
+    setTotalCount(uniqueNames.size)
   }
 
   async function fetchResults() {

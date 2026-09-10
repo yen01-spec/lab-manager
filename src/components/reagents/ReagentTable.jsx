@@ -1,6 +1,8 @@
 import { Fragment } from 'react'
 import { C, thStyle } from '../../design'
 import ReagentRow from './ReagentRow'
+import ReagentGroupRow from './ReagentGroupRow'
+import { groupReagentsByName, normalizeReagentName } from '../../lib/nameGroup'
 
 function getGroupedReagents(data) {
   const groups = {}
@@ -94,7 +96,17 @@ export default function ReagentTable({
                 borderBottom: `1px solid ${C.border}`, borderLeft: `3px solid ${C.gold}`,
               }}>{letter}</td>
             </tr>
-            {groups[letter].map(r => renderRow(r))}
+            {groupReagentsByName(groups[letter]).map(members => {
+              if (members.length === 1) return renderRow(members[0])
+              const groupKey = `grp:${normalizeReagentName(members[0].name)}`
+              const isExpanded = expandedIds.has(groupKey)
+              return (
+                <Fragment key={groupKey}>
+                  <ReagentGroupRow members={members} visibleCols={visibleCols} isExpanded={isExpanded} onToggleExpand={toggleExpand} groupKey={groupKey} />
+                  {isExpanded && members.map(r => renderRow(r))}
+                </Fragment>
+              )
+            })}
           </Fragment>
         ))}
       </tbody>
