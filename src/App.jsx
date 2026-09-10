@@ -1,5 +1,6 @@
 import Notices from './pages/Notices'
 import Safety from './pages/Safety'
+import Resources from './pages/Resources'
 import { Routes, Route, useOutletContext } from 'react-router-dom'
 import Layout from './components/Layout'
 import Home from './pages/Home'
@@ -43,6 +44,7 @@ function App() {
         <Route path="purchase-request/list" element={<PurchaseRequestList />} />
         <Route path="admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
         <Route path="inventory" element={<Inventory />} />
+        <Route path="resources" element={<Resources />} />
         <Route path="notices" element={<Notices />} />
         <Route path="notices/:id" element={<NoticeDetail />} />
 <Route path="safety/:id" element={<NoticeDetail />} />

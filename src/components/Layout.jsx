@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { to: '/reagents/list',    label: '시약',      icon: 'science'                },
   { to: '/inventory',        label: '재고실사',  icon: 'checklist'              },
   { to: '/purchase-request', label: '구매요청서', icon: 'shopping_cart'         },
-  { to: '/notices',          label: '자료',      icon: 'campaign'               },
+  { to: '/resources',        label: '자료',      icon: 'campaign'               },
 ]
 
 const BULK_EDIT_ITEM = { to: '/reagents/bulk-edit', label: '시약 일괄정리', icon: 'inventory_2' }
