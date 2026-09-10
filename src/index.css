@@ -90,6 +90,8 @@ textarea.autosize-cell {
   scrollbar-color: #AEB4C0 #EBEDF1;    /* Firefox: 손잡이 / 트랙 */
 }
 ::-webkit-scrollbar { width: 12px; height: 12px; }
+/* 위·아래 화살표 버튼 제거(브라우저 기본으로 뜨는 ▲▼) */
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
 ::-webkit-scrollbar-track { background: #EBEDF1; border-radius: 8px; }
 ::-webkit-scrollbar-corner { background: #EBEDF1; }
 ::-webkit-scrollbar-thumb {
@@ -109,8 +111,8 @@ textarea.autosize-cell {
     linear-gradient(#7C8493 0 0),
     linear-gradient(#7C8493 0 0);
   background-repeat: no-repeat;
-  background-size: 9px 1.5px;
-  background-position: center calc(50% - 4px), center 50%, center calc(50% + 4px);
+  background-size: 6px 1.5px;
+  background-position: center calc(50% - 3.5px), center 50%, center calc(50% + 3.5px);
 }
 /* 가로 스크롤바 손잡이: 가운데에 짧은 세로선 3개 */
 ::-webkit-scrollbar-thumb:horizontal {
@@ -119,6 +121,6 @@ textarea.autosize-cell {
     linear-gradient(#7C8493 0 0),
     linear-gradient(#7C8493 0 0);
   background-repeat: no-repeat;
-  background-size: 1.5px 9px;
-  background-position: calc(50% - 4px) center, 50% center, calc(50% + 4px) center;
+  background-size: 1.5px 6px;
+  background-position: calc(50% - 3.5px) center, 50% center, calc(50% + 3.5px) center;
 }
