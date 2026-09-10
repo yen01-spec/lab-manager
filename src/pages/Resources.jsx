@@ -1,12 +1,13 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import { C, PageBanner, btnPrimary } from '../design'
+import { supabase } from '../supabase'
 import PillNav from '../components/PillNav'
 import ResourceGuidePage from '../components/resources/ResourceGuidePage'
 import ResourceReagentList from '../components/resources/ResourceReagentList'
 import { lotLabel } from '../lib/lotNo'
 import { RESOURCE_CATEGORIES, RESOURCE_GUIDES } from '../lib/resourceGuides'
-import { getSetting, SCHOOL_SAFETY_SYSTEM_FALLBACK, KOSHA_LABEL_FALLBACK } from '../lib/appSettings'
+import { SCHOOL_SAFETY_SYSTEM_FALLBACK, KOSHA_LABEL_FALLBACK } from '../lib/appSettings'
 import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
 import { getHazardCategory } from '../lib/hazardCategory'
 
@@ -86,8 +87,7 @@ export default function Resources() {
   const { isAdmin } = useOutletContext?.() || {}
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
-  const [schoolUrl, setSchoolUrl] = useState('')
-  const [koshaUrl, setKoshaUrl] = useState('')
+  const [settings, setSettings] = useState({})   // { school_safety_system_url, kosha_label_url, lab_name, lab_professor, ... }
 
   const cat = RESOURCE_CATEGORIES.some(c => c.key === params.get('c')) ? params.get('c') : 'notice'
   const guide = RESOURCE_GUIDES[cat]
@@ -95,16 +95,44 @@ export default function Resources() {
   const section = guide?.sections.find(s => s.key === sectionKey)
 
   useEffect(() => {
-    getSetting('school_safety_system_url', SCHOOL_SAFETY_SYSTEM_FALLBACK).then(setSchoolUrl)
-    getSetting('kosha_label_url', KOSHA_LABEL_FALLBACK).then(setKoshaUrl)
+    supabase.from('app_settings').select('key, value')
+      .in('key', ['school_safety_system_url', 'kosha_label_url', 'lab_name', 'lab_professor', 'lab_assistant', 'lab_phone', 'safety_dept_phone', 'emergency_contact'])
+      .then(({ data }) => {
+        const m = {}; (data || []).forEach(r => { m[r.key] = r.value })
+        m.school_safety_system_url ||= SCHOOL_SAFETY_SYSTEM_FALLBACK
+        m.kosha_label_url ||= KOSHA_LABEL_FALLBACK
+        setSettings(m)
+      })
   }, [])
 
   const setCat = (c) => setParams(c === 'notice' ? { c } : { c, s: RESOURCE_GUIDES[c].sections[0].key })
   const setSection = (s) => setParams({ c: cat, s })
 
   function handleAction(a) {
-    // 이후 sub-phase에서 실제 시약 데이터/기능에 연결. 지금은 안내만.
-    alert('이 기능은 다음 단계에서 연결됩니다: ' + a.label)
+    if (a.type === 'goto') {
+      const target = RESOURCE_GUIDES[a.c || cat]?.sections.some(s => s.key === a.s) ? a.s : sectionKey
+      setParams({ c: a.c || cat, s: target })
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    if (a.type === 'reagent-search') {
+      navigate(a.q ? `/reagents/list?q=${encodeURIComponent(a.q)}` : '/reagents/list')
+      return
+    }
+    if (a.type === 'contact') {
+      const parts = [
+        settings.emergency_contact && `비상연락: ${settings.emergency_contact}`,
+        settings.lab_professor && `연구실책임자: ${settings.lab_professor}`,
+        settings.lab_assistant && `안전관리담당자: ${settings.lab_assistant}`,
+        settings.lab_phone && `연구실 전화: ${settings.lab_phone}`,
+        settings.safety_dept_phone && `교내 안전관리 부서: ${settings.safety_dept_phone}`,
+      ].filter(Boolean)
+      alert(parts.length
+        ? '📞 비상연락처\n\n' + parts.join('\n') + '\n\n※ 위급 시 119'
+        : '등록된 비상연락처가 없습니다. 연구실책임자·안전관리담당자 연락처를 확인해 대응하세요. (위급 시 119)')
+      return
+    }
+    alert('관련 자료 영역에서 확인해주세요.')
   }
 
   return (
@@ -142,7 +170,7 @@ export default function Resources() {
               style={{ marginBottom: 18 }}
             />
             <ResourceGuidePage
-              section={section} schoolUrl={schoolUrl} koshaUrl={koshaUrl} isAdmin={isAdmin} onAction={handleAction}
+              section={section} settings={settings} isAdmin={isAdmin} onAction={handleAction}
               embedNode={section?.embed && (
                 <Suspense fallback={<div style={{ padding: 24, textAlign: 'center', color: C.muted, fontSize: 13 }}>불러오는 중...</div>}>
                   {EMBEDS[section.embed]}
