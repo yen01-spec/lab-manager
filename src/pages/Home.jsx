@@ -143,9 +143,11 @@ export default function Home() {
   }
 
   async function fetchRecentConfirms() {
+    // 위치는 reagents.location_id(Lot 도입 전 구조, 지금은 안 씀)가 아니라 실제 보유중인
+    // Lot의 위치를 봐야 함 — 안 그러면 Lot 기반으로 들어온 시약은 전부 "위치 미지정"으로 뜸.
     const { data } = await supabase
       .from('reagents')
-      .select('id, name, confirmed_by, last_confirmed_at, locations(room, detail)')
+      .select('id, name, confirmed_by, last_confirmed_at, reagent_lots(status, locations(room, detail))')
       .not('last_confirmed_at', 'is', null)
       .order('last_confirmed_at', { ascending: false })
       .limit(5)
@@ -158,7 +160,11 @@ export default function Home() {
         students?.forEach(s => { names[s.student_id] = s.name })
       }
     }
-    setRecentConfirms(data.map(r => ({ ...r, confirmedByName: names[r.confirmed_by] || (isAdmin ? r.confirmed_by : '') })))
+    setRecentConfirms(data.map(r => {
+      const activeLocs = [...new Set((r.reagent_lots || []).filter(l => l.status === 'active' && l.locations).map(l => `${l.locations.room}${l.locations.detail ? ' ' + l.locations.detail : ''}`))]
+      const locLabel = activeLocs.length === 0 ? null : activeLocs.length === 1 ? activeLocs[0] : '위치별 상이'
+      return { ...r, locationLabel: locLabel, confirmedByName: names[r.confirmed_by] || (isAdmin ? r.confirmed_by : '') }
+    }))
   }
 
   function submitSearch() {
@@ -241,13 +247,12 @@ export default function Home() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {recentConfirms.map((r, i) => {
-                  const loc = r.locations
                   const isToday = r.last_confirmed_at && new Date(r.last_confirmed_at).toDateString() === new Date().toDateString()
                   return (
                     <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: i < recentConfirms.length - 1 ? `1px solid ${C.borderRow}` : 'none' }}>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: C.navyDeep }}>{r.name}</div>
-                        <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{loc ? `${loc.room}${loc.detail ? ' ' + loc.detail : ''}` : '위치 미지정'}</div>
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{r.locationLabel || '위치 미지정'}</div>
                       </div>
                       <div style={{ fontSize: 11.5, color: C.muted, textAlign: 'right', whiteSpace: 'nowrap' }}>
                         {isToday ? '오늘' : new Date(r.last_confirmed_at).toLocaleDateString('ko-KR')}{isAdmin && r.confirmedByName ? ` · ${r.confirmedByName}` : ''}
