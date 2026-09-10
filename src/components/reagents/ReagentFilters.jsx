@@ -58,7 +58,7 @@ export default function ReagentFilters({
         background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px',
         padding: '0 16px', boxShadow: '0 1px 3px rgba(16,24,40,.06)', marginBottom: '16px',
       }}>
-        <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
+        <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`, overflowX: 'auto', overflowY: 'hidden' }}>
           {['', ...rooms].map(room => (
             <button key={room || '전체'} onClick={() => { setRoomFilter(room); setDetailFilter('') }} style={{
               padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer',

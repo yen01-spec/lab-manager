@@ -129,7 +129,7 @@ export default function ReagentTable({
     <div style={{ display: 'flex', alignItems: 'flex-start' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <Card noPadding>
-          <div ref={listRef} style={{ overflowX: 'auto' }}>
+          <div ref={listRef} style={{ overflowX: 'auto', overflowY: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
               <thead>
                 <tr>

@@ -40,7 +40,7 @@ export default function SafetySignage() {
     <div>
       <PageBanner title="안전표지 관리" sub="Safety Signage" breadcrumb={['홈', '안전관리', '안전표지 관리']} />
       <div style={{ padding: '8px 16px 40px' }}>
-        <div style={{ display: 'flex', gap: '2px', marginBottom: '20px', borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
+        <div style={{ display: 'flex', gap: '2px', marginBottom: '20px', borderBottom: `1px solid ${C.border}`, overflowX: 'auto', overflowY: 'hidden' }}>
           {TABS.map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)} style={{
               fontSize: '14px', fontWeight: tab === key ? '700' : '500', color: tab === key ? C.navy : C.muted,
