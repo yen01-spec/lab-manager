@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../supabase'
-import { C, Card, btnGhost, btnPrimary, inputStyle, labelStyle, thStyle, tdStyle } from '../../design'
+import { C, Card, btnGhost, btnExcel, inputStyle, labelStyle, thStyle, tdStyle } from '../../design'
 import { exportSpecialMaterialLogs } from '../../exportUtils'
 
 // 특별관리물질 취급일지 전체 조회/확인/내보내기 — 산업안전보건기준에관한 규칙 제439조.
@@ -39,7 +39,7 @@ export default function SpecialMaterialLogTab({ student }) {
           <input value={labName} onChange={e => setLabName(e.target.value)} style={{ ...inputStyle, width: '160px' }} /></div>
         <div><label style={labelStyle}>연구실 책임자명</label>
           <input value={labDirector} onChange={e => setLabDirector(e.target.value)} style={{ ...inputStyle, width: '140px' }} /></div>
-        <button onClick={() => exportSpecialMaterialLogs(filtered, labName, labDirector)} style={btnPrimary}>📥 원본 양식으로 내보내기</button>
+        <button onClick={() => exportSpecialMaterialLogs(filtered, labName, labDirector)} style={btnExcel}>📊 원본 양식으로 내보내기</button>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead><tr>{['취급일자', '물질명', 'CAS', '최초입고량', '취급량', '작업내용', '보호구', '사고내용', '취급자', '확인'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>

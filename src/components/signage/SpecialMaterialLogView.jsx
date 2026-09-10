@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { C, inputStyle, labelStyle } from '../../design'
+import { C, inputStyle, labelStyle, btnExcel } from '../../design'
 import { supabase } from '../../supabase'
 import { fetchAllPages } from '../../lib/fetchAllPages'
 import { getSpecialManagementInfo } from '../../lib/specialManagementSubstances'
@@ -147,9 +147,7 @@ export default function SpecialMaterialLogView({ student, isAdmin }) {
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
             <div style={{ fontSize: '11.5px', color: C.muted }}>삭제는 관리자 권한으로만 가능하며, 삭제 시 사유가 함께 기록됩니다.</div>
-            <button onClick={() => exportSpecialMaterialLogs(filtered, labProfile.lab_name, labProfile.lab_professor)} style={{
-              padding: '8px 14px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, fontSize: '12.5px', fontWeight: '600', cursor: 'pointer',
-            }}>📥 전체 내보내기 (XLSX)</button>
+            <button onClick={() => exportSpecialMaterialLogs(filtered, labProfile.lab_name, labProfile.lab_professor)} style={btnExcel}>📊 전체 내보내기 (XLSX)</button>
           </div>
         </div>
       </div>

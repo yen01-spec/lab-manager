@@ -1,4 +1,4 @@
-import { C, thStyle, tdStyle } from '../../design'
+import { C, thStyle, tdStyle, btnExcel } from '../../design'
 import { exportPickedReagents } from '../../exportUtils'
 
 function Modal({ children, onClose }) {
@@ -70,7 +70,7 @@ export default function PickedListModal({ pickedIds, setPickedIds, locations, on
         }} style={{ padding: '9px 16px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
           📄 MSDS 일괄 열기 ({Array.from(pickedIds.values()).filter(r => r.msds_url).length}건)
         </button>
-        <button onClick={() => exportPickedReagents(Array.from(pickedIds.values()), locations)} style={{ padding: '9px 16px', borderRadius: '6px', border: 'none', background: '#1D6F42', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>📥 Excel</button>
+        <button onClick={() => exportPickedReagents(Array.from(pickedIds.values()), locations)} style={btnExcel}>📊 Excel로 내보내기</button>
       </div>
     </Modal>
   )

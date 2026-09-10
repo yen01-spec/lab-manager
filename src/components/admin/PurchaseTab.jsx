@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../supabase'
-import { C, Card, StatusBadge, inputStyle, btnPrimary } from '../../design'
+import { C, Card, StatusBadge, inputStyle, btnPrimary, btnExcel } from '../../design'
 import { exportPurchaseRequests } from '../../exportUtils'
 
 // ══════════════════════════════════════════════
@@ -57,10 +57,7 @@ export default function PurchaseTab({ onCountChange }) {
   return (
     <Card title="🛒 구매 요청 관리" sub="Purchase Management"
       extra={requests.length > 0 && (
-        <button onClick={() => exportPurchaseRequests(filtered)} style={{
-          background: '#1D6F42', color: 'white', border: 'none',
-          padding: '6px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-        }}>📥 엑셀</button>
+        <button onClick={() => exportPurchaseRequests(filtered)} style={btnExcel}>📊 Excel로 내보내기</button>
       )}>
       <div style={{ display: 'flex', gap: '6px', marginBottom: '20px', flexWrap: 'wrap' }}>
         {filterTabs.map(f => (

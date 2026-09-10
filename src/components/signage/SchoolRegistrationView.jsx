@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import * as XLSX from 'xlsx'
-import { C, inputStyle } from '../../design'
+import { C, inputStyle, btnExcel } from '../../design'
 import { supabase } from '../../supabase'
 
 const CAS_RE = /^\d{2,7}-\d{2}-\d$/
@@ -198,10 +198,7 @@ export default function SchoolRegistrationView() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
         <div style={{ fontSize: '12px', color: C.muted }}>체크된 항목만 엑셀에 포함됩니다. ⚠ 미등록 항목은 CAS·명칭 재확인 후 포함 여부를 결정하세요.</div>
-        <button onClick={generateExcel} disabled={generating} style={{
-          fontSize: '13px', fontWeight: '600', padding: '10px 18px', border: 'none',
-          background: C.text, color: '#fff', cursor: generating ? 'default' : 'pointer', opacity: generating ? 0.6 : 1,
-        }}>{generating ? '생성 중...' : '📥 화학물질등록 엑셀 생성 (.xlsx)'}</button>
+        <button onClick={generateExcel} disabled={generating} style={{ ...btnExcel, cursor: generating ? 'default' : 'pointer', opacity: generating ? 0.6 : 1 }}>{generating ? '생성 중...' : '📊 화학물질등록 엑셀 생성 (.xlsx)'}</button>
       </div>
 
       <div style={{ marginTop: '20px', fontSize: '12px', color: C.muted, borderTop: `1px dashed ${C.border}`, paddingTop: '14px' }}>

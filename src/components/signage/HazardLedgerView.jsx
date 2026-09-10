@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { C } from '../../design'
+import { C, btnExcel } from '../../design'
 import { supabase } from '../../supabase'
 import { fetchAllPages } from '../../lib/fetchAllPages'
 import * as XLSX from 'xlsx'
@@ -125,9 +125,7 @@ export default function HazardLedgerView() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '18px' }}>
         <div style={{ fontSize: '11.5px', color: C.muted }}>⚠ 확인일 오래됨 표시는 최근 확인일이 {STALE_DAYS}일 이상 지났거나 아예 없는 경우입니다 — 재고실사로 갱신해주세요.</div>
-        <button onClick={exportLedger} style={{
-          padding: '9px 16px', borderRadius: '6px', border: 'none', background: C.text, color: '#fff', fontSize: '12.5px', fontWeight: '600', cursor: 'pointer',
-        }}>📥 관리대장 내보내기 (XLSX)</button>
+        <button onClick={exportLedger} style={btnExcel}>📊 관리대장 내보내기 (XLSX)</button>
       </div>
 
       <div style={{ marginTop: '20px', fontSize: '12px', color: C.muted, borderTop: `1px dashed ${C.border}`, paddingTop: '14px' }}>
