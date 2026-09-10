@@ -87,16 +87,16 @@ textarea.autosize-cell {
 /* ── 스크롤바 — 눈에 잘 띄도록 두툼한 회색 pill + 가운데 그립 라인 ───── */
 * {
   scrollbar-width: auto;               /* Firefox: 기본 두께 유지 */
-  scrollbar-color: #AEB4C0 #EBEDF1;    /* Firefox: 손잡이 / 트랙 */
+  scrollbar-color: #AEB4C0 transparent; /* Firefox: 손잡이 / 트랙(투명) */
 }
 ::-webkit-scrollbar { width: 12px; height: 12px; }
 /* 위·아래 화살표 버튼 제거(브라우저 기본으로 뜨는 ▲▼) */
 ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-::-webkit-scrollbar-track { background: #EBEDF1; border-radius: 8px; }
-::-webkit-scrollbar-corner { background: #EBEDF1; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background-color: #AEB4C0;
-  border: 2px solid #EBEDF1;           /* 트랙과 살짝 간격 → 둥근 pill 느낌 */
+  border: 2px solid transparent;       /* 가장자리와 살짝 간격 → 둥근 pill 느낌 */
   border-radius: 8px;
   min-height: 44px;
   min-width: 44px;
