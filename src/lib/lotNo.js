@@ -32,6 +32,20 @@ export async function generateInternalLotNo() {
   return `${prefix}${String(maxN + 1).padStart(3, '0')}`
 }
 
+// Excel 일괄 등록처럼 한 번에 여러 개가 필요할 때 — DB를 한 번만 조회하고
+// 로컬에서 순번을 이어붙인다(각 행마다 조회하면 같은 번호가 중복됨).
+export async function generateInternalLotNos(count) {
+  if (count <= 0) return []
+  const prefix = internalLotPrefix()
+  const { data } = await supabase.from('reagent_lots').select('lot_no').ilike('lot_no', `${prefix}%`)
+  let maxN = 0
+  for (const r of data || []) {
+    const m = (r.lot_no || '').match(/-(\d{3,})$/)
+    if (m) maxN = Math.max(maxN, parseInt(m[1], 10))
+  }
+  return Array.from({ length: count }, (_, i) => `${prefix}${String(maxN + 1 + i).padStart(3, '0')}`)
+}
+
 // 폼 상태({ lotNo, noLotReason }) → reagent_lots에 저장할 { lot_no, lot_source }
 export async function resolveLotNo({ lotNo = '', noLotReason = '' } = {}) {
   if (noLotReason) {
