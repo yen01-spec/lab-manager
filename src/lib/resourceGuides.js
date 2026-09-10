@@ -230,7 +230,10 @@ export const RESOURCE_GUIDES = {
         roles: ['director'],
         steps: ['보고서 관리대장 서식 확인', '승인된 보고서 이력 관리'],
         notice: '"사전유해인자위험분석 보고서 관리대장"과 "유해인자 취급·관리대장"은 서로 다른 문서입니다.',
-        actions: [{ key: 'files', label: '관리대장 서식', type: 'files' }],
+        actions: [
+          { key: 'files', label: '관리대장 서식', type: 'files' },
+          { key: 'ledger-tool', label: '유해인자 취급·관리대장 준비 도구 (Excel)', type: 'route', to: '/safety-signage?tab=ledger' },
+        ],
       },
       {
         key: 'prepare', label: '작성 준비', title: '사전유해인자 작성 준비',
@@ -280,7 +283,11 @@ export const RESOURCE_GUIDES = {
         steps: ['필요한 표지 종류 확인', '관련 자료 확인', '학교 시스템에서 표지 관리'],
         roles: ['manager', 'director'],
         notice: '학교 시스템의 공식 안전표지 관리 기능을 복제하지 않습니다.',
-        actions: [{ key: 'school', label: '학교 시스템 열기' }, { key: 'files', label: '표지 종류·관련 자료', type: 'files' }],
+        actions: [
+          { key: 'school', label: '학교 시스템 열기' },
+          { key: 'files', label: '표지 종류·관련 자료', type: 'files' },
+          { key: 'entrance-tool', label: '출입구 표지 현황 도구', type: 'route', to: '/safety-signage' },
+        ],
       },
       {
         key: 'ppe', label: '보호구', title: '보호구',

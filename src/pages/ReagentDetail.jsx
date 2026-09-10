@@ -3,7 +3,6 @@ import { useParams, useOutletContext, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../design'
 import CompanyPicker from '../components/CompanyPicker'
-import SpecialMaterialLogModal from '../components/reagents/SpecialMaterialLogModal'
 import { getHazardCategory } from '../lib/hazardCategory'
 import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
 import { resolveLotNo } from '../lib/lotNo'
@@ -70,7 +69,6 @@ export default function ReagentDetail() {
   const [addLotForm, setAddLotForm] = useState({ lot_no: '', noLotReason: '', cat_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
   const [locations, setLocations] = useState([])
   const [history, setHistory] = useState([])
-  const [showSpecialLogModal, setShowSpecialLogModal] = useState(false)
   const [specialLogs, setSpecialLogs] = useState([])
   // 상단 버튼이 6개까지 늘어나던 걸 정리 — 자주 쓰는 재고등록/위치이동(+실사 중이면
   // 정보맞음)만 항상 보이고, 나머지(폐기신청/정보수정/시약삭제)는 "⋯더보기" 안으로.
@@ -725,16 +723,17 @@ export default function ReagentDetail() {
             </div>
           </div>
 
-          {/* 특별관리물질 취급일지 — 산업안전보건기준에관한 규칙 제439조, 법정 보존 30년 */}
+          {/* 특별관리물질 취급일지 — 지난 기록 열람용(읽기 전용).
+              신규 기록·공식 양식은 [자료 → 특별관리물질 → 취급일지]와 학교 시스템에서 처리한다. */}
           {specialInfo && (
             <div style={cardStyle}>
               <div style={{ ...cardHeadStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>🚨 특별관리물질 취급일지</span>
-                <button onClick={() => setShowSpecialLogModal(true)} style={{ padding: '5px 12px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, fontSize: '11.5px', color: C.navy, fontWeight: '600', cursor: 'pointer' }}>+ 기록 추가</button>
+                <button onClick={() => navigate('/resources?c=special&s=log')} style={{ padding: '5px 12px', borderRadius: '6px', border: `1px solid ${C.border}`, background: C.white, fontSize: '11.5px', color: C.navy, fontWeight: '600', cursor: 'pointer' }}>취급일지 작성용 정보 →</button>
               </div>
               <div style={{ padding: '18px 20px' }}>
                 {specialLogs.length === 0 ? (
-                  <div style={{ fontSize: '12.5px', color: C.muted }}>취급 기록이 없습니다.</div>
+                  <div style={{ fontSize: '12.5px', color: C.muted }}>이 앱에 저장된 취급 기록이 없습니다. 취급일지 작성은 <b>자료 → 특별관리물질 → 취급일지</b>와 학교 시스템에서 진행하세요.</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {specialLogs.map(log => (
@@ -842,15 +841,6 @@ export default function ReagentDetail() {
             </tbody>
           </table>
         </div>
-      )}
-
-      {/* 특별관리물질 취급일지 작성 모달 */}
-      {showSpecialLogModal && (
-        <SpecialMaterialLogModal
-          reagent={reagent} student={student}
-          onClose={() => setShowSpecialLogModal(false)}
-          onSaved={() => { setShowSpecialLogModal(false); fetchSpecialLogs() }}
-        />
       )}
 
       {/* 폐기 신청 모달 */}

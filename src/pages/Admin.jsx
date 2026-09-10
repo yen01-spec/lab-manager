@@ -10,8 +10,6 @@ import PurchaseTab from '../components/admin/PurchaseTab'
 import ReagentAddTab from '../components/admin/ReagentAddTab'
 import BulkAddTab from '../components/admin/BulkAddTab'
 import BulkUpdateTab from '../components/admin/BulkUpdateTab'
-import NoticeTab from '../components/admin/NoticeTab'
-import SpecialMaterialLogTab from '../components/admin/SpecialMaterialLogTab'
 import LogTab from '../components/admin/LogTab'
 import SettingsTab from '../components/admin/SettingsTab'
 
@@ -25,8 +23,6 @@ const TABS = [
   { key: 'data-add', label: '시약 1건 추가', icon: '🧪', section: '시약 데이터' },
   { key: 'data-bulk-add', label: 'Excel 일괄 추가', icon: '📥' },
   { key: 'data-bulk', label: '정보 일괄갱신', icon: '🔄' },
-  { key: 'notice', label: '공지/안전관리', icon: '📢', section: '콘텐츠' },
-  { key: 'special', label: '특별관리물질', icon: '🚨' },
   { key: 'log', label: '작업 기록', icon: '📋', section: '기타' },
   { key: 'settings', label: '설정', icon: '⚙️' },
 ]
@@ -114,8 +110,6 @@ export default function Admin() {
           {tab === 'data-add' && <ReagentAddTab locations={locations} student={student} />}
           {tab === 'data-bulk-add' && <BulkAddTab locations={locations} student={student} />}
           {tab === 'data-bulk' && <BulkUpdateTab />}
-          {tab === 'notice' && <NoticeTab />}
-          {tab === 'special' && <SpecialMaterialLogTab student={student} />}
           {tab === 'log' && <LogTab />}
           {tab === 'settings' && <SettingsTab />}
         </div>

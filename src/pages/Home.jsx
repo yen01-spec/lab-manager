@@ -8,8 +8,8 @@ const QUICK_MENU = [
   { to: '/reagents/list',    label: '시약 검색',   sub: '위치·잔량 바로 확인',     icon: 'science'   },
   { to: '/inventory',        label: '재고실사',     sub: '진행 중인 실사 이어하기', icon: 'checklist' },
   { to: '/purchase-request', label: '구매요청서',   sub: '필요 물품 담아 내보내기', icon: 'shopping_cart' },
-  { to: '/notices',          label: '자료실',       sub: '안전수칙·공지·MSDS',      icon: 'description' },
-  { to: '/safety-signage',   label: '안전표지 관리', sub: '출입구 표지·용기 라벨',   icon: 'warning'   },
+  { to: '/resources',        label: '자료',         sub: '안전관리 절차·공식자료·준비', icon: 'campaign' },
+  { to: '/notices',          label: '공지사항',     sub: '공지·안내 게시판',        icon: 'description' },
 ]
 
 function Card({ title, titleExtra, children, noPadding }) {

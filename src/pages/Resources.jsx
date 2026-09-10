@@ -119,6 +119,11 @@ export default function Resources() {
       navigate(a.q ? `/reagents/list?q=${encodeURIComponent(a.q)}` : '/reagents/list')
       return
     }
+    if (a.type === 'route' && a.to) {
+      navigate(a.to)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
     if (a.type === 'contact') {
       // 명백한 placeholder 값(OOO / 000-0000-0000 / 미정 / 없음 / - 등)은 실제 연락처로 취급하지 않음
       const real = (v) => {
