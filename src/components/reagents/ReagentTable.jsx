@@ -16,9 +16,9 @@ function getGroupedReagents(data) {
 }
 
 export default function ReagentTable({
-  data, locations, visibleCols, checkedIds, pickedIds, editMode, isAdmin,
+  data, locations, visibleCols, pickedIds, isAdmin,
   inlineEdit, setInlineEdit, expandedIds, alphabetRefs,
-  toggleCheck, togglePick, toggleAll, togglePickAll, handleRowClick, toggleExpand,
+  togglePick, togglePickAll, handleRowClick, toggleExpand,
   startInlineEdit, saveInlineEdit, confirmPending,
 }) {
   const COLS = 3 // 체크박스 + 시약명 + 순도 (항상 표시)
@@ -29,7 +29,6 @@ export default function ReagentTable({
 
   const groups = getGroupedReagents(data)
   const letters = Object.keys(groups).sort()
-  const allChecked = data.length > 0 && checkedIds.size === data.length
   const allPicked = data.length > 0 && data.every(r => pickedIds.has(r.id))
 
   const renderRow = (r) => {
@@ -37,11 +36,11 @@ export default function ReagentTable({
     const isEditingStock = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'current_stock'
     return (
       <ReagentRow key={r.id} r={r} locations={locations} visibleCols={visibleCols}
-        editMode={editMode} isAdmin={isAdmin} data={data}
-        isChecked={checkedIds.has(r.id)} isPicked={pickedIds.has(r.id)} isExpanded={expandedIds.has(r.id)}
+        isAdmin={isAdmin} data={data}
+        isPicked={pickedIds.has(r.id)} isExpanded={expandedIds.has(r.id)}
         isEditingSealed={isEditingSealed} isEditingStock={isEditingStock}
         editValue={(isEditingSealed || isEditingStock) ? inlineEdit.value : undefined}
-        onToggleCheck={toggleCheck} onTogglePick={togglePick} onToggleExpand={toggleExpand} onRowClick={handleRowClick}
+        onTogglePick={togglePick} onToggleExpand={toggleExpand} onRowClick={handleRowClick}
         onStartEdit={startInlineEdit}
         onSaveEdit={(isEditingSealed || isEditingStock) ? saveInlineEdit : undefined}
         onChangeEdit={(isEditingSealed || isEditingStock) ? setInlineEdit : undefined}
@@ -55,12 +54,12 @@ export default function ReagentTable({
       <thead>
         <tr>
           <th style={{ ...thStyle, borderRight: `1px solid ${C.borderRow}` }}
-            title={editMode ? '일괄편집 대상으로 선택' : '선택 목록에 담기'}>
-            <input type="checkbox" checked={editMode ? allChecked : allPicked}
-              onChange={() => editMode ? toggleAll(data) : togglePickAll(data)}
+            title="선택 목록에 담기">
+            <input type="checkbox" checked={allPicked}
+              onChange={() => togglePickAll(data)}
               style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
             <div style={{ fontSize: '9.5px', fontWeight: '400', color: C.muted, marginTop: '2px', whiteSpace: 'nowrap' }}>
-              {editMode ? '편집' : '담기'}
+              담기
             </div>
           </th>
           {[
@@ -111,7 +110,7 @@ export default function ReagentTable({
         ))}
       </tbody>
     </table>
-    {isAdmin && !editMode && (
+    {isAdmin && (
       <div style={{ padding: '8px 14px', fontSize: '11px', color: C.muted, borderTop: `1px solid ${C.border}` }}>
         💡 재고 숫자를 클릭하면 바로 수정할 수 있어요.
       </div>

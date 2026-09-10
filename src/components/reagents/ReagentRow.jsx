@@ -2,16 +2,16 @@ import { Fragment, memo } from 'react'
 import { C, tdStyle } from '../../design'
 import LotRow from './LotRow'
 
-// 행 하나를 memo로 감싸서, 서로 무관한 상태 변화(다른 행 체크/선택/펼치기, 컬럼 표시
+// 행 하나를 memo로 감싸서, 서로 무관한 상태 변화(다른 행 선택/펼치기, 컬럼 표시
 // 전환 등)가 일어나도 실제로 이 행에 영향을 주는 props가 안 바뀌면 리렌더를 건너뛴다.
-// isChecked/isPicked/isExpanded/editing* 처럼 원본 Set·Map·객체 대신 "이 행에 해당하는
-// boolean/원시값"만 골라서 props로 내려주는 게 핵심 — 그래야 다른 행이 체크되어도 이
+// isPicked/isExpanded/editing* 처럼 원본 Set·Map·객체 대신 "이 행에 해당하는
+// boolean/원시값"만 골라서 props로 내려주는 게 핵심 — 그래야 다른 행이 선택되어도 이
 // 행의 props는 그대로라 memo가 스킵할 수 있다. onSaveEdit/onChangeEdit도 실제로
 // 편집 중인 행에만 값을 넘기고, 나머지 행에는 항상 undefined(고정값)를 넘긴다.
 const ReagentRow = memo(function ReagentRow({
-  r, locations, visibleCols, editMode, isAdmin, data,
-  isChecked, isPicked, isExpanded, isEditingSealed, isEditingStock, editValue,
-  onToggleCheck, onTogglePick, onToggleExpand, onRowClick,
+  r, locations, visibleCols, isAdmin, data,
+  isPicked, isExpanded, isEditingSealed, isEditingStock, editValue,
+  onTogglePick, onToggleExpand, onRowClick,
   onStartEdit, onSaveEdit, onChangeEdit, onConfirmPending,
 }) {
   const allLots = r.reagent_lots || []
@@ -32,13 +32,13 @@ const ReagentRow = memo(function ReagentRow({
 
   const baseBg = isLow ? '#FFF8F8' : hasPendingConfirm ? '#F0F7FF' : C.white
   const selectedBg = '#EEF2FB'
-  const isSelected = editMode ? isChecked : isPicked
+  const isSelected = isPicked
 
   return (
     <Fragment>
       <tr
-        onClick={e => editMode ? onToggleCheck(r.id, e, data) : onRowClick(r)}
-        title={!editMode ? '클릭: 상세페이지' + (canExpand ? ' · ▸ 아이콘: Lot 목록 펼치기' : '') : ''}
+        onClick={() => onRowClick(r)}
+        title={'클릭: 상세페이지' + (canExpand ? ' · ▸ 아이콘: Lot 목록 펼치기' : '')}
         style={{
           background: isSelected ? selectedBg : baseBg,
           cursor: 'pointer',
@@ -47,7 +47,7 @@ const ReagentRow = memo(function ReagentRow({
         onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = isLow ? '#FFEFEF' : C.bg }}
         onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = baseBg }}>
         <td style={{ ...tdStyle, textAlign: 'center', borderRight: `1px solid ${C.borderRow}` }}
-          onClick={e => editMode ? onToggleCheck(r.id, e, data) : onTogglePick(r, e)}>
+          onClick={e => onTogglePick(r, e)}>
           <input type="checkbox" checked={isSelected} onChange={() => {}}
             style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
         </td>
@@ -105,10 +105,10 @@ const ReagentRow = memo(function ReagentRow({
                   onBlur={() => onSaveEdit(onlyLot)}
                   style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
               ) : (
-                <span onClick={e => !editMode && onlyLot && onStartEdit(onlyLot.id, r.id, 'sealed_count', totalSealed, e)}
-                  title={isAdmin && !editMode && onlyLot ? '클릭하여 수정' : !onlyLot ? '상세페이지에서 Lot별로 수정하세요' : ''}
-                  style={{ cursor: isAdmin && !editMode && onlyLot ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
-                    border: isAdmin && !editMode && onlyLot ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
+                <span onClick={e => onlyLot && onStartEdit(onlyLot.id, r.id, 'sealed_count', totalSealed, e)}
+                  title={isAdmin && onlyLot ? '클릭하여 수정' : !onlyLot ? '상세페이지에서 Lot별로 수정하세요' : ''}
+                  style={{ cursor: isAdmin && onlyLot ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
+                    border: isAdmin && onlyLot ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
                   {totalSealed}병
                 </span>
               )}
@@ -120,10 +120,10 @@ const ReagentRow = memo(function ReagentRow({
                   onBlur={() => onSaveEdit(onlyLot)}
                   style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
               ) : (
-                <span onClick={e => !editMode && onlyLot && onStartEdit(onlyLot.id, r.id, 'current_stock', avgStock, e)}
-                  title={isAdmin && !editMode && onlyLot ? '클릭하여 수정' : !onlyLot ? '상세페이지에서 Lot별로 수정하세요' : ''}
-                  style={{ cursor: isAdmin && !editMode && onlyLot ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
-                    border: isAdmin && !editMode && onlyLot ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
+                <span onClick={e => onlyLot && onStartEdit(onlyLot.id, r.id, 'current_stock', avgStock, e)}
+                  title={isAdmin && onlyLot ? '클릭하여 수정' : !onlyLot ? '상세페이지에서 Lot별로 수정하세요' : ''}
+                  style={{ cursor: isAdmin && onlyLot ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
+                    border: isAdmin && onlyLot ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
                   {avgStock}%
                 </span>
               )}

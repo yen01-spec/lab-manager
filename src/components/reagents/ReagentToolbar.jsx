@@ -1,11 +1,11 @@
 import { C, inputStyle, btnPrimary } from '../../design'
 import ReagentAutocomplete from '../ReagentAutocomplete'
 
-// 상단 검색창 + 일괄검색/신규등록/엑셀/편집 버튼 줄.
+// 상단 검색창 + 일괄검색/신규등록/엑셀 버튼 줄.
 export default function ReagentToolbar({
   search, setSearch, onSearchSelect, onSearchEnter,
   onOpenBulkLookup, onOpenRegister,
-  isAdmin, hasResults, editMode, onToggleEditMode, onExportExcel,
+  isAdmin, hasResults, onExportExcel,
 }) {
   return (
     <div style={{
@@ -39,15 +39,6 @@ export default function ReagentToolbar({
           padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
           fontSize: '13px', fontWeight: '600', flexShrink: 0,
         }}>📥 엑셀</button>
-      )}
-      {isAdmin && hasResults && (
-        <button onClick={onToggleEditMode} style={{
-          background: editMode ? C.navy : C.white,
-          color: editMode ? C.white : C.text,
-          border: `1px solid ${editMode ? C.navy : C.border}`,
-          padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
-          fontSize: '13px', fontWeight: '600', flexShrink: 0,
-        }}>✏️ {editMode ? '편집 종료' : '편집'}</button>
       )}
     </div>
   )

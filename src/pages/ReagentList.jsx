@@ -13,7 +13,6 @@ import ReagentTable from '../components/reagents/ReagentTable'
 import MobileReagentCard from '../components/reagents/MobileReagentCard'
 import ReagentToolbar from '../components/reagents/ReagentToolbar'
 import ReagentFilters from '../components/reagents/ReagentFilters'
-import BulkMoveModal from '../components/reagents/BulkMoveModal'
 import BulkLookupModal from '../components/reagents/BulkLookupModal'
 import RegisterReagentModal from '../components/reagents/RegisterReagentModal'
 import PickedListModal from '../components/reagents/PickedListModal'
@@ -48,16 +47,9 @@ export default function ReagentList() {
   const [casMismatchOnly, setCasMismatchOnly] = useState(false)
   const alphabetRefs = useRef({})
 
-  // 편집 모드
-  const [editMode, setEditMode] = useState(false)
-  const [checkedIds, setCheckedIds] = useState(new Set())
-
   // 선택 목록 (검색결과에서 여러 시약을 체크해 모아보기 — 전체 사용자). id -> reagent row
   const [pickedIds, setPickedIds] = useState(new Map())
   const [showPickedModal, setShowPickedModal] = useState(false)
-  const [showBulkMoveModal, setShowBulkMoveModal] = useState(false)
-  const [bulkMoveLocation, setBulkMoveLocation] = useState('')
-  const [bulkMovedBy, setBulkMovedBy] = useState('')
 
   // 인라인 편집 (목록에서 재고 숫자 바로 수정)
   const [inlineEdit, setInlineEdit] = useState(null)
@@ -101,42 +93,6 @@ export default function ReagentList() {
     setFireClassFilter(new Set())
     setSpecialOnly(false)
     setCasMismatchOnly(false)
-  }
-
-  // 편집 모드 토글
-  function toggleEditMode() {
-    setEditMode(!editMode)
-    setCheckedIds(new Set())
-  }
-
-  // 시프트 범위선택용 "마지막 클릭 id"는 화면에 영향 없는 부기용 값이라
-  // state 대신 ref로 관리 — toggleCheck를 완전히 안정된(참조가 안 바뀌는)
-  // 콜백으로 만들어서 행(ReagentRow) 메모이제이션이 깨지지 않도록 하기 위함.
-  const lastCheckedRef = useRef(null)
-
-  const toggleCheck = useCallback((id, e, allData) => {
-    e.stopPropagation()
-    setCheckedIds(prev => {
-      const next = new Set(prev)
-      if (e.shiftKey && lastCheckedRef.current) {
-        // Shift+클릭 범위 선택
-        const ids = allData.map(r => r.id)
-        const start = ids.indexOf(lastCheckedRef.current)
-        const end = ids.indexOf(id)
-        const range = ids.slice(Math.min(start, end), Math.max(start, end) + 1)
-        const allSelected = range.every(rid => next.has(rid))
-        range.forEach(rid => allSelected ? next.delete(rid) : next.add(rid))
-      } else {
-        next.has(id) ? next.delete(id) : next.add(id)
-      }
-      return next
-    })
-    lastCheckedRef.current = id
-  }, [])
-
-  function toggleAll(data) {
-    if (checkedIds.size === data.length) setCheckedIds(new Set())
-    else setCheckedIds(new Set(data.map(r => r.id)))
   }
 
   const togglePick = useCallback((r, e) => {
@@ -243,46 +199,6 @@ export default function ReagentList() {
     } finally {
       setZippingMsds(false)
     }
-  }
-
-  // 다량 위치 이동 — 선택한 시약들의 활성 Lot을 전부 새 위치로 이동(Lot별 위치이동과 동일한 방식)
-  async function submitBulkMove() {
-    if (!bulkMoveLocation) { alert('이동할 위치를 선택해주세요'); return }
-    if (!bulkMovedBy.trim()) { alert('이름을 입력해주세요'); return }
-    const toLoc = locations.find(l => l.id === bulkMoveLocation)
-    const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
-    const selected = results.filter(r => checkedIds.has(r.id))
-
-    let movedLotCount = 0
-    let skippedCount = 0
-    for (const r of selected) {
-      const activeLots = r._activeLots || (r.reagent_lots || []).filter(l => l.status === 'active')
-      if (activeLots.length === 0) { skippedCount++; continue }
-      for (const lot of activeLots) {
-        const fromLoc = locations.find(l => l.id === lot.location_id)
-        const fromLocName = fromLoc ? `${fromLoc.room}${fromLoc.detail ? ' - ' + fromLoc.detail : ''}` : '미지정'
-        await supabase.from('reagent_lots').update({ location_id: bulkMoveLocation }).eq('id', lot.id)
-        await supabase.from('location_history').insert({
-          reagent_id: r.id, lot_id: lot.id, reagent_name: r.name,
-          from_location_id: lot.location_id, from_location_name: fromLocName,
-          to_location_id: bulkMoveLocation, to_location_name: toLocName,
-          moved_by: bulkMovedBy,
-        })
-        movedLotCount++
-      }
-    }
-    await supabase.from('admin_logs').insert({
-      admin_name: bulkMovedBy, action: '다량 위치 이동',
-      target_type: 'reagent',
-      description: `${selected.length}개 시약(Lot ${movedLotCount}개) → ${toLocName}`,
-    })
-    alert(`✅ ${movedLotCount}개 Lot 이동 완료! → ${toLocName}` + (skippedCount > 0 ? `\n(보유중인 Lot이 없어 ${skippedCount}개 시약은 건너뜀)` : ''))
-    setShowBulkMoveModal(false)
-    setBulkMoveLocation('')
-    setBulkMovedBy('')
-    setCheckedIds(new Set())
-    setEditMode(false)
-    fetchResults()
   }
 
   // studentOverride: 인라인 로그인 확인 직후 곧바로 이어서 제출할 때, 아직 리액트 상태에
@@ -498,7 +414,6 @@ export default function ReagentList() {
           onOpenBulkLookup={() => { setShowBulkLookupModal(true); setBulkLookupResults(null) }}
           onOpenRegister={() => { setRegisterTab('new'); setShowRegisterModal(true) }}
           isAdmin={isAdmin} hasResults={displayResults.length > 0}
-          editMode={editMode} onToggleEditMode={toggleEditMode}
           onExportExcel={() => {
             const activeLocationIds = detailFilter ? [detailFilter] : roomFilter ? locations.filter(l => l.room === roomFilter).map(l => l.id) : null
             const filterLabel = detailFilter
@@ -525,35 +440,8 @@ export default function ReagentList() {
           <span style={{ color: C.muted, fontSize: '12.5px' }}> (전체 {totalCount.toLocaleString()}개)</span>
         </div>
 
-        {/* 편집 모드 액션 바 */}
-        {editMode && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '12px',
-            padding: '12px 16px', marginBottom: '16px',
-            background: checkedIds.size > 0 ? '#EEF2FB' : C.bg,
-            border: `1px solid ${checkedIds.size > 0 ? C.navy : C.border}`,
-            borderRadius: '8px', transition: 'all 0.2s',
-          }}>
-            <span style={{ fontSize: '13px', fontWeight: '700', color: C.navy, minWidth: '80px' }}>
-              {checkedIds.size > 0 ? `${checkedIds.size}개 선택됨` : '시약을 선택하세요'}
-            </span>
-            {checkedIds.size > 0 && (
-              <>
-                <button onClick={() => setShowBulkMoveModal(true)} style={{
-                  background: '#667EEA', color: '#fff', border: 'none',
-                  padding: '7px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
-                }}>📍 위치 이동</button>
-                <button onClick={() => { setCheckedIds(new Set()) }} style={{
-                  background: C.white, color: C.muted, border: `1px solid ${C.border}`,
-                  padding: '7px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px',
-                }}>선택 해제</button>
-              </>
-            )}
-          </div>
-        )}
-
         {/* 선택 목록 액션 바 */}
-        {!editMode && pickedIds.size > 0 && (
+        {pickedIds.size > 0 && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: '12px',
             padding: '12px 16px', marginBottom: '16px',
@@ -586,9 +474,8 @@ export default function ReagentList() {
             </div>
           : isMobile ? (
             // 모바일 — PC의 minWidth:900px 표는 휴대폰에서 계속 가로 스크롤이 생겨
-            // 시약장을 돌아다니며 검색하기 불편함. 카드형 목록으로 대체(관리자 편집
-            // 모드·일괄이동 등 관리 기능은 PC 전용으로 남기고 카드 탭 = 상세페이지,
-            // 체크박스 = 선택목록 담기만 지원).
+            // 시약장을 돌아다니며 검색하기 불편함. 카드형 목록으로 대체(카드 탭 =
+            // 상세페이지, 체크박스 = 선택목록 담기만 지원).
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {displayResults.map(r => (
                 <MobileReagentCard key={r.id} r={r} locations={locations}
@@ -602,27 +489,18 @@ export default function ReagentList() {
                 <Card noPadding>
                   <ReagentTable
                     data={displayResults} locations={locations} visibleCols={visibleCols}
-                    checkedIds={checkedIds} pickedIds={pickedIds} editMode={editMode} isAdmin={isAdmin}
+                    pickedIds={pickedIds} isAdmin={isAdmin}
                     inlineEdit={inlineEdit} setInlineEdit={setInlineEdit} expandedIds={expandedIds} alphabetRefs={alphabetRefs}
-                    toggleCheck={toggleCheck} togglePick={togglePick} toggleAll={toggleAll} togglePickAll={togglePickAll}
+                    togglePick={togglePick} togglePickAll={togglePickAll}
                     handleRowClick={handleRowClick} toggleExpand={toggleExpand}
                     startInlineEdit={startInlineEdit} saveInlineEdit={saveInlineEdit}
                     confirmPending={confirmPending} />
                 </Card>
               </div>
-              <AlphabetIndex data={displayResults} editMode={editMode} scrollToLetter={scrollToLetter} />
+              <AlphabetIndex data={displayResults} scrollToLetter={scrollToLetter} />
             </div>
           )}
       </div>
-
-      {showBulkMoveModal && (
-        <BulkMoveModal
-          checkedCount={checkedIds.size} locations={locations}
-          bulkMoveLocation={bulkMoveLocation} setBulkMoveLocation={setBulkMoveLocation}
-          bulkMovedBy={bulkMovedBy} setBulkMovedBy={setBulkMovedBy}
-          onClose={() => setShowBulkMoveModal(false)} onSubmit={submitBulkMove}
-        />
-      )}
 
       {showBulkLookupModal && (
         <BulkLookupModal
