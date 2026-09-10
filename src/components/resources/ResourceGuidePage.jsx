@@ -18,7 +18,7 @@ function Section({ title, children }) {
   )
 }
 
-export default function ResourceGuidePage({ section, schoolUrl, isAdmin, onAction }) {
+export default function ResourceGuidePage({ section, schoolUrl, isAdmin, onAction, embedNode }) {
   if (!section) return null
   const openSchool = () => { if (schoolUrl) window.open(schoolUrl, '_blank', 'noopener') }
   const runAction = (a) => {
@@ -32,6 +32,13 @@ export default function ResourceGuidePage({ section, schoolUrl, isAdmin, onActio
       {/* ① 제목 및 핵심 설명 */}
       <h2 style={{ margin: '0 0 6px', fontSize: 18, color: C.navyDeep }}>{section.title}</h2>
       <p style={{ margin: '0 0 18px', fontSize: 13.5, color: C.text, lineHeight: 1.65 }}>{section.summary}</p>
+
+      {/* 이 섹션에 붙는 실제 업무지원 도구(예: 학교 화학물질 등록 Excel) */}
+      {embedNode && (
+        <div style={{ margin: '0 0 22px', padding: '16px', border: `1px solid ${C.border}`, borderRadius: 10, background: C.bg }}>
+          {embedNode}
+        </div>
+      )}
 
       {/* ② 누가 / 언제 */}
       {(section.audience || section.timing) && (

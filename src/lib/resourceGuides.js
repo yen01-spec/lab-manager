@@ -261,11 +261,13 @@ export const RESOURCE_GUIDES = {
     sections: [
       {
         key: 'chem-register', label: '화학물질 등록', title: '학교 화학물질 등록',
-        summary: '최근 입고 시약을 학교 화학물질 DB와 CAS로 대조해 등록 대상을 고르고, 학교 등록용 Excel을 만듭니다.',
-        audience: '연구실책임자 · 시약 관리 담당', timing: '신규 입고 후 · 정기 등록 시',
+        summary: '최근 입고 시약을 학교 화학물질 DB와 CAS로 대조해 등록 대상을 고르고, 학교 등록용 Excel을 만듭니다. 공식 등록은 학교 시스템에서 합니다.',
+        audience: '연구실책임자 · 연구실안전관리담당자', timing: '신규 입고 후 · 정기 등록 시',
+        roles: ['manager', 'director'],
         steps: ['최근 입고 시약 조회 (7일/30일/90일/1년)', '학교 화학물질 DB CAS 매칭 (✓매칭 / ⚠확인 필요)', '등록 대상 선택', '학교 등록용 Excel 생성', '학교 시스템에서 등록'],
-        notice: '⚠ 미매칭 행은 사용자가 확인 후 포함 여부를 선택합니다.',
-        actions: [{ key: 'school-register', label: '학교 화학물질 등록 (Excel 생성)' }],
+        notice: '⚠ 미매칭 행은 CAS·명칭을 재확인한 뒤 포함 여부를 선택하세요.',
+        embed: 'schoolRegistration',
+        actions: [{ key: 'school', label: '학교 시스템 열기' }],
       },
       {
         key: 'daily-check', label: '일상점검', title: '연구실 일상점검',

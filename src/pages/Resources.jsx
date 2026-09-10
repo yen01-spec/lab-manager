@@ -1,10 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import { C, PageBanner, btnPrimary } from '../design'
 import PillNav from '../components/PillNav'
 import ResourceGuidePage from '../components/resources/ResourceGuidePage'
 import { RESOURCE_CATEGORIES, RESOURCE_GUIDES } from '../lib/resourceGuides'
 import { getSetting, SCHOOL_SAFETY_SYSTEM_FALLBACK } from '../lib/appSettings'
+
+// 자료 첫 진입을 가볍게 — 실제 업무지원 도구는 해당 섹션을 열 때만 로드
+const SchoolRegistrationView = lazy(() => import('../components/signage/SchoolRegistrationView'))
+const EMBEDS = {
+  schoolRegistration: <SchoolRegistrationView />,
+}
 
 // 자료 탭 — 강원대학교 공식 연구실안전관리 업무 지원 허브 (수정방안 §5~10).
 export default function Resources() {
@@ -24,8 +30,7 @@ export default function Resources() {
   const setSection = (s) => setParams({ c: cat, s })
 
   function handleAction(a) {
-    // Phase 6~10에서 실제 시약 데이터/기능에 연결. 지금은 안내만.
-    if (a.key === 'school-register') { navigate('/safety-signage'); return }
+    // 이후 sub-phase에서 실제 시약 데이터/기능에 연결. 지금은 안내만.
     alert('이 기능은 다음 단계에서 연결됩니다: ' + a.label)
   }
 
@@ -63,7 +68,14 @@ export default function Resources() {
               onChange={setSection}
               style={{ marginBottom: 18 }}
             />
-            <ResourceGuidePage section={section} schoolUrl={schoolUrl} isAdmin={isAdmin} onAction={handleAction} />
+            <ResourceGuidePage
+              section={section} schoolUrl={schoolUrl} isAdmin={isAdmin} onAction={handleAction}
+              embedNode={section?.embed && (
+                <Suspense fallback={<div style={{ padding: 24, textAlign: 'center', color: C.muted, fontSize: 13 }}>불러오는 중...</div>}>
+                  {EMBEDS[section.embed]}
+                </Suspense>
+              )}
+            />
           </>
         )}
       </div>
