@@ -1,49 +1,54 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../supabase'
-import { C, Card, inputStyle, btnPrimary, btnGhost, thStyle, tdStyle } from '../../design'
-import CompanyPicker from '../CompanyPicker'
+import { C, Card, inputStyle, btnGhost, thStyle, tdStyle } from '../../design'
+import BulkMoveModal from '../reagents/BulkMoveModal'
+import BulkDisposalModal from '../reagents/BulkDisposalModal'
 
 // ══════════════════════════════════════════════
-//  시약 일괄정리 탭 — src/pages/BulkEdit.jsx(/reagents/bulk-edit)에서 사용
+//  시약 일괄정리 탭 — src/pages/BulkEdit.jsx(/reagents/bulk-edit)에서 사용.
+//  용도: 여러 시약을 다중 선택해서 한 번에 위치 이동하거나 폐기 처리하는 관리자 전용 도구.
+//  (필드를 한 칸씩 고치는 스프레드시트 편집이 아님 — 그건 시약 상세페이지/재고실사에서.)
+//  이 화면은 관리자 전용 메뉴에서만 진입 가능해서(Layout.jsx) 위치이동/폐기 둘 다
+//  승인 대기 없이 즉시 반영됨 — 시약목록 편집모드의 다량 위치이동과 같은 방식.
 // ══════════════════════════════════════════════
 export default function BulkEditTab({ locations, student }) {
   const [reagents, setReagents] = useState([])
   const [loading, setLoading] = useState(false)
+  const [search, setSearch] = useState('')
   const [roomFilter, setRoomFilter] = useState('')
-  const [companyFilter, setCompanyFilter] = useState('')
   const [checkedIds, setCheckedIds] = useState(new Set())
-  const [cols, setCols] = useState({ location: true, stock: true, company: true, expiry: false })
-  const [edits, setEdits] = useState({}) // { [reagentId]: { location_id?, company?, current_stock? } }
-  const [saving, setSaving] = useState(false)
+  const [showMoveModal, setShowMoveModal] = useState(false)
+  const [moveLocation, setMoveLocation] = useState('')
+  const [movedBy, setMovedBy] = useState('')
+  const [showDisposalModal, setShowDisposalModal] = useState(false)
+  const [disposalReason, setDisposalReason] = useState('')
+  const [disposedBy, setDisposedBy] = useState('')
+  const [busy, setBusy] = useState(false)
 
   const rooms = [...new Set(locations.map(l => l.room))]
 
   useEffect(() => { fetchReagents() }, [])
 
-  // 대표 Lot: 활성 Lot 중 하나(없으면 null) — 이 화면은 마스터 필드 + 대표 Lot 하나만 다룸(여러 Lot 개별 일괄수정은 별도 기능)
-  function repLot(r) {
-    return (r.reagent_lots || []).find(l => l.status === 'active') || null
-  }
-  function activeLotCount(r) {
-    return (r.reagent_lots || []).filter(l => l.status === 'active').length
+  function activeLots(r) {
+    return (r.reagent_lots || []).filter(l => l.status === 'active')
   }
 
-  // companyOverride — 로고를 클릭한 직후엔 setCompanyFilter가 아직 리렌더 전이라
-  // companyFilter를 그대로 읽으면 클릭 직전 값(한 박자 늦은 값)을 쓰게 됨. 방금 고른
-  // 값을 바로 넘겨받아 쓰도록 옵션 인자로 받음.
-  async function fetchReagents(companyOverride) {
+  async function fetchReagents() {
     setLoading(true)
-    const companyTerm = companyOverride ?? companyFilter
     let query = supabase.from('reagents')
-      .select('*, reagent_lots(*)')
+      .select('id, name, company, reagent_lots(id, status, sealed_count, current_stock, location_id)')
       .neq('status', 'archived')
       .order('name')
       .range(0, 2999)
-    if (companyTerm.trim()) query = query.ilike('company', `%${companyTerm.trim()}%`)
+    if (search.trim()) query = query.ilike('name', `%${search.trim()}%`)
     const { data } = await query
     let filtered = data || []
-    if (roomFilter) filtered = filtered.filter(r => locations.find(l => l.id === repLot(r)?.location_id)?.room === roomFilter)
+    if (roomFilter) {
+      const roomLocIds = new Set(locations.filter(l => l.room === roomFilter).map(l => l.id))
+      filtered = filtered.filter(r => activeLots(r).some(l => roomLocIds.has(l.location_id)))
+    }
     setReagents(filtered)
+    setCheckedIds(new Set())
     setLoading(false)
   }
 
@@ -57,93 +62,111 @@ export default function BulkEditTab({ locations, student }) {
     else setCheckedIds(new Set(reagents.map(r => r.id)))
   }
 
-  function setEdit(reagentId, field, value) {
-    setEdits(prev => ({ ...prev, [reagentId]: { ...prev[reagentId], [field]: value } }))
+  function locationLabel(locId) {
+    const l = locations.find(x => x.id === locId)
+    return l ? `${l.room}${l.detail ? ' · ' + l.detail : ''}` : '미지정'
   }
-  function clearEditIfSame(reagentId, field, value, original) {
-    if (String(value) === String(original ?? '')) {
-      setEdits(prev => {
-        const next = { ...prev }
-        if (next[reagentId]) {
-          const { [field]: _, ...rest } = next[reagentId]
-          if (Object.keys(rest).length === 0) delete next[reagentId]
-          else next[reagentId] = rest
-        }
-        return next
-      })
-    } else {
-      setEdit(reagentId, field, value)
-    }
+  function locationSummary(r) {
+    const lots = activeLots(r)
+    if (lots.length === 0) return '보유 0병'
+    const uniqueLocs = [...new Set(lots.map(l => l.location_id))]
+    return uniqueLocs.length === 1 ? locationLabel(uniqueLocs[0]) : '위치별 상이'
   }
 
-  const changedReagentCount = Object.keys(edits).length
-  const changedCellCount = Object.values(edits).reduce((s, e) => s + Object.keys(e).length, 0)
-
-  async function saveAll() {
-    if (changedReagentCount === 0) return
-    if (!window.confirm(`${changedReagentCount}개 시약 · ${changedCellCount}개 항목을 저장하시겠습니까?`)) return
-    setSaving(true)
-    for (const [reagentId, fields] of Object.entries(edits)) {
-      if (fields.company !== undefined) {
-        await supabase.from('reagents').update({ company: fields.company }).eq('id', reagentId)
-      }
-      const r = reagents.find(x => x.id === reagentId)
-      const lot = repLot(r)
-      if (lot) {
-        const lotFields = {}
-        if (fields.location_id !== undefined) lotFields.location_id = fields.location_id
-        if (fields.current_stock !== undefined) { lotFields.current_stock = Number(fields.current_stock); lotFields.needs_review = false }
-        if (Object.keys(lotFields).length > 0) {
-          await supabase.from('reagent_lots').update(lotFields).eq('id', lot.id)
-        }
+  async function submitBulkMove() {
+    if (!moveLocation) { alert('이동할 위치를 선택해주세요'); return }
+    if (!movedBy.trim()) { alert('이름을 입력해주세요'); return }
+    setBusy(true)
+    const toLoc = locations.find(l => l.id === moveLocation)
+    const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
+    const selected = reagents.filter(r => checkedIds.has(r.id))
+    let movedLotCount = 0
+    for (const r of selected) {
+      for (const lot of activeLots(r)) {
+        const fromLocName = locationLabel(lot.location_id)
+        await supabase.from('reagent_lots').update({ location_id: moveLocation }).eq('id', lot.id)
+        await supabase.from('location_history').insert({
+          reagent_id: r.id, lot_id: lot.id, reagent_name: r.name,
+          from_location_id: lot.location_id, from_location_name: fromLocName,
+          to_location_id: moveLocation, to_location_name: toLocName,
+          moved_by: movedBy,
+        })
+        movedLotCount++
       }
     }
     await supabase.from('admin_logs').insert({
-      admin_name: student?.name || '', action: '시약 일괄정리',
-      target_type: 'reagent',
-      description: `${changedReagentCount}개 시약 · ${changedCellCount}개 항목 일괄 저장`,
+      admin_name: movedBy, action: '시약 일괄정리 - 위치이동', target_type: 'reagent',
+      description: `${selected.length}개 시약(Lot ${movedLotCount}개) → ${toLocName}`,
     })
-    setEdits({})
-    setSaving(false)
+    alert(`✅ ${movedLotCount}개 Lot 이동 완료! → ${toLocName}`)
+    setShowMoveModal(false)
+    setMoveLocation('')
+    setMovedBy('')
+    setBusy(false)
     fetchReagents()
-    alert('저장되었습니다!')
   }
 
-  const changedStyle = { background: C.blueTint, borderRadius: '4px' }
+  async function submitBulkDisposal() {
+    if (!disposalReason.trim()) { alert('폐기 사유를 입력해주세요'); return }
+    if (!disposedBy.trim()) { alert('이름을 입력해주세요'); return }
+    if (!window.confirm(`${checkedIds.size}개 시약의 보유 Lot 전체를 폐기 처리합니다. 되돌릴 수 없어요. 계속할까요?`)) return
+    setBusy(true)
+    const selected = reagents.filter(r => checkedIds.has(r.id))
+    let disposedLotCount = 0
+    const today = new Date().toISOString().split('T')[0]
+    for (const r of selected) {
+      for (const lot of activeLots(r)) {
+        await supabase.from('disposal_requests').insert({
+          reagent_id: r.id, lot_id: lot.id, reagent_name: r.name,
+          quantity: '전체', reason: disposalReason,
+          requested_by: disposedBy, status: 'disposed', disposed_at: new Date().toISOString(),
+          approved_by_student_id: student?.student_id ?? null,
+        })
+        await supabase.from('reagent_lots').update({
+          sealed_count: 0, current_stock: 0, status: 'disposed', disposal_date: today, needs_review: false,
+        }).eq('id', lot.id)
+        disposedLotCount++
+      }
+    }
+    await supabase.from('admin_logs').insert({
+      admin_name: disposedBy, action: '시약 일괄정리 - 폐기처리', target_type: 'reagent',
+      description: `${selected.length}개 시약(Lot ${disposedLotCount}개) 폐기 (사유: ${disposalReason})`,
+    })
+    alert(`🗑️ ${disposedLotCount}개 Lot 폐기 처리 완료!`)
+    setShowDisposalModal(false)
+    setDisposalReason('')
+    setDisposedBy('')
+    setBusy(false)
+    fetchReagents()
+  }
 
   return (
-    <Card title="🧹 시약 일괄정리" sub="Bulk Edit">
+    <Card title="🧹 시약 일괄정리" sub="여러 시약을 선택해서 한 번에 위치 이동하거나 폐기 처리">
       <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchReagents()}
+          placeholder="시약명 검색" style={{ ...inputStyle, maxWidth: '200px' }} />
         <select value={roomFilter} onChange={e => setRoomFilter(e.target.value)} style={{ ...inputStyle, maxWidth: '160px' }}>
           <option value="">전체 실험실</option>
           {rooms.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
-        <CompanyPicker value={companyFilter} onChange={setCompanyFilter} onPick={v => fetchReagents(v)} onKeyDown={e => e.key === 'Enter' && fetchReagents()}
-          placeholder="제조사 검색" style={{ ...inputStyle, maxWidth: '160px' }} />
         <button onClick={fetchReagents} style={{ ...btnGhost, padding: '8px 16px' }}>필터 적용</button>
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: '11.5px', color: C.muted }}>표시 열</span>
-        {[['location', '위치'], ['stock', '잔량'], ['company', '회사'], ['expiry', '유효기간']].map(([key, label]) => (
-          <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: C.textSub }}>
-            <input type="checkbox" checked={cols[key]} onChange={() => setCols(c => ({ ...c, [key]: !c[key] }))} />{label}
-          </label>
-        ))}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px',
         background: C.bg, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px 14px', marginBottom: '12px' }}>
         <span style={{ fontSize: '12.5px', color: C.text }}>
           <b>{reagents.length}개</b> 필터결과 · <b>{checkedIds.size}개</b> 선택됨
-          {changedReagentCount > 0 && (
-            <span style={{ marginLeft: '10px', color: C.blueDark, fontWeight: '700', background: C.blueTint, padding: '3px 10px', borderRadius: '999px', fontSize: '12px' }}>
-              변경된 시약 {changedReagentCount}개 · 변경된 셀 {changedCellCount}개
-            </span>
-          )}
         </span>
-        <button onClick={saveAll} disabled={changedReagentCount === 0 || saving} style={{
-          ...btnPrimary, padding: '8px 18px', opacity: changedReagentCount === 0 || saving ? 0.5 : 1,
-          cursor: changedReagentCount === 0 || saving ? 'default' : 'pointer',
-        }}>{saving ? '저장 중...' : '전체 저장'}</button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => setShowMoveModal(true)} disabled={checkedIds.size === 0} style={{
+            background: checkedIds.size === 0 ? '#F7F7F7' : '#667EEA', color: checkedIds.size === 0 ? C.muted : '#fff',
+            border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: checkedIds.size === 0 ? 'default' : 'pointer', fontSize: '13px', fontWeight: '600',
+          }}>📍 위치 이동</button>
+          <button onClick={() => setShowDisposalModal(true)} disabled={checkedIds.size === 0} style={{
+            background: checkedIds.size === 0 ? '#F7F7F7' : C.danger, color: checkedIds.size === 0 ? C.muted : '#fff',
+            border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: checkedIds.size === 0 ? 'default' : 'pointer', fontSize: '13px', fontWeight: '600',
+          }}>🗑️ 폐기처리</button>
+        </div>
       </div>
 
       {loading ? (
@@ -155,60 +178,42 @@ export default function BulkEditTab({ locations, student }) {
               <tr>
                 <th style={thStyle}><input type="checkbox" checked={reagents.length > 0 && checkedIds.size === reagents.length} onChange={toggleAll} /></th>
                 <th style={thStyle}>시약명</th>
-                {cols.location && <th style={thStyle}>위치</th>}
-                {cols.stock && <th style={thStyle}>잔량</th>}
-                {cols.company && <th style={thStyle}>회사</th>}
-                {cols.expiry && <th style={thStyle}>유효기간</th>}
+                <th style={thStyle}>회사</th>
+                <th style={thStyle}>위치</th>
+                <th style={thStyle}>보유 Lot</th>
               </tr>
             </thead>
             <tbody>
               {reagents.length === 0 ? (
-                <tr><td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: C.muted }}>조건에 맞는 시약이 없습니다.</td></tr>
+                <tr><td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: C.muted }}>조건에 맞는 시약이 없습니다.</td></tr>
               ) : reagents.map(r => {
-                const lot = repLot(r)
-                const multiLot = activeLotCount(r) > 1
-                const edit = edits[r.id] || {}
+                const lots = activeLots(r)
                 return (
-                  <tr key={r.id}>
-                    <td style={tdStyle}><input type="checkbox" checked={checkedIds.has(r.id)} onChange={() => toggleCheck(r.id)} /></td>
-                    <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>
-                      {r.name}
-                      {multiLot && <span title="활성 Lot이 여러 개 — 여기서는 그중 하나만 수정됩니다. 나머지는 시약 상세페이지에서 개별 수정하세요."
-                        style={{ marginLeft: '6px', fontSize: '10.5px', fontWeight: '700', color: '#B7791F', background: '#FDF3DD', padding: '1px 6px', borderRadius: '8px' }}>Lot {activeLotCount(r)}개</span>}
-                    </td>
-                    {cols.location && (
-                      <td style={{ ...tdStyle, ...(edit.location_id !== undefined ? changedStyle : {}) }}>
-                        {lot ? (
-                          <select value={edit.location_id ?? lot.location_id ?? ''} onChange={e => clearEditIfSame(r.id, 'location_id', e.target.value, lot.location_id)}
-                            style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px' }}>
-                            {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
-                          </select>
-                        ) : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
-                      </td>
-                    )}
-                    {cols.stock && (
-                      <td style={{ ...tdStyle, ...(edit.current_stock !== undefined ? changedStyle : {}) }}>
-                        {lot ? (
-                          <select value={edit.current_stock ?? lot.current_stock} onChange={e => clearEditIfSame(r.id, 'current_stock', e.target.value, lot.current_stock)}
-                            style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px', width: '80px' }}>
-                            {[100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 0].map(v => <option key={v} value={v}>{v}%</option>)}
-                          </select>
-                        ) : <span style={{ color: C.muted, fontSize: '12px' }}>-</span>}
-                      </td>
-                    )}
-                    {cols.company && (
-                      <td style={{ ...tdStyle, ...(edit.company !== undefined ? changedStyle : {}) }}>
-                        <CompanyPicker value={edit.company ?? r.company ?? ''} onChange={v => clearEditIfSame(r.id, 'company', v, r.company)}
-                          style={{ ...inputStyle, padding: '4px 8px', fontSize: '12px', width: '110px' }} />
-                      </td>
-                    )}
-                    {cols.expiry && <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{lot?.expiry_date || '-'}</td>}
+                  <tr key={r.id} onClick={() => toggleCheck(r.id)} style={{ cursor: 'pointer', background: checkedIds.has(r.id) ? '#EEF2FB' : 'transparent' }}>
+                    <td style={tdStyle} onClick={e => e.stopPropagation()}><input type="checkbox" checked={checkedIds.has(r.id)} onChange={() => toggleCheck(r.id)} /></td>
+                    <td style={{ ...tdStyle, fontWeight: '600', color: C.navy }}>{r.name}</td>
+                    <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{r.company || '-'}</td>
+                    <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{locationSummary(r)}</td>
+                    <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>{lots.length}개</td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
         </div>
+      )}
+
+      {showMoveModal && (
+        <BulkMoveModal checkedCount={checkedIds.size} locations={locations}
+          bulkMoveLocation={moveLocation} setBulkMoveLocation={setMoveLocation}
+          bulkMovedBy={movedBy} setBulkMovedBy={setMovedBy}
+          onClose={() => !busy && setShowMoveModal(false)} onSubmit={submitBulkMove} />
+      )}
+      {showDisposalModal && (
+        <BulkDisposalModal checkedCount={checkedIds.size}
+          reason={disposalReason} setReason={setDisposalReason}
+          disposedBy={disposedBy} setDisposedBy={setDisposedBy}
+          onClose={() => !busy && setShowDisposalModal(false)} onSubmit={submitBulkDisposal} />
       )}
     </Card>
   )
