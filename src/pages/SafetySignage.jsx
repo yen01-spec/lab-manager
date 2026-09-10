@@ -4,7 +4,6 @@ import { C, PageBanner } from '../design'
 import { supabase } from '../supabase'
 import { fetchAllPages } from '../lib/fetchAllPages'
 import EntranceSignageView from '../components/signage/EntranceSignageView'
-import LabelBuilderView from '../components/signage/LabelBuilderView'
 import SchoolRegistrationView from '../components/signage/SchoolRegistrationView'
 import SpecialMaterialLogView from '../components/signage/SpecialMaterialLogView'
 import HazardLedgerView from '../components/signage/HazardLedgerView'
@@ -29,7 +28,6 @@ export default function SafetySignage() {
 
   const TABS = [
     ['entrance', '출입구 표지 현황'],
-    ['label', '용기 라벨 생성'],
     ['school', '학교등록 엑셀 생성'],
     ['log', '특별관리물질 취급일지'],
     ['ledger', '유해인자 취급관리대장'],
@@ -53,8 +51,6 @@ export default function SafetySignage() {
           <div style={{ padding: '60px', textAlign: 'center', color: C.muted }}>불러오는 중...</div>
         ) : tab === 'entrance' ? (
           <EntranceSignageView reagents={reagents} />
-        ) : tab === 'label' ? (
-          <LabelBuilderView />
         ) : tab === 'school' ? (
           <SchoolRegistrationView />
         ) : tab === 'log' ? (

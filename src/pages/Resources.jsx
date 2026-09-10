@@ -6,7 +6,7 @@ import ResourceGuidePage from '../components/resources/ResourceGuidePage'
 import ResourceReagentList from '../components/resources/ResourceReagentList'
 import { lotLabel } from '../lib/lotNo'
 import { RESOURCE_CATEGORIES, RESOURCE_GUIDES } from '../lib/resourceGuides'
-import { getSetting, SCHOOL_SAFETY_SYSTEM_FALLBACK } from '../lib/appSettings'
+import { getSetting, SCHOOL_SAFETY_SYSTEM_FALLBACK, KOSHA_LABEL_FALLBACK } from '../lib/appSettings'
 import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
 
 // 자료 첫 진입을 가볍게 — 무거운 도구는 해당 섹션을 열 때만 로드
@@ -63,13 +63,17 @@ export default function Resources() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const [schoolUrl, setSchoolUrl] = useState('')
+  const [koshaUrl, setKoshaUrl] = useState('')
 
   const cat = RESOURCE_CATEGORIES.some(c => c.key === params.get('c')) ? params.get('c') : 'notice'
   const guide = RESOURCE_GUIDES[cat]
   const sectionKey = guide?.sections.some(s => s.key === params.get('s')) ? params.get('s') : guide?.sections[0]?.key
   const section = guide?.sections.find(s => s.key === sectionKey)
 
-  useEffect(() => { getSetting('school_safety_system_url', SCHOOL_SAFETY_SYSTEM_FALLBACK).then(setSchoolUrl) }, [])
+  useEffect(() => {
+    getSetting('school_safety_system_url', SCHOOL_SAFETY_SYSTEM_FALLBACK).then(setSchoolUrl)
+    getSetting('kosha_label_url', KOSHA_LABEL_FALLBACK).then(setKoshaUrl)
+  }, [])
 
   const setCat = (c) => setParams(c === 'notice' ? { c } : { c, s: RESOURCE_GUIDES[c].sections[0].key })
   const setSection = (s) => setParams({ c: cat, s })
@@ -114,7 +118,7 @@ export default function Resources() {
               style={{ marginBottom: 18 }}
             />
             <ResourceGuidePage
-              section={section} schoolUrl={schoolUrl} isAdmin={isAdmin} onAction={handleAction}
+              section={section} schoolUrl={schoolUrl} koshaUrl={koshaUrl} isAdmin={isAdmin} onAction={handleAction}
               embedNode={section?.embed && (
                 <Suspense fallback={<div style={{ padding: 24, textAlign: 'center', color: C.muted, fontSize: 13 }}>불러오는 중...</div>}>
                   {EMBEDS[section.embed]}

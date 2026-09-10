@@ -24,11 +24,12 @@ function Section({ title, children }) {
   )
 }
 
-export default function ResourceGuidePage({ section, schoolUrl, isAdmin, onAction, embedNode }) {
+export default function ResourceGuidePage({ section, schoolUrl, koshaUrl, isAdmin, onAction, embedNode }) {
   if (!section) return null
   const openSchool = () => { if (schoolUrl) window.open(schoolUrl, '_blank', 'noopener') }
   const runAction = (a) => {
     if (a.key === 'school') return openSchool()
+    if (a.key === 'kosha') { if (koshaUrl) window.open(koshaUrl, '_blank', 'noopener'); return }
     onAction ? onAction(a) : alert('이 기능은 다음 단계에서 연결됩니다.')
   }
 

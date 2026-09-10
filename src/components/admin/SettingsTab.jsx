@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../supabase'
 import { C, Card, inputStyle, labelStyle, btnPrimary, btnGhost } from '../../design'
-import { getSetting, setSetting, SCHOOL_SAFETY_SYSTEM_FALLBACK } from '../../lib/appSettings'
+import { getSetting, setSetting, SCHOOL_SAFETY_SYSTEM_FALLBACK, KOSHA_LABEL_FALLBACK } from '../../lib/appSettings'
 
 // ══════════════════════════════════════════════
 //  설정 — 관리자 비밀번호 / 실험실 규칙 / 안전 브리핑 / 알림(FCM) 토큰
@@ -10,8 +10,8 @@ import { getSetting, setSetting, SCHOOL_SAFETY_SYSTEM_FALLBACK } from '../../lib
 export default function SettingsTab() {
   const [adminPw, setAdminPw] = useState({ current: '', new1: '', new2: '' })
   const [tokenCount, setTokenCount] = useState(0)
-  const [schoolUrl, setSchoolUrl] = useState('')
-  const [schoolUrlSaved, setSchoolUrlSaved] = useState('')
+  const [links, setLinks] = useState({ school_safety_system_url: '', kosha_label_url: '' })
+  const [linksSaved, setLinksSaved] = useState({ school_safety_system_url: '', kosha_label_url: '' })
 
   // 실험실 규칙
   const [rules, setRules] = useState([])
@@ -27,15 +27,21 @@ export default function SettingsTab() {
     fetchTokenCount()
     fetchRules()
     fetchBriefings()
-    getSetting('school_safety_system_url', SCHOOL_SAFETY_SYSTEM_FALLBACK).then(v => { setSchoolUrl(v); setSchoolUrlSaved(v) })
+    Promise.all([
+      getSetting('school_safety_system_url', SCHOOL_SAFETY_SYSTEM_FALLBACK),
+      getSetting('kosha_label_url', KOSHA_LABEL_FALLBACK),
+    ]).then(([s, k]) => {
+      const v = { school_safety_system_url: s, kosha_label_url: k }
+      setLinks(v); setLinksSaved(v)
+    })
   }, [])
 
-  async function saveSchoolUrl() {
-    const v = schoolUrl.trim()
+  async function saveLink(key) {
+    const v = (links[key] || '').trim()
     if (v && !/^https?:\/\//i.test(v)) { alert('http:// 또는 https:// 로 시작하는 주소를 입력해주세요'); return }
-    const { error } = await setSetting('school_safety_system_url', v)
+    const { error } = await setSetting(key, v)
     if (error) { alert('저장 실패: ' + error.message + '\n(app_settings 테이블에 이 키를 추가할 권한이 없을 수 있어요)'); return }
-    setSchoolUrlSaved(v)
+    setLinksSaved(prev => ({ ...prev, [key]: v }))
     alert('저장되었습니다.')
   }
 
@@ -231,16 +237,24 @@ export default function SettingsTab() {
           ))}
       </Card>
 
-      {/* 학교 시스템 URL */}
-      <Card title="🔗 강원대학교 연구실안전관리시스템 URL" sub="자료 탭의 '학교 시스템 열기' 버튼이 이 주소로 연결됩니다">
-        <div style={{ display: 'flex', gap: '8px', maxWidth: '560px' }}>
-          <input value={schoolUrl} onChange={e => setSchoolUrl(e.target.value)}
-            placeholder="https://safety.kangwon.ac.kr/" style={{ ...inputStyle, flex: 1 }} />
-          <button onClick={saveSchoolUrl} disabled={schoolUrl.trim() === schoolUrlSaved}
-            style={{ ...btnPrimary, padding: '9px 18px', opacity: schoolUrl.trim() === schoolUrlSaved ? 0.5 : 1 }}>저장</button>
-        </div>
-        <div style={{ fontSize: '11px', color: C.muted, marginTop: '6px' }}>
-          비워두면 기본값({SCHOOL_SAFETY_SYSTEM_FALLBACK})이 쓰입니다. URL만 바꾸면 재배포 없이 즉시 반영됩니다.
+      {/* 외부 링크 URL */}
+      <Card title="🔗 외부 링크 URL" sub="자료 탭의 '학교 시스템 열기' / '공식 경고표지 작성 사이트' 버튼이 연결되는 주소">
+        {[
+          { key: 'school_safety_system_url', label: '강원대학교 연구실안전관리시스템', fb: SCHOOL_SAFETY_SYSTEM_FALLBACK },
+          { key: 'kosha_label_url', label: 'KOSHA MSDS 경고표지 작성', fb: KOSHA_LABEL_FALLBACK },
+        ].map(f => (
+          <div key={f.key} style={{ marginBottom: '14px' }}>
+            <label style={labelStyle}>{f.label}</label>
+            <div style={{ display: 'flex', gap: '8px', maxWidth: '560px' }}>
+              <input value={links[f.key]} onChange={e => setLinks(prev => ({ ...prev, [f.key]: e.target.value }))}
+                placeholder={f.fb} style={{ ...inputStyle, flex: 1 }} />
+              <button onClick={() => saveLink(f.key)} disabled={(links[f.key] || '').trim() === linksSaved[f.key]}
+                style={{ ...btnPrimary, padding: '9px 18px', opacity: (links[f.key] || '').trim() === linksSaved[f.key] ? 0.5 : 1 }}>저장</button>
+            </div>
+          </div>
+        ))}
+        <div style={{ fontSize: '11px', color: C.muted }}>
+          비워두면 기본값이 쓰입니다. URL만 바꾸면 재배포 없이 즉시 반영됩니다.
         </div>
       </Card>
 

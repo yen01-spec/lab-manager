@@ -220,26 +220,30 @@ export const RESOURCE_GUIDES = {
     sections: [
       {
         key: 'small-container', label: '소분용기', title: '소분용기 경고표지',
-        summary: '시약을 소분한 용기에는 물질·GHS를 확인해 경고표지를 만들어, 용기 크기에 맞춰 잘 보이는 곳에 부착합니다.',
+        summary: '시약을 소분한 용기에는 물질·MSDS·GHS를 확인해 경고표지를 부착합니다. 경고표지는 KOSHA MSDS의 공식 경고표지 작성 기능으로 만듭니다(앱이 자체 생성하지 않음).',
         audience: '시약을 소분해 사용하는 연구활동종사자', timing: '소분 시마다 · 표지 훼손 시',
-        steps: ['물질 확인', 'MSDS/GHS 확인', '경고표지 작성', '용기에 맞는 크기 선택', '잘 보이는 곳에 부착'],
-        notice: '',
+        roles: ['worker'],
+        steps: ['물질 확인', 'MSDS/GHS 확인', '경고표지 작성 (KOSHA MSDS 공식 기능)', '용기에 맞는 크기 선택', '잘 보이는 곳에 부착 · 훼손 시 즉시 교체'],
+        notice: '앱은 용기 크기에 따라 경고표지 PDF/이미지를 생성하지 않습니다. 공식 경고표지 작성 기능과 강원대학교 제공 작성방법 자료를 사용하세요.',
         actions: [
           { key: 'reagent-search', label: '시약 검색' },
           { key: 'msds', label: 'MSDS 보기' },
           { key: 'ghs', label: 'GHS 보기' },
+          { key: 'kosha', label: '공식 경고표지 작성 사이트 열기' },
         ],
       },
       {
         key: 'ghs', label: 'GHS·경고표지', title: 'GHS 그림문자·경고표지',
         summary: '경고표지의 GHS 그림문자와 유해·위험문구는 해당 제품의 MSDS를 기준으로 확인합니다.',
         audience: '경고표지를 만드는 연구활동종사자', timing: '표지 작성 시',
-        steps: ['해당 제품 MSDS 확인', 'GHS 그림문자·H문구 확인', '경고표지 작성방법에 따라 작성'],
+        roles: ['worker'],
+        steps: ['해당 제품 MSDS 확인', 'GHS 그림문자·H문구 확인', 'KOSHA MSDS 공식 경고표지 작성 기능으로 작성'],
         notice: '앱이 공급업체 MSDS를 대체하지 않습니다.',
         actions: [
           { key: 'reagent-search', label: '시약 검색' },
           { key: 'msds', label: 'MSDS' },
           { key: 'ghs', label: 'GHS 정보' },
+          { key: 'kosha', label: '공식 경고표지 작성 사이트 열기' },
         ],
       },
       {
