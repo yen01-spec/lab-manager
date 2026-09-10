@@ -71,11 +71,13 @@ export function useReagentSearch({ initialSearch = '' } = {}) {
 
   useEffect(() => { fetchLocations(); fetchTotalCount() }, [])
 
-  // 검색어(홈 화면 ?q= 포함) 또는 필터가 바뀔 때마다 결과를 다시 불러온다
+  // 확정된 검색어(홈 화면 ?q= 포함) 또는 필터가 바뀔 때마다 결과를 다시 불러온다.
+  // search는 "입력 중"이 아니라 Enter/검색 버튼으로 확정된 값만 담기므로(ReagentToolbar가
+  // 입력 상태를 따로 들고 있음), 타이핑 한 글자마다 재조회되지 않는다.
   useEffect(() => {
     fetchResults()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomFilter, detailFilter])
+  }, [search, roomFilter, detailFilter])
 
   async function fetchLocations() {
     const { data } = await supabase.from('locations').select('*').order('room')
@@ -96,9 +98,13 @@ export function useReagentSearch({ initialSearch = '' } = {}) {
     // 통째로 가져와서(안 쓰는 locations(*) join 포함) 1,500여 개 시약 응답이 5MB가
     // 넘었음. 그게 페이지 진입마다 체감되는 지연의 큰 원인이라 필요한 것만 좁힘.
     let query = supabase.from('reagents')
-      .select('id, name, cas_no, company, purity, volume, unit, category, hazard, ghs_pictograms, hazard_classifications, reagent_type, pending_confirm, msds_url, last_confirmed_at, cas_verification_status, cas_verification_note, sort_letter, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no, expiry_date, cat_no, pending_confirm)', { count: 'exact' })
+      .select('id, name, name_ko, cas_no, company, purity, volume, unit, category, hazard, ghs_pictograms, hazard_classifications, reagent_type, pending_confirm, msds_url, last_confirmed_at, cas_verification_status, cas_verification_note, sort_letter, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no, expiry_date, cat_no, pending_confirm)', { count: 'exact' })
       .neq('status', 'archived')
-    if (search.trim()) query = query.or(`name.ilike.%${search.trim()}%,cas_no.ilike.%${search.trim()}%`)
+    // 국문명(name_ko)·영문명(name)·CAS 통합 검색 — "에탄올" / "Ethanol" / "64-17-5" 모두 매칭
+    if (search.trim()) {
+      const t = search.trim()
+      query = query.or(`name.ilike.%${t}%,name_ko.ilike.%${t}%,cas_no.ilike.%${t}%`)
+    }
     // detailFilter(특정 위치 하나) > roomFilter(그 방에 속한 모든 위치) > 전체(필터 없음) 순.
     const activeLocationIds = detailFilter
       ? [detailFilter]

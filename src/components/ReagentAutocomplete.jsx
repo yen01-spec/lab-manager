@@ -2,8 +2,8 @@ import { useState, useRef } from 'react'
 import { supabase } from '../supabase'
 import { C } from '../design'
 
-// 시약명 또는 CAS No. 앞부분 일치(prefix)로 실시간 후보를 보여주는 공용 자동완성 입력.
-// 시약 목록 / 홈 / 구매요청서에서 동일한 검색·선택 방식을 쓰기 위해 분리.
+// 영문명(prefix) · 국문명(부분일치) · CAS No.(prefix)로 실시간 후보를 보여주는 공용
+// 자동완성 입력. 시약 목록 / 홈 / 구매요청서에서 동일한 검색·선택 방식을 쓰기 위해 분리.
 function highlightPrefix(text, query) {
   if (!text) return text
   const q = query.trim()
@@ -33,8 +33,10 @@ export default function ReagentAutocomplete({
     const myRequestId = ++requestIdRef.current
     debounceRef.current = setTimeout(async () => {
       const term = v.trim()
-      const { data } = await supabase.from('reagents').select('id, name, company, cas_no, category, ghs_pictograms')
-        .or(`name.ilike.${term}%,cas_no.ilike.${term}%`)
+      // 국문명은 물질형이 뒤에 오는 경우가 많아(예: "아세트산바륨"에서 "바륨") 부분일치로,
+      // 영문명·CAS는 기존대로 앞부분 일치로 검색한다.
+      const { data } = await supabase.from('reagents').select('id, name, name_ko, company, cas_no, category, ghs_pictograms')
+        .or(`name.ilike.${term}%,name_ko.ilike.%${term}%,cas_no.ilike.${term}%`)
         .neq('status', 'archived')
         .order('name').limit(10)
       let combined = data || []
@@ -50,7 +52,7 @@ export default function ReagentAutocomplete({
           const existingIds = new Set(combined.map(r => r.id))
           const newReagentIds = [...new Set((lots || []).map(l => l.reagent_id))].filter(id => !existingIds.has(id))
           if (newReagentIds.length > 0) {
-            const { data: locReagents } = await supabase.from('reagents').select('id, name, company, cas_no, category')
+            const { data: locReagents } = await supabase.from('reagents').select('id, name, name_ko, company, cas_no, category')
               .in('id', newReagentIds).neq('status', 'archived').order('name').limit(10)
             const locNameByReagent = new Map()
             ;(lots || []).forEach(l => {
@@ -119,7 +121,9 @@ export default function ReagentAutocomplete({
               style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '13px', borderBottom: `1px solid ${C.border}`, background: i === highlightIdx ? C.blueTint : C.white }}>
               <div style={{ fontWeight: '600', color: C.navy }}>{highlightPrefix(r.name, value)}</div>
               <div style={{ fontSize: '11px', color: C.muted }}>
-                {r.matchedLocation ? `📍 ${r.matchedLocation}` : `${r.company || '-'} · ${r.cas_no || '-'}${r.category ? ' · ' + r.category : ''}`}
+                {r.matchedLocation
+                  ? `📍 ${r.matchedLocation}`
+                  : `${r.name_ko ? r.name_ko + ' · ' : ''}${r.cas_no || '-'} · ${r.company || '-'}${r.category ? ' · ' + r.category : ''}`}
               </div>
             </div>
           ))}

@@ -36,7 +36,7 @@ export default function ReagentTable({
     const isEditingStock = inlineEdit?.reagentId === r.id && inlineEdit?.field === 'current_stock'
     return (
       <ReagentRow key={r.id} r={r} locations={locations} visibleCols={visibleCols}
-        isAdmin={isAdmin} data={data}
+        isAdmin={isAdmin}
         isPicked={pickedIds.has(r.id)} isExpanded={expandedIds.has(r.id)}
         isEditingSealed={isEditingSealed} isEditingStock={isEditingStock}
         editValue={(isEditingSealed || isEditingStock) ? inlineEdit.value : undefined}

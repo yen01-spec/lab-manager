@@ -6,10 +6,12 @@ import LotRow from './LotRow'
 // 전환 등)가 일어나도 실제로 이 행에 영향을 주는 props가 안 바뀌면 리렌더를 건너뛴다.
 // isPicked/isExpanded/editing* 처럼 원본 Set·Map·객체 대신 "이 행에 해당하는
 // boolean/원시값"만 골라서 props로 내려주는 게 핵심 — 그래야 다른 행이 선택되어도 이
-// 행의 props는 그대로라 memo가 스킵할 수 있다. onSaveEdit/onChangeEdit도 실제로
-// 편집 중인 행에만 값을 넘기고, 나머지 행에는 항상 undefined(고정값)를 넘긴다.
+// 행의 props는 그대로라 memo가 스킵할 수 있다. (예전엔 전체 목록 배열 data를 모든 행에
+// 내려줬는데, 필터가 바뀔 때마다 참조가 바뀌어 memo가 전부 무효화됐음 → 제거함.)
+// onSaveEdit/onChangeEdit도 실제로 편집 중인 행에만 값을 넘기고, 나머지 행에는 항상
+// undefined(고정값)를 넘긴다.
 const ReagentRow = memo(function ReagentRow({
-  r, locations, visibleCols, isAdmin, data,
+  r, locations, visibleCols, isAdmin,
   isPicked, isExpanded, isEditingSealed, isEditingStock, editValue,
   onTogglePick, onToggleExpand, onRowClick,
   onStartEdit, onSaveEdit, onChangeEdit, onConfirmPending,
@@ -101,7 +103,7 @@ const ReagentRow = memo(function ReagentRow({
               {isEditingSealed ? (
                 <input autoFocus type="number" min="0" value={editValue}
                   onChange={e => onChangeEdit(prev => ({ ...prev, value: e.target.value }))}
-                  onKeyDown={e => { if (e.key === 'Enter') onSaveEdit(onlyLot, { advance: true, data }); if (e.key === 'Escape') onChangeEdit(null) }}
+                  onKeyDown={e => { if (e.key === 'Enter') onSaveEdit(onlyLot, { advance: true }); if (e.key === 'Escape') onChangeEdit(null) }}
                   onBlur={() => onSaveEdit(onlyLot)}
                   style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
               ) : (
@@ -116,7 +118,7 @@ const ReagentRow = memo(function ReagentRow({
               {isEditingStock ? (
                 <input autoFocus type="number" min="0" max="100" value={editValue}
                   onChange={e => onChangeEdit(prev => ({ ...prev, value: e.target.value }))}
-                  onKeyDown={e => { if (e.key === 'Enter') onSaveEdit(onlyLot, { advance: true, data }); if (e.key === 'Escape') onChangeEdit(null) }}
+                  onKeyDown={e => { if (e.key === 'Enter') onSaveEdit(onlyLot, { advance: true }); if (e.key === 'Escape') onChangeEdit(null) }}
                   onBlur={() => onSaveEdit(onlyLot)}
                   style={{ width: '52px', padding: '3px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13px', textAlign: 'center' }} />
               ) : (

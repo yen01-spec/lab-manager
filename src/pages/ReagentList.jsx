@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useOutletContext, useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, Card } from '../design'
@@ -23,10 +23,11 @@ export default function ReagentList() {
   const [searchParams] = useSearchParams()
   const { isMobile } = useBreakpoint()
 
+  const initialSearch = searchParams.get('q') || ''
   const {
-    locations, search, setSearch, roomFilter, setRoomFilter, detailFilter, setDetailFilter,
+    locations, setSearch, roomFilter, setRoomFilter, detailFilter, setDetailFilter,
     results, totalCount, fetchResults,
-  } = useReagentSearch({ initialSearch: searchParams.get('q') || '' })
+  } = useReagentSearch({ initialSearch })
 
   const [expandedIds, setExpandedIds] = useState(new Set())
   const [visibleCols, setVisibleCols] = useState({
@@ -338,8 +339,8 @@ export default function ReagentList() {
   }, [isAdmin])
 
   // advance: Enter로 저장한 경우 같은 항목(잔량/미개봉)을 목록의 다음 시약에서 바로 이어서 편집 —
-  // 단일 Lot 시약만 인라인 편집 대상이라, 다음 항목 중 첫 단일 Lot 시약을 찾아서 연다.
-  async function saveInlineEdit(lot, { advance = false, data } = {}) {
+  // 단일 Lot 시약만 인라인 편집 대상이라, 재조회한 목록(fresh)에서 다음 단일 Lot 시약을 찾아 연다.
+  async function saveInlineEdit(lot, { advance = false } = {}) {
     if (!inlineEdit) return
     const { field, value, reagentId } = inlineEdit
     const lotId = inlineEdit.lotId
@@ -355,7 +356,7 @@ export default function ReagentList() {
     })
     setInlineEdit(null)
     const fresh = await fetchResults()
-    if (advance && data && fresh) {
+    if (advance && fresh) {
       const idx = fresh.findIndex(r => r.id === reagentId)
       for (let i = idx + 1; i < fresh.length; i++) {
         const nextR = fresh[i]
@@ -389,18 +390,25 @@ export default function ReagentList() {
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' })
   }
 
-  const rooms = [...new Set(locations.map(l => l.room))]
+  const rooms = useMemo(() => [...new Set(locations.map(l => l.room))], [locations])
 
-  // 시약 종류(마스터)는 보유중인 Lot이 하나도 없어도(전부 폐기/사용완료) 목록에서 사라지지 않고
-  // "보유 0병"으로 계속 표시됨 — 다시 구매해서 재고를 등록할 때 신규 등록할 필요가 없도록
-  const allHazardClassNames = [...new Set(results.flatMap(r => r._hazardClassNames || []))].sort()
-  const displayResults = results.filter(r => {
+  // 아래 파생값들은 조회 결과(results)나 필터 상태에만 좌우되는데, 예전엔 검색창 타이핑 등
+  // 무관한 리렌더에도 매번 다시 계산됐다(각각 1,300여 개 순회 + Set/그룹 Map 생성).
+  // useMemo로 실제 입력이 바뀔 때만 재계산하도록 고정한다.
+  const allHazardClassNames = useMemo(
+    () => [...new Set(results.flatMap(r => r._hazardClassNames || []))].sort(),
+    [results],
+  )
+  const displayResults = useMemo(() => results.filter(r => {
     if (hazardClassFilter.size > 0 && !(r._hazardClassNames || []).some(name => hazardClassFilter.has(name))) return false
     if (fireClassFilter.size > 0 && !fireClassFilter.has(r._fireSafetyClass)) return false
     if (specialOnly && !r._specialManagement) return false
     if (casMismatchOnly && !r._casMismatch) return false
     return true
-  })
+  }), [results, hazardClassFilter, fireClassFilter, specialOnly, casMismatchOnly])
+  // 홈 화면 "전체 시약 N종"과 기준을 맞추려 제조사/순도 무시하고 이름만으로 센 값 —
+  // ReagentTable도 내부에서 letter별로 다시 그룹핑하므로 여기선 개수만 필요.
+  const groupedResultCount = useMemo(() => groupReagentsByName(displayResults).length, [displayResults])
 
   return (
     <div>
@@ -408,9 +416,9 @@ export default function ReagentList() {
       <div style={{ padding: '8px 16px' }}>
 
         <ReagentToolbar
-          search={search} setSearch={setSearch}
+          initialSearch={initialSearch}
+          onSubmitSearch={setSearch}
           onSearchSelect={r => navigate(`/reagents/${r.id}`)}
-          onSearchEnter={() => fetchResults()}
           onOpenBulkLookup={() => { setShowBulkLookupModal(true); setBulkLookupResults(null) }}
           onOpenRegister={() => { setRegisterTab('new'); setShowRegisterModal(true) }}
           isAdmin={isAdmin} hasResults={displayResults.length > 0}
@@ -436,7 +444,7 @@ export default function ReagentList() {
         {/* 필터를 조작한 시선이 바로 이어지도록, 결과 개수를 필터 바로 아래·표 바로 위에 표시.
             홈 화면 "전체 시약 N종"과 기준을 맞추기 위해 제조사/순도 무시하고 이름만으로 센다. */}
         <div style={{ margin: '0 0 12px', fontSize: '14px', color: C.text }}>
-          검색결과 <strong style={{ color: C.navy }}>{groupReagentsByName(displayResults).length.toLocaleString()}개</strong>
+          검색결과 <strong style={{ color: C.navy }}>{groupedResultCount.toLocaleString()}개</strong>
           <span style={{ color: C.muted, fontSize: '12.5px' }}> (전체 {totalCount.toLocaleString()}개)</span>
         </div>
 
