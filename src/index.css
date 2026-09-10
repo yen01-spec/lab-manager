@@ -84,8 +84,41 @@ textarea.autosize-cell {
   display: block;
 }
 
-/* ── 스크롤바 ─────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #9AA1AD; }
+/* ── 스크롤바 — 눈에 잘 띄도록 두툼한 회색 pill + 가운데 그립 라인 ───── */
+* {
+  scrollbar-width: auto;               /* Firefox: 기본 두께 유지 */
+  scrollbar-color: #AEB4C0 #EBEDF1;    /* Firefox: 손잡이 / 트랙 */
+}
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: #EBEDF1; border-radius: 8px; }
+::-webkit-scrollbar-corner { background: #EBEDF1; }
+::-webkit-scrollbar-thumb {
+  background-color: #AEB4C0;
+  border: 2px solid #EBEDF1;           /* 트랙과 살짝 간격 → 둥근 pill 느낌 */
+  border-radius: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: #949BA8; }
+::-webkit-scrollbar-thumb:active { background-color: #7E8593; }
+/* 세로 스크롤바 손잡이: 가운데에 짧은 가로선 3개 */
+::-webkit-scrollbar-thumb:vertical {
+  background-image:
+    linear-gradient(#7C8493 0 0),
+    linear-gradient(#7C8493 0 0),
+    linear-gradient(#7C8493 0 0);
+  background-repeat: no-repeat;
+  background-size: 9px 1.5px;
+  background-position: center calc(50% - 4px), center 50%, center calc(50% + 4px);
+}
+/* 가로 스크롤바 손잡이: 가운데에 짧은 세로선 3개 */
+::-webkit-scrollbar-thumb:horizontal {
+  background-image:
+    linear-gradient(#7C8493 0 0),
+    linear-gradient(#7C8493 0 0),
+    linear-gradient(#7C8493 0 0);
+  background-repeat: no-repeat;
+  background-size: 1.5px 9px;
+  background-position: calc(50% - 4px) center, 50% center, calc(50% + 4px) center;
+}
