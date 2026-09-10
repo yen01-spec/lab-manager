@@ -1,4 +1,4 @@
-import { C, inputStyle, btnPrimary } from '../../design'
+import { C, inputStyle, btnPrimary, btnExcel } from '../../design'
 import ReagentAutocomplete from '../ReagentAutocomplete'
 
 // 상단 검색창 + 일괄검색/신규등록/엑셀 버튼 줄.
@@ -34,11 +34,7 @@ export default function ReagentToolbar({
         fontSize: '13px', fontWeight: '600', flexShrink: 0,
       }}>🆕 신규 시약 등록</button>
       {isAdmin && hasResults && (
-        <button onClick={onExportExcel} style={{
-          background: '#1D6F42', color: 'white', border: 'none',
-          padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
-          fontSize: '13px', fontWeight: '600', flexShrink: 0,
-        }}>📥 엑셀</button>
+        <button onClick={onExportExcel} style={{ ...btnExcel, flexShrink: 0 }}>📊 Excel로 내보내기</button>
       )}
     </div>
   )

@@ -3,7 +3,7 @@ import { useOutletContext, useLocation, useNavigate } from 'react-router-dom'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { supabase } from '../supabase'
-import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, btnGhost, thStyle, tdStyle } from '../design'
+import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, btnGhost, btnExcel, thStyle, tdStyle } from '../design'
 import { exportPurchaseRequestForm } from '../exportUtils'
 import ReagentAutocomplete from '../components/ReagentAutocomplete'
 import CompanyPicker from '../components/CompanyPicker'
@@ -476,7 +476,7 @@ export default function PurchaseRequest() {
             </div>
             <div className="no-print" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={handleExportExcel} disabled={saving} style={{ ...btnGhost, padding: '10px 18px', opacity: saving ? 0.6 : 1 }}>📊 Excel로 내보내기</button>
+                <button onClick={handleExportExcel} disabled={saving} style={{ ...btnExcel, opacity: saving ? 0.6 : 1 }}>📊 Excel로 내보내기</button>
                 <button onClick={handleDownloadPdf} disabled={saving} style={{ ...btnPrimary, padding: '10px 18px', opacity: saving ? 0.6 : 1 }}>📄 PDF로 저장</button>
               </div>
               <div style={{ fontSize: '11px', color: C.blue }}>📎 시약 목록과 물품 목록이 하나의 파일로 함께 내보내집니다</div>

@@ -97,6 +97,23 @@ export const btnGhost = {
   gap: '6px',
 }
 
+// 엑셀 내보내기 버튼 — 앱 전체에서 동일한 모양/문구로 사용(시약 목록·구매요청서 등).
+// 라벨은 '📊 Excel로 내보내기'로 통일.
+export const btnExcel = {
+  background: '#1D6F42',
+  color: C.white,
+  border: 'none',
+  padding: '10px 18px',
+  borderRadius: '8px',
+  cursor: 'pointer',
+  fontSize: '13px',
+  fontWeight: '600',
+  fontFamily: 'inherit',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+}
+
 export const btnDanger = {
   background: C.dangerTint,
   color: C.dangerDark,
