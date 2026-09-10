@@ -8,6 +8,12 @@ const FILE_GROUPS = [
   { key: 'official', label: '공식 지침·매뉴얼' },
   { key: 'reference', label: '참고자료' },
 ]
+// 학교 연구실안전관리 업무상의 역할 — 앱 로그인 권한(일반/관리자)과는 별개.
+const ROLE_LABELS = {
+  worker: '연구활동종사자',
+  manager: '연구실안전관리담당자',
+  director: '연구실책임자',
+}
 
 function Section({ title, children }) {
   return (
@@ -40,9 +46,18 @@ export default function ResourceGuidePage({ section, schoolUrl, isAdmin, onActio
         </div>
       )}
 
-      {/* ② 누가 / 언제 */}
-      {(section.audience || section.timing) && (
+      {/* ② 누가 / 언제 (+ 학교 안전관리 역할 배지) */}
+      {(section.audience || section.timing || section.roles?.length) && (
         <Section title="누가 / 언제">
+          {section.roles?.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+              {section.roles.map(role => (
+                <span key={role} style={{ fontSize: 11, fontWeight: 700, background: '#EEF2FB', color: C.navy, padding: '3px 10px', borderRadius: 999 }}>
+                  {ROLE_LABELS[role] || role}
+                </span>
+              ))}
+            </div>
+          )}
           <div style={{ fontSize: 13, color: C.text }}>
             {section.audience && <div><b>누가</b> · {section.audience}</div>}
             {section.timing && <div style={{ marginTop: 2 }}><b>언제</b> · {section.timing}</div>}

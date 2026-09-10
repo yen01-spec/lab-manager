@@ -59,3 +59,9 @@ export async function resolveLotNo({ lotNo = '', noLotReason = '' } = {}) {
 export function isGeneratedLot(lotSource) {
   return typeof lotSource === 'string' && lotSource.startsWith('generated')
 }
+
+// Lot 표시 규칙(§55): 제조사 Lot No.가 있으면 그것만, 없고 내부 관리번호가 있으면 그것만.
+export function lotLabel(lot) {
+  if (!lot?.lot_no) return '(번호 없음)'
+  return isGeneratedLot(lot.lot_source) ? `내부관리 ${lot.lot_no}` : `Lot ${lot.lot_no}`
+}

@@ -3,13 +3,58 @@ import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom
 import { C, PageBanner, btnPrimary } from '../design'
 import PillNav from '../components/PillNav'
 import ResourceGuidePage from '../components/resources/ResourceGuidePage'
+import ResourceReagentList from '../components/resources/ResourceReagentList'
+import { lotLabel } from '../lib/lotNo'
 import { RESOURCE_CATEGORIES, RESOURCE_GUIDES } from '../lib/resourceGuides'
 import { getSetting, SCHOOL_SAFETY_SYSTEM_FALLBACK } from '../lib/appSettings'
+import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
 
-// 자료 첫 진입을 가볍게 — 실제 업무지원 도구는 해당 섹션을 열 때만 로드
+// 자료 첫 진입을 가볍게 — 무거운 도구는 해당 섹션을 열 때만 로드
 const SchoolRegistrationView = lazy(() => import('../components/signage/SchoolRegistrationView'))
+
+// 현재 시약이 특별관리물질인지: CAS 매칭 확정=true, CAS는 맞지만 이름/조건 불명확='check'
+const specialFilter = (r) => {
+  const info = getSpecialManagementInfo(r.name, r.cas_no)
+  return info?.status === 'confirmed' ? true : info?.status === 'suspected' ? 'check' : false
+}
+
+// 작성 참고용 Excel (학교 공식 업로드 양식 아님)
+async function exportReferenceExcel(reagents, filenameBase) {
+  const XLSX = await import('xlsx')
+  const header = ['국문명', '영문명', 'CAS No.', '제조사', '규격', '현재 잔량(%)', '미개봉(병)', '입고일', '보관 위치', 'Lot / 내부관리번호']
+  const rows = []
+  for (const r of reagents) {
+    const lots = r._lots || []
+    if (lots.length === 0) rows.push([r.name_ko || '', r.name || '', r.cas_no || '', r.company || '', r.volume ? `${r.volume}${r.unit || ''}` : '', '', '', '', '', ''])
+    for (const l of lots) rows.push([
+      r.name_ko || '', r.name || '', r.cas_no || '', r.company || '', r.volume ? `${r.volume}${r.unit || ''}` : '',
+      l.current_stock ?? '', l.sealed_count ?? '', l.received_date || '', l._locText || '', lotLabel(l),
+    ])
+  }
+  const ws = XLSX.utils.aoa_to_sheet([['※ 작성 참고용 — 학교 공식 업로드 양식이 아닙니다'], [], header, ...rows])
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, '작성참고')
+  XLSX.writeFile(wb, `${filenameBase}_작성참고_${new Date().toISOString().slice(0, 10)}.xlsx`)
+}
+
 const EMBEDS = {
   schoolRegistration: <SchoolRegistrationView />,
+  specialTargets: (
+    <ResourceReagentList filterFn={specialFilter} dedupeByCas title="현재 연구실 특별관리물질"
+      fields={['casNo', 'lotCount', 'volume']} lotFields={['currentStock', 'location']} />
+  ),
+  specialRegister: (
+    <ResourceReagentList filterFn={specialFilter} dedupeByCas selectable title="현재 연구실 특별관리물질"
+      fields={['nameKo', 'casNo', 'company', 'volume']}
+      lotFields={['lot', 'currentStock', 'sealedCount', 'receivedDate', 'location']}
+      onExport={list => exportReferenceExcel(list, '특별관리물질_등록정보')} exportLabel="등록 정보 목록 내보내기" />
+  ),
+  specialLogInfo: (
+    <ResourceReagentList filterFn={specialFilter} dedupeByCas selectable title="현재 연구실 특별관리물질"
+      fields={['nameKo', 'casNo']}
+      lotFields={['lot', 'currentStock', 'sealedCount', 'receivedDate', 'location']}
+      onExport={list => exportReferenceExcel(list, '특별관리물질_취급일지정보')} exportLabel="취급일지 작성용 정보 내보내기" />
+  ),
 }
 
 // 자료 탭 — 강원대학교 공식 연구실안전관리 업무 지원 허브 (수정방안 §5~10).
