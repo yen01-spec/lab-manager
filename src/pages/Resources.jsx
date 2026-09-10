@@ -8,6 +8,7 @@ import { lotLabel } from '../lib/lotNo'
 import { RESOURCE_CATEGORIES, RESOURCE_GUIDES } from '../lib/resourceGuides'
 import { getSetting, SCHOOL_SAFETY_SYSTEM_FALLBACK, KOSHA_LABEL_FALLBACK } from '../lib/appSettings'
 import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
+import { getHazardCategory } from '../lib/hazardCategory'
 
 // 자료 첫 진입을 가볍게 — 무거운 도구는 해당 섹션을 열 때만 로드
 const SchoolRegistrationView = lazy(() => import('../components/signage/SchoolRegistrationView'))
@@ -17,6 +18,16 @@ const specialFilter = (r) => {
   const info = getSpecialManagementInfo(r.name, r.cas_no)
   return info?.status === 'confirmed' ? true : info?.status === 'suspected' ? 'check' : false
 }
+// 사전유해인자 작성 준비 — 라이트 데이터(hazard, hazard_classifications) 기준
+const HAZARD_LIGHT_COLS = 'hazard, hazard_classifications'
+const isHazardous = (r) => !!(r.hazard && String(r.hazard).trim()) || (r.hazard_classifications || []).length > 0
+const isFireLaw = (r) => !!getHazardCategory(r.hazard_classifications).fireSafetyClass
+const PRIOR_PRESETS = [
+  { key: 'all', label: '전체', fn: () => true },
+  { key: 'hazard', label: '유해·위험 시약', fn: isHazardous },
+  { key: 'special', label: '특별관리물질', fn: specialFilter },
+  { key: 'firelaw', label: '위험물', fn: isFireLaw },
+]
 
 // 작성 참고용 Excel (학교 공식 업로드 양식 아님)
 async function exportReferenceExcel(reagents, filenameBase) {
@@ -54,6 +65,19 @@ const EMBEDS = {
       fields={['nameKo', 'casNo']}
       lotFields={['lot', 'currentStock', 'sealedCount', 'receivedDate', 'location']}
       onExport={list => exportReferenceExcel(list, '특별관리물질_취급일지정보')} exportLabel="취급일지 작성용 정보 내보내기" />
+  ),
+  wasteReagent: (
+    <ResourceReagentList requireActiveLots selectable
+      fields={['nameKo', 'casNo', 'company', 'volume']}
+      lotFields={['lot', 'currentStock', 'sealedCount', 'receivedDate', 'location']}
+      onExport={list => exportReferenceExcel(list, '폐시약')} exportLabel="폐시약 작성 참고용 Excel"
+      emptyText="검색 결과가 없거나 보유 중인 Lot이 없습니다." />
+  ),
+  priorPrepare: (
+    <ResourceReagentList filterPresets={PRIOR_PRESETS} lightColumns={HAZARD_LIGHT_COLS} selectable
+      fields={['nameKo', 'casNo', 'volume', 'hazard']}
+      lotFields={['lot', 'currentStock', 'location']}
+      onExport={list => exportReferenceExcel(list, '사전유해인자')} exportLabel="작성 참고용 Excel 내보내기" />
   ),
 }
 

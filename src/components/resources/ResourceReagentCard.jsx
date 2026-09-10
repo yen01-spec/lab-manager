@@ -47,9 +47,15 @@ export default function ResourceReagentCard({
             {special?.status === 'confirmed' && (
               <span style={{ fontSize: 10.5, fontWeight: 700, background: '#FFF3CD', color: '#8A5A16', padding: '2px 8px', borderRadius: 999 }}>🚨 특별관리물질</span>
             )}
-            {special?.status === 'suspected' && (
-              <span title={special.reason} style={{ fontSize: 10.5, fontWeight: 700, background: '#F3F4F6', color: '#586173', padding: '2px 8px', borderRadius: 999 }}>❓ 확인 필요</span>
-            )}
+            {special?.status === 'suspected' && (() => {
+              const cond = (special.substance.threshold || '').match(/\(([^)]+)\)/)?.[1]
+              return (
+                <span title={`${special.reason}\n기준: ${special.substance.threshold}`}
+                  style={{ fontSize: 10.5, fontWeight: 700, background: '#F3F4F6', color: '#586173', padding: '2px 8px', borderRadius: 999 }}>
+                  ❓ 확인 필요{cond ? ` · ${cond}` : ''}
+                </span>
+              )
+            })()}
           </div>
 
           {/* 시약(마스터) 레벨 필드 */}

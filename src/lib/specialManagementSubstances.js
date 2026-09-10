@@ -30,13 +30,13 @@ export const SPECIAL_MANAGEMENT_SUBSTANCES = [
   { name: '2-에톡시에틸 아세테이트', nameEn: '2-Ethoxyethyl acetate', cas: '111-15-9', threshold: '0.3%이상' },
   { name: '에틸렌이민', nameEn: 'Ethyleneimine', cas: '151-56-4', threshold: '0.1%이상' },
   { name: '2,3-에폭시-1-프로판올', nameEn: '2,3-Epoxy-1-propanol', cas: '556-52-5', threshold: '0.1%이상' },
-  { name: '1,2-에폭시프로판', nameEn: '1,2-Epoxypropane', cas: '75-56-9', threshold: '0.1%이상' },
+  { name: '1,2-에폭시프로판', nameEn: '1,2-Epoxypropane', cas: '75-56-9', threshold: '0.1%이상', aliases: ['Propylene oxide', '프로필렌옥사이드'] },
   { name: '에피클로로히드린', nameEn: 'Epichlorohydrin', cas: '106-89-8', threshold: '0.1%이상' },
   { name: '트리클로로에틸렌', nameEn: 'Trichloroethylene', cas: '79-01-6', threshold: '0.1%이상' },
   { name: '1,2,3-트리클로로프로판', nameEn: '1,2,3-Trichloropropane', cas: '96-18-4', threshold: '0.1%이상' },
   { name: '퍼클로로에틸렌', nameEn: 'Perchloroethylene', cas: '127-18-4', threshold: '0.1%이상' },
   { name: '페놀', nameEn: 'Phenol', cas: '108-95-2', threshold: '0.3%이상' },
-  { name: '포름알데히드', nameEn: 'Formaldehyde', cas: '50-00-0', threshold: '0.1%이상' },
+  { name: '포름알데히드', nameEn: 'Formaldehyde', cas: '50-00-0', threshold: '0.1%이상', aliases: ['Formalin', '포르말린'] },
   { name: '프로필렌이민', nameEn: 'Propyleneimine', cas: '75-55-8', threshold: '0.1%이상' },
   { name: '황산 디메틸', nameEn: 'Dimethyl sulfate', cas: '77-78-1', threshold: '0.1%이상' },
   { name: '히드라진 및 그 수화물', nameEn: 'Hydrazine', cas: '302-01-2', threshold: '0.1%이상' },
@@ -75,7 +75,9 @@ function normalize(s) {
 function fuzzyNameMatch(reagentName, substance) {
   const rn = normalize(reagentName)
   if (!rn) return false
-  return [substance.name, substance.nameEn].some(candidate => {
+  // 규정 명칭 + 명백한 동의어/관용명(aliases)까지 비교 — "Formalin"↔"Formaldehyde",
+  // "Propylene oxide"↔"1,2-Epoxypropane"처럼 CAS는 같은데 명칭 표기만 다른 경우 흡수.
+  return [substance.name, substance.nameEn, ...(substance.aliases || [])].some(candidate => {
     const sn = normalize(candidate)
     return sn.length > 4 && rn.includes(sn)
   })
