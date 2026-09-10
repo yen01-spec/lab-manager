@@ -120,12 +120,22 @@ export default function Resources() {
       return
     }
     if (a.type === 'contact') {
+      // 명백한 placeholder 값(OOO / 000-0000-0000 / 미정 / 없음 / - 등)은 실제 연락처로 취급하지 않음
+      const real = (v) => {
+        const s = (v || '').toString().trim()
+        if (!s) return null
+        if (/^[-·.\s]*$/.test(s)) return null
+        if (/^(미정|없음|추후|tbd|n\/?a)$/i.test(s)) return null
+        if (/^[oO0]{2,}$/.test(s.replace(/[\s()-]/g, ''))) return null       // OOO, 000
+        if (/^0[01]0[-\s]?0{3,4}[-\s]?0{3,4}$/.test(s)) return null          // 000-0000-0000, 010-0000-0000
+        return s
+      }
       const parts = [
-        settings.emergency_contact && `비상연락: ${settings.emergency_contact}`,
-        settings.lab_professor && `연구실책임자: ${settings.lab_professor}`,
-        settings.lab_assistant && `안전관리담당자: ${settings.lab_assistant}`,
-        settings.lab_phone && `연구실 전화: ${settings.lab_phone}`,
-        settings.safety_dept_phone && `교내 안전관리 부서: ${settings.safety_dept_phone}`,
+        real(settings.emergency_contact) && `비상연락: ${real(settings.emergency_contact)}`,
+        real(settings.lab_professor) && `연구실책임자: ${real(settings.lab_professor)}`,
+        real(settings.lab_assistant) && `안전관리담당자: ${real(settings.lab_assistant)}`,
+        real(settings.lab_phone) && `연구실 전화: ${real(settings.lab_phone)}`,
+        real(settings.safety_dept_phone) && `교내 안전관리 부서: ${real(settings.safety_dept_phone)}`,
       ].filter(Boolean)
       alert(parts.length
         ? '📞 비상연락처\n\n' + parts.join('\n') + '\n\n※ 위급 시 119'
