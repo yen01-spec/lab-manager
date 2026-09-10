@@ -1,9 +1,12 @@
+import { memo } from 'react'
 import { C } from '../../design'
 
 // 컴포넌트 밖(모듈 스코프)에 고정 정의 — ReagentList 안에 정의하면 리렌더될 때마다
 // "새로운 컴포넌트"로 취급되어 표 전체 DOM이 매번 통째로 재생성된다(더블클릭 감지가
 // 깨지는 원인이기도 했음). 필요한 값은 전부 props로 받는다.
-export default function AlphabetIndex({ data, scrollToLetter }) {
+// memo — 체크박스 선택/인라인 편집처럼 data가 그대로인 리렌더에서는 A~Z 인덱스의
+// Set·sort 재계산(1,300여 개 순회)을 통째로 건너뛴다.
+function AlphabetIndex({ data, scrollToLetter }) {
   const BASE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
   // sort_letter가 있으면 우선 사용 — 화학명 앞의 위치번호·입체이성질체 접두어(예:
   // "D-Raffinose"→R, "n-Butyl alcohol"→B)를 무시하고 실제 시약장에 정렬된 알파벳
@@ -38,3 +41,5 @@ export default function AlphabetIndex({ data, scrollToLetter }) {
     </div>
   )
 }
+
+export default memo(AlphabetIndex)

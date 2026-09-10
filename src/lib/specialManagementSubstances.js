@@ -67,20 +67,25 @@ function normalize(s) {
   return (s || '').toLowerCase().replace(/[^a-z0-9가-힣]/g, '')
 }
 
+// 물질별 비교 후보 이름(규정 명칭 + 영문명 + aliases)을 정규화해 미리 계산해둔다 —
+// 예전엔 fuzzyNameMatch가 호출될 때마다(시약 1,300여 개 × 물질 여러 개) 고정 문자열인
+// 물질명까지 매번 normalize 했음. 4자 이하는 우연히 겹칠 위험이 커서 애초에 제외.
+const SUBSTANCE_NORM_NAMES = new Map(
+  SPECIAL_MANAGEMENT_SUBSTANCES.map(s => [
+    s,
+    [s.name, s.nameEn, ...(s.aliases || [])].map(normalize).filter(n => n.length > 4),
+  ]),
+)
+
 // 시약명이 물질명 전체를 포함하는지만 본다(단방향) — "...formamide (DMF)"에
 // "dimethylformamide" 포함되는 식. 반대 방향(물질명이 시약명을 포함)은 넣지 않는다 —
 // "ethanol"이 "2-methoxyethanol"에 포함된다고 매칭시키면 완전히 다른 물질(에탄올)이
-// 메톡시에탄올로 잘못 잡히는 문제가 있었음. 물질명이 짧으면(4자 이하) 우연히 겹칠
-// 위험이 커서 매칭에서 제외한다.
-function fuzzyNameMatch(reagentName, substance) {
-  const rn = normalize(reagentName)
-  if (!rn) return false
-  // 규정 명칭 + 명백한 동의어/관용명(aliases)까지 비교 — "Formalin"↔"Formaldehyde",
-  // "Propylene oxide"↔"1,2-Epoxypropane"처럼 CAS는 같은데 명칭 표기만 다른 경우 흡수.
-  return [substance.name, substance.nameEn, ...(substance.aliases || [])].some(candidate => {
-    const sn = normalize(candidate)
-    return sn.length > 4 && rn.includes(sn)
-  })
+// 메톡시에탄올로 잘못 잡히는 문제가 있었음.
+function fuzzyNameMatchNorm(normReagentName, substance) {
+  if (!normReagentName) return false
+  const cands = SUBSTANCE_NORM_NAMES.get(substance) || []
+  for (const sn of cands) if (normReagentName.includes(sn)) return true
+  return false
 }
 
 // 반환값: null(해당없음) | { status: 'confirmed'|'suspected', substance, reason }
@@ -94,12 +99,18 @@ function fuzzyNameMatch(reagentName, substance) {
 // 화학명명법상 흔해서, 이름만으로 폭넓게 찾으면 관련없는 유도체가 대량으로 걸린다
 // (실제 테스트: 136건 중 대부분이 이런 오탐). 반면 금속류는 "니켈 및 그 무기화합물"처럼
 // 규정 자체가 화합물 전체를 포괄해서, 이름에 "Nickel"이 들어가면 실제로 대부분 해당됨.
-export function getSpecialManagementInfo(reagentName, casNo) {
+// (name, cas) 순수 함수라 결과를 캐시해도 안전 — 시약목록 enrich는 검색/필터/위치변경
+// 때마다 1,300여 개 시약에 대해 이 함수를 다시 돌리는데, 대부분은 이전에 본 것과 같은
+// (이름, CAS) 쌍이라 캐시 적중률이 매우 높다.
+const _resultCache = new Map()
+
+function computeSpecialManagementInfo(reagentName, casNo) {
+  const normName = normalize(reagentName)
   const casMatch = casNo ? CAS_MAP.get(casNo.trim()) : null
-  const nameMatch = SPECIAL_MANAGEMENT_SUBSTANCES.find(s => s.isClass && fuzzyNameMatch(reagentName, s))
+  const nameMatch = SPECIAL_MANAGEMENT_SUBSTANCES.find(s => s.isClass && fuzzyNameMatchNorm(normName, s))
 
   if (casMatch) {
-    const nameAgrees = fuzzyNameMatch(reagentName, casMatch)
+    const nameAgrees = fuzzyNameMatchNorm(normName, casMatch)
     if (nameAgrees) return { status: 'confirmed', substance: casMatch, reason: null }
     return { status: 'suspected', substance: casMatch, reason: `CAS(${casMatch.cas})는 "${casMatch.name}"와 일치하지만 시약명이 달라 확인이 필요합니다.` }
   }
@@ -107,4 +118,13 @@ export function getSpecialManagementInfo(reagentName, casNo) {
     return { status: 'suspected', substance: nameMatch, reason: `시약명이 "${nameMatch.name}(${nameMatch.nameEn})"와 유사하지만 CAS(${casNo || '미기재'})가 달라 확인이 필요합니다.` }
   }
   return null
+}
+
+export function getSpecialManagementInfo(reagentName, casNo) {
+  const key = `${reagentName || ''} ${casNo || ''}`
+  const cached = _resultCache.get(key)
+  if (cached !== undefined) return cached
+  const result = computeSpecialManagementInfo(reagentName, casNo)
+  _resultCache.set(key, result)
+  return result
 }

@@ -97,8 +97,10 @@ export function useReagentSearch({ initialSearch = '' } = {}) {
     // 목록 화면에서 실제로 쓰는 컬럼만 select — 예전엔 '*'로 모든 컬럼 + 위치 join까지
     // 통째로 가져와서(안 쓰는 locations(*) join 포함) 1,500여 개 시약 응답이 5MB가
     // 넘었음. 그게 페이지 진입마다 체감되는 지연의 큰 원인이라 필요한 것만 좁힘.
+    // 목록/필터/행에서 실제로 쓰는 컬럼만. (raw 'hazard' 텍스트는 목록에서 안 쓰고
+    // 유해분류는 hazard_classifications만 사용 — payload를 줄이려 select에서 뺐다.)
     let query = supabase.from('reagents')
-      .select('id, name, name_ko, cas_no, company, purity, volume, unit, category, hazard, ghs_pictograms, hazard_classifications, reagent_type, pending_confirm, msds_url, last_confirmed_at, cas_verification_status, cas_verification_note, sort_letter, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no, expiry_date, cat_no, pending_confirm)', { count: 'exact' })
+      .select('id, name, name_ko, cas_no, company, purity, volume, unit, category, ghs_pictograms, hazard_classifications, reagent_type, pending_confirm, msds_url, last_confirmed_at, cas_verification_status, cas_verification_note, sort_letter, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no, expiry_date, cat_no, pending_confirm)', { count: 'exact' })
       .neq('status', 'archived')
     // 국문명(name_ko)·영문명(name)·CAS 통합 검색 — "에탄올" / "Ethanol" / "64-17-5" 모두 매칭
     if (search.trim()) {

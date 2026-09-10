@@ -84,7 +84,8 @@ export default function ReagentList() {
   const [pendingRegisterTab, setPendingRegisterTab] = useState(null) // 로그인 확인 후 이어서 제출할 탭
 
   // 표시 열 체크박스를 기본값으로 되돌림(기존의 검색어/위치/제조사 초기화 기능을 대체)
-  function resetFilters() {
+  // useCallback — memo된 ReagentFilters로 안정적으로 내려주기 위함.
+  const resetFilters = useCallback(() => {
     setVisibleCols({
       casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
       lot: false, expiry: false, category: false, fireClass: false, special: false, casCheck: false, ghs: false, status: false,
@@ -93,7 +94,7 @@ export default function ReagentList() {
     setFireClassFilter(new Set())
     setSpecialOnly(false)
     setCasMismatchOnly(false)
-  }
+  }, [])
 
   const togglePick = useCallback((r, e) => {
     e.stopPropagation()
@@ -104,14 +105,14 @@ export default function ReagentList() {
     })
   }, [])
 
-  function togglePickAll(data) {
-    const allPicked = data.length > 0 && data.every(r => pickedIds.has(r.id))
+  const togglePickAll = useCallback((data) => {
     setPickedIds(prev => {
+      const allPicked = data.length > 0 && data.every(r => prev.has(r.id))
       const next = new Map(prev)
       data.forEach(r => allPicked ? next.delete(r.id) : next.set(r.id, r))
       return next
     })
-  }
+  }, [])
 
   function goToPurchaseRequestWithPicked() {
     const prefillReagentItems = Array.from(pickedIds.values()).map(r => ({
@@ -386,6 +387,12 @@ export default function ReagentList() {
     navigate(`/reagents/${r.id}`)
   }, [navigate])
 
+  // 아래 콜백들은 memo된 ReagentToolbar에 내려가므로 참조를 고정한다 — 체크박스 선택 등
+  // 무관한 리렌더에 검색창/버튼줄이 함께 리렌더되지 않게.
+  const handleSearchSelect = useCallback((r) => navigate(`/reagents/${r.id}`), [navigate])
+  const openBulkLookup = useCallback(() => { setShowBulkLookupModal(true); setBulkLookupResults(null) }, [])
+  const openRegister = useCallback(() => { setRegisterTab('new'); setShowRegisterModal(true) }, [])
+
   const rooms = useMemo(() => [...new Set(locations.map(l => l.room))], [locations])
 
   // 아래 파생값들은 조회 결과(results)나 필터 상태에만 좌우되는데, 예전엔 검색창 타이핑 등
@@ -406,6 +413,14 @@ export default function ReagentList() {
   // ReagentTable도 내부에서 letter별로 다시 그룹핑하므로 여기선 개수만 필요.
   const groupedResultCount = useMemo(() => groupReagentsByName(displayResults).length, [displayResults])
 
+  const handleExportExcel = useCallback(() => {
+    const activeLocationIds = detailFilter ? [detailFilter] : roomFilter ? locations.filter(l => l.room === roomFilter).map(l => l.id) : null
+    const filterLabel = detailFilter
+      ? (() => { const l = locations.find(x => x.id === detailFilter); return l ? `${l.room}${l.detail ? '_' + l.detail : ''}` : '' })()
+      : roomFilter
+    exportReagents(displayResults, locations, activeLocationIds, filterLabel)
+  }, [displayResults, locations, detailFilter, roomFilter])
+
   return (
     <div>
       <PageBanner title="시약 목록" sub="Reagent List" breadcrumb={['홈', '시약 관리', '시약 목록']} />
@@ -414,17 +429,11 @@ export default function ReagentList() {
         <ReagentToolbar
           initialSearch={initialSearch}
           onSubmitSearch={setSearch}
-          onSearchSelect={r => navigate(`/reagents/${r.id}`)}
-          onOpenBulkLookup={() => { setShowBulkLookupModal(true); setBulkLookupResults(null) }}
-          onOpenRegister={() => { setRegisterTab('new'); setShowRegisterModal(true) }}
+          onSearchSelect={handleSearchSelect}
+          onOpenBulkLookup={openBulkLookup}
+          onOpenRegister={openRegister}
           isAdmin={isAdmin} hasResults={displayResults.length > 0}
-          onExportExcel={() => {
-            const activeLocationIds = detailFilter ? [detailFilter] : roomFilter ? locations.filter(l => l.room === roomFilter).map(l => l.id) : null
-            const filterLabel = detailFilter
-              ? (() => { const l = locations.find(x => x.id === detailFilter); return l ? `${l.room}${l.detail ? '_' + l.detail : ''}` : '' })()
-              : roomFilter
-            exportReagents(displayResults, locations, activeLocationIds, filterLabel)
-          }}
+          onExportExcel={handleExportExcel}
         />
 
         <ReagentFilters

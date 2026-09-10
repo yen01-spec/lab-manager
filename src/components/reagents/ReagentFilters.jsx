@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { C } from '../../design'
 
 const COL_ITEMS = [
@@ -12,7 +12,8 @@ const COL_ITEMS_EXTRA = [
 const FIRE_CLASSES = ['제1류', '제2류', '제3류', '제4류', '제5류', '제6류']
 
 // 위치 필터(방 탭 + 세부위치 알약) + 표시 열 선택 버튼(누르면 체크 목록이 드롭다운으로 열림).
-export default function ReagentFilters({
+// memo — 체크박스 선택 등 필터와 무관한 상위 리렌더에는 반응하지 않는다(모든 prop이 안정).
+function ReagentFilters({
   rooms, roomFilter, setRoomFilter, detailFilter, setDetailFilter, locations,
   visibleCols, setVisibleCols, onResetFilters,
   hazardClassOptions = [], hazardClassFilter, setHazardClassFilter,
@@ -192,3 +193,5 @@ export default function ReagentFilters({
     </>
   )
 }
+
+export default memo(ReagentFilters)

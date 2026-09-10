@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { C, inputStyle, btnPrimary, btnExcel } from '../../design'
 import ReagentAutocomplete from '../ReagentAutocomplete'
 
@@ -6,7 +6,9 @@ import ReagentAutocomplete from '../ReagentAutocomplete'
 // 검색 입력값(draft)은 이 컴포넌트가 들고 있고, Enter나 "검색" 버튼을 눌렀을 때만
 // onSubmitSearch로 상위에 올려보낸다 — 타이핑 한 글자마다 무거운 목록 페이지가
 // 리렌더되지 않도록 입력 상태와 실제 검색 상태를 분리한 것.
-export default function ReagentToolbar({
+// memo — 목록 페이지의 체크박스 선택/필터 변경 리렌더가 검색창까지 번지지 않게 한다
+// (상위에서 넘기는 콜백은 useCallback으로 고정).
+function ReagentToolbar({
   initialSearch = '', onSubmitSearch, onSearchSelect,
   onOpenBulkLookup, onOpenRegister,
   isAdmin, hasResults, onExportExcel,
@@ -49,3 +51,5 @@ export default function ReagentToolbar({
     </div>
   )
 }
+
+export default memo(ReagentToolbar)
