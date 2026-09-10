@@ -15,7 +15,7 @@ export default function BulkDisposalModal({
         width: '420px', maxWidth: '92vw', boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
       }}>
         <h3 style={{ margin: '0 0 4px', color: C.danger }}>🗑️ 폐기처리</h3>
-        <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{checkedCount}개 시약(보유중인 Lot 전체) 폐기 처리됩니다</p>
+        <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>선택한 Lot {checkedCount}개가 폐기 처리됩니다</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>폐기 사유 *</label>
@@ -27,7 +27,7 @@ export default function BulkDisposalModal({
           </div>
         </div>
         <div style={{ marginTop: '14px', padding: '10px 14px', background: '#FDECEC', border: '1px solid #F3D6D6', borderRadius: '8px', fontSize: '12.5px', color: '#C13B3F' }}>
-          ⚠️ 되돌릴 수 없어요. 선택한 시약의 모든 보유 Lot이 폐기 처리되고 재고가 0으로 바뀝니다.
+          ⚠️ 되돌릴 수 없어요. 선택한 Lot이 폐기 처리되고 재고가 0으로 바뀝니다.
         </div>
         <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
           <button onClick={onClose} style={{
