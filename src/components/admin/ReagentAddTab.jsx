@@ -3,15 +3,19 @@ import { supabase } from '../../supabase'
 import { C, Card, inputStyle, labelStyle, btnPrimary } from '../../design'
 import CompanyPicker from '../CompanyPicker'
 import { computeSortLetter } from '../../lib/sortLetter'
+import { resolveLotNo } from '../../lib/lotNo'
+import LotNoInput from '../reagents/LotNoInput'
+
+const today = () => new Date().toISOString().split('T')[0]
 
 // ══════════════════════════════════════════════
 //  시약 추가 (CAS 자동조회 포함)
 // ══════════════════════════════════════════════
 export default function ReagentAddTab({ locations, student }) {
   const init = {
-    name: '', cas_no: '', company: '', hazard: '', category: '',
+    name: '', name_ko: '', cas_no: '', company: '', hazard: '', category: '',
     volume: '', unit: '', location_id: '', notes: '',
-    lot_no: '', expiry_date: '', received_date: ''
+    lotNo: '', noLotReason: '', expiry_date: '', received_date: today(),
   }
   const [form, setForm] = useState(init)
   const [adminName, setAdminName] = useState('')
@@ -89,7 +93,8 @@ try {
     // 폼에 자동입력 (빈 칸만)
     setForm(prev => ({
       ...prev,
-      name: prev.name || result.korName || result.iupacName,
+      name: prev.name || result.iupacName || result.korName,
+      name_ko: prev.name_ko || result.korName,
       hazard: prev.hazard || result.hazard,
       category: prev.category || result.formula,
     }))
@@ -121,8 +126,9 @@ try {
         `"${existing[0].name}" 시약이 이미 등록되어 있어요.\n새 시약으로 또 만들지 않고, 기존 시약에 새 Lot(재구매분)으로 추가할까요?\n\n확인 = 기존 시약에 Lot 추가\n취소 = 그래도 새 시약으로 등록`
       )
       if (addAsLot) {
+        const lot = await resolveLotNo(form)
         const { error: lotError } = await supabase.from('reagent_lots').insert({
-          reagent_id: existing[0].id, lot_no: form.lot_no || null,
+          reagent_id: existing[0].id, lot_no: lot.lot_no, lot_source: lot.lot_source,
           sealed_count: 0, current_stock: 100,
           expiry_date: form.expiry_date || null, received_date: form.received_date || null,
           location_id: form.location_id || null, status: 'active',
@@ -131,9 +137,9 @@ try {
         await supabase.from('admin_logs').insert({
           admin_name: adminName, action: '재고 등록(기존 시약)',
           target_type: 'reagent',
-          description: `기존 시약에 Lot 추가: ${existing[0].name}`,
+          description: `기존 시약에 Lot 추가: ${existing[0].name}${lot.lot_source.startsWith('generated') ? ` (내부번호 ${lot.lot_no})` : ''}`,
         })
-        alert('기존 시약에 새 Lot이 추가되었습니다!')
+        alert(`기존 시약에 새 Lot이 추가되었습니다!${lot.lot_source.startsWith('generated') ? `\n내부 관리번호: ${lot.lot_no}` : ''}`)
         setForm(init)
         setCasResult(null)
         return
@@ -141,7 +147,7 @@ try {
     }
 
     const { data: r } = await supabase.from('reagents').insert({
-      name: form.name, cas_no: form.cas_no, company: form.company,
+      name: form.name, name_ko: form.name_ko || null, cas_no: form.cas_no, company: form.company,
       hazard: form.hazard, category: form.category,
       volume: form.volume || null, unit: form.unit,
       notes: form.notes,
@@ -149,8 +155,9 @@ try {
       sort_letter: computeSortLetter(form.name),
     }).select().single()
     if (r) {
+      const lot = await resolveLotNo(form)
       await supabase.from('reagent_lots').insert({
-        reagent_id: r.id, lot_no: form.lot_no,
+        reagent_id: r.id, lot_no: lot.lot_no, lot_source: lot.lot_source,
         sealed_count: 0, current_stock: 100,
         expiry_date: form.expiry_date || null,
         received_date: form.received_date || null,
@@ -159,9 +166,9 @@ try {
       await supabase.from('admin_logs').insert({
         admin_name: adminName, action: '시약 추가',
         target_type: 'reagent',
-        description: `시약 추가: ${form.name}`,
+        description: `시약 추가: ${form.name}${lot.lot_source.startsWith('generated') ? ` (내부번호 ${lot.lot_no})` : ''}`,
       })
-      alert('시약이 추가되었습니다!')
+      alert(`시약이 추가되었습니다!${lot.lot_source.startsWith('generated') ? `\n내부 관리번호: ${lot.lot_no}` : ''}`)
       setForm(init)
       setCasResult(null)
     }
@@ -238,9 +245,12 @@ try {
             </div>
           )}
         </div>
-        <div><label style={labelStyle}>시약명 *</label>
+        <div><label style={labelStyle}>영문명 *</label>
           <input value={form.name} placeholder="예: Ethanol"
             onChange={e => setForm({ ...form, name: e.target.value })} style={inputStyle} /></div>
+        <div><label style={labelStyle}>국문명</label>
+          <input value={form.name_ko} placeholder="예: 에탄올"
+            onChange={e => setForm({ ...form, name_ko: e.target.value })} style={inputStyle} /></div>
         <div><label style={labelStyle}>회사명</label>
           <CompanyPicker value={form.company} placeholder="예: Sigma-Aldrich"
             onChange={v => setForm({ ...form, company: v })} style={inputStyle} /></div>
@@ -256,9 +266,11 @@ try {
         <div><label style={labelStyle}>단위</label>
           <input value={form.unit} placeholder="예: mL"
             onChange={e => setForm({ ...form, unit: e.target.value })} style={inputStyle} /></div>
-        <div><label style={labelStyle}>Lot No.</label>
-          <input value={form.lot_no}
-            onChange={e => setForm({ ...form, lot_no: e.target.value })} style={inputStyle} /></div>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <LotNoInput
+            value={{ lotNo: form.lotNo, noLotReason: form.noLotReason }}
+            onChange={v => setForm({ ...form, lotNo: v.lotNo, noLotReason: v.noLotReason })} />
+        </div>
         <div><label style={labelStyle}>유통기한</label>
           <input type="date" value={form.expiry_date}
             onChange={e => setForm({ ...form, expiry_date: e.target.value })} style={inputStyle} /></div>

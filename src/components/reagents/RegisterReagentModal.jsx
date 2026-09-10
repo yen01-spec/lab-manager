@@ -1,5 +1,6 @@
 import { C, inputStyle, labelStyle } from '../../design'
 import CompanyPicker from '../CompanyPicker'
+import LotNoInput from './LotNoInput'
 
 // 신규 시약 등록 모달 — "신규 시약 등록"/"직접 제조 시약 등록" 두 탭을 하나의 모달에서 전환.
 // 로그인이 안 되어 있으면 같은 모달 안에서 인라인 로그인 확인 → 성공 시 원래 등록을 이어서 제출.
@@ -143,16 +144,14 @@ export default function RegisterReagentModal({
                     style={{ ...inputStyle, background: newReagentForm.reagent_id ? C.bg : C.white }} />
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div>
-                  <label style={labelStyle}>Cat No.</label>
-                  <input value={newReagentForm.cat_no} onChange={e => setNewReagentForm({ ...newReagentForm, cat_no: e.target.value })} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Lot No.</label>
-                  <input value={newReagentForm.lot_no} onChange={e => setNewReagentForm({ ...newReagentForm, lot_no: e.target.value })} style={inputStyle} />
-                </div>
+              <div>
+                <label style={labelStyle}>Cat No.</label>
+                <input value={newReagentForm.cat_no} onChange={e => setNewReagentForm({ ...newReagentForm, cat_no: e.target.value })} style={inputStyle} />
               </div>
+              <LotNoInput
+                value={{ lotNo: newReagentForm.lot_no, noLotReason: newReagentForm.noLotReason }}
+                onChange={v => setNewReagentForm({ ...newReagentForm, lot_no: v.lotNo, noLotReason: v.noLotReason })}
+                compact />
               <div>
                 <label style={labelStyle}>보관 위치 *</label>
                 <select value={newReagentForm.location_id} onChange={e => setNewReagentForm({ ...newReagentForm, location_id: e.target.value })} style={inputStyle}>

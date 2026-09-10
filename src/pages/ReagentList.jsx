@@ -5,6 +5,7 @@ import { C, PageBanner } from '../design'
 import { exportReagents } from '../exportUtils'
 import { lookupStudent, writeSession } from '../lib/session'
 import { computeSortLetter } from '../lib/sortLetter'
+import { resolveLotNo } from '../lib/lotNo'
 import { groupReagentsByName } from '../lib/nameGroup'
 import { useReagentSearch } from '../hooks/useReagentSearch'
 import { useBreakpoint } from '../hooks/useBreakpoint'
@@ -65,7 +66,7 @@ export default function ReagentList() {
   const [registerTab, setRegisterTab] = useState('new') // 'new' | 'made'
   const [newReagentForm, setNewReagentForm] = useState({
     name: '', cas_no: '', company: '', category: '', volume: '', unit: '',
-    cat_no: '', lot_no: '', location_id: '', sealed_count: '1', current_stock: '100',
+    cat_no: '', lot_no: '', noLotReason: '', location_id: '', sealed_count: '1', current_stock: '100',
     reagent_id: null,
   })
   // 시약명을 입력하고 칸을 벗어나면(blur) 카탈로그에서 같은 이름을 찾아 후보로 보여줌 —
@@ -265,15 +266,17 @@ export default function ReagentList() {
       if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
       reagentId = reagent.id
     }
+    const lot = await resolveLotNo({ lotNo: newReagentForm.lot_no, noLotReason: newReagentForm.noLotReason })
     await supabase.from('reagent_lots').insert({
       reagent_id: reagentId, location_id: newReagentForm.location_id,
-      lot_no: newReagentForm.lot_no || null, cat_no: newReagentForm.cat_no || null,
+      lot_no: lot.lot_no, lot_source: lot.lot_source, cat_no: newReagentForm.cat_no || null,
       sealed_count: Number(newReagentForm.sealed_count) || 0, current_stock: Number(newReagentForm.current_stock) || 0,
       received_date: new Date().toISOString().split('T')[0], pending_confirm: true,
     })
-    alert(newReagentForm.reagent_id ? '기존 시약에 새 Lot이 등록됐어요! 관리자가 최종 확인하기 전까지는 "검토대기"로 표시돼요.' : '신규 시약이 등록됐어요! 관리자가 최종 확인하기 전까지는 목록에 "검토대기"로 표시돼요.')
+    const genNote = lot.lot_source.startsWith('generated') ? `\n내부 관리번호: ${lot.lot_no}` : ''
+    alert((newReagentForm.reagent_id ? '기존 시약에 새 Lot이 등록됐어요! 관리자가 최종 확인하기 전까지는 "검토대기"로 표시돼요.' : '신규 시약이 등록됐어요! 관리자가 최종 확인하기 전까지는 목록에 "검토대기"로 표시돼요.') + genNote)
     setShowRegisterModal(false)
-    setNewReagentForm({ name: '', cas_no: '', company: '', category: '', volume: '', unit: '', cat_no: '', lot_no: '', location_id: '', sealed_count: '1', current_stock: '100', reagent_id: null })
+    setNewReagentForm({ name: '', cas_no: '', company: '', category: '', volume: '', unit: '', cat_no: '', lot_no: '', noLotReason: '', location_id: '', sealed_count: '1', current_stock: '100', reagent_id: null })
     setDupCandidates([])
     fetchResults()
   }

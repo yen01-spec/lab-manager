@@ -6,6 +6,8 @@ import CompanyPicker from '../components/CompanyPicker'
 import SpecialMaterialLogModal from '../components/reagents/SpecialMaterialLogModal'
 import { getHazardCategory } from '../lib/hazardCategory'
 import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
+import { resolveLotNo } from '../lib/lotNo'
+import LotNoInput from '../components/reagents/LotNoInput'
 
 // 국가유해물질정보(KECO) GHS 조회 API가 주는 공식 픽토그램 코드(pctgrmCd) → 표시용 매핑.
 // 예전엔 hazard 텍스트에서 키워드를 추측해서 이모지를 붙였는데, 이 API 응답에 이미
@@ -65,7 +67,7 @@ export default function ReagentDetail() {
   const [showMoveModal, setShowMoveModal] = useState(false)
   const [moveForm, setMoveForm] = useState({ lot_id: '', to_location_id: '', notes: '' })
   const [showAddLotModal, setShowAddLotModal] = useState(false)
-  const [addLotForm, setAddLotForm] = useState({ lot_no: '', cat_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
+  const [addLotForm, setAddLotForm] = useState({ lot_no: '', noLotReason: '', cat_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
   const [locations, setLocations] = useState([])
   const [history, setHistory] = useState([])
   const [showSpecialLogModal, setShowSpecialLogModal] = useState(false)
@@ -406,8 +408,9 @@ export default function ReagentDetail() {
   async function submitAddLot() {
     if (!addLotForm.location_id) { alert('보관 위치를 선택해주세요'); return }
     if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
+    const lot = await resolveLotNo({ lotNo: addLotForm.lot_no, noLotReason: addLotForm.noLotReason })
     const { data: newLot } = await supabase.from('reagent_lots').insert({
-      reagent_id: id, lot_no: addLotForm.lot_no || null, cat_no: addLotForm.cat_no || null,
+      reagent_id: id, lot_no: lot.lot_no, lot_source: lot.lot_source, cat_no: addLotForm.cat_no || null,
       sealed_count: Number(addLotForm.sealed_count) || 0, current_stock: Number(addLotForm.current_stock) || 0,
       location_id: addLotForm.location_id, received_date: addLotForm.received_date || null,
       expiry_date: addLotForm.expiry_date || null, status: 'active',
@@ -417,9 +420,9 @@ export default function ReagentDetail() {
       before_sealed: 0, after_sealed: Number(addLotForm.sealed_count) || 0,
       before_stock: 0, after_stock: Number(addLotForm.current_stock) || 0,
     })
-    alert('새 Lot이 등록됐어요!')
+    alert('새 Lot이 등록됐어요!' + (lot.lot_source.startsWith('generated') ? `\n내부 관리번호: ${lot.lot_no}` : ''))
     setShowAddLotModal(false)
-    setAddLotForm({ lot_no: '', cat_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
+    setAddLotForm({ lot_no: '', noLotReason: '', cat_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
     fetchAll()
   }
 
@@ -926,12 +929,12 @@ export default function ReagentDetail() {
             <h3 style={{ margin: '0 0 4px', color: C.navy }}>📦 재고 등록</h3>
             <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{reagent.name} — 새로 구매한 Lot을 추가해요. 시약명·CAS 등은 다시 입력할 필요 없어요.</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div><label style={labelStyle}>Lot No.</label>
-                  <input value={addLotForm.lot_no} onChange={e => setAddLotForm({ ...addLotForm, lot_no: e.target.value })} style={inputStyle} /></div>
-                <div><label style={labelStyle}>Cat No.</label>
-                  <input value={addLotForm.cat_no} onChange={e => setAddLotForm({ ...addLotForm, cat_no: e.target.value })} style={inputStyle} /></div>
-              </div>
+              <LotNoInput
+                value={{ lotNo: addLotForm.lot_no, noLotReason: addLotForm.noLotReason }}
+                onChange={v => setAddLotForm({ ...addLotForm, lot_no: v.lotNo, noLotReason: v.noLotReason })}
+                compact />
+              <div><label style={labelStyle}>Cat No.</label>
+                <input value={addLotForm.cat_no} onChange={e => setAddLotForm({ ...addLotForm, cat_no: e.target.value })} style={inputStyle} /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <div><label style={labelStyle}>미개봉 병 수</label>
                   <input type="number" min="0" value={addLotForm.sealed_count} onChange={e => setAddLotForm({ ...addLotForm, sealed_count: e.target.value })} style={inputStyle} /></div>

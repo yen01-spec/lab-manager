@@ -4,6 +4,7 @@ import { C, PageBanner, btnPrimary, btnGhost, inputStyle, labelStyle, thStyle, t
 import { fetchAllPages } from '../../lib/fetchAllPages'
 import { smallBtnStyle, diffCellStyle } from '../../lib/inventoryUtils'
 import { computeSortLetter } from '../../lib/sortLetter'
+import { resolveLotNo } from '../../lib/lotNo'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import CompanyPicker from '../CompanyPicker'
 import StagedCompanyField from './StagedCompanyField'
@@ -282,8 +283,9 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
       reagentId = r.id
     }
     const stockNum = Number(newEntryForm.current_stock) || 0
+    const lot = await resolveLotNo({ lotNo: newEntryForm.lot_no })
     const { data: newLot, error: lotErr } = await supabase.from('reagent_lots').insert({
-      reagent_id: reagentId, lot_no: newEntryForm.lot_no || null, cat_no: newEntryForm.cat_no || null,
+      reagent_id: reagentId, lot_no: lot.lot_no, lot_source: lot.lot_source, cat_no: newEntryForm.cat_no || null,
       sealed_count: 1, current_stock: stockNum, location_id: newEntryForm.location_id, status: 'active',
     }).select().single()
     if (lotErr) { alert('Lot 등록 실패: ' + lotErr.message); return }
