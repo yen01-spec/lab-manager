@@ -108,7 +108,7 @@ export default function LoginModal({ open, onClose, onSuccess }) {
         return
       }
       // 비밀번호 없이 로그인 — 관리자 권한이 있어도 이번 세션은 일반 사용자로 시작
-      finish({ student_id: student.student_id, name: student.name, is_admin: false, is_super: false })
+      finish({ student_id: student.student_id, name: student.name, is_admin: false })
     } catch (err) {
       setError(err.message || '처리 중 오류가 발생했습니다')
     } finally {
@@ -125,7 +125,7 @@ export default function LoginModal({ open, onClose, onSuccess }) {
         birth_date: form.birth_date.trim(),
         name: form.name.trim(),
       })
-      finish({ student_id: student.student_id, name: student.name, is_admin: false, is_super: false })
+      finish({ student_id: student.student_id, name: student.name, is_admin: false })
     } catch (err) {
       setError(err.message || '등록 중 오류가 발생했습니다')
       setStep('id_entry')

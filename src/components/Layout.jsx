@@ -28,10 +28,9 @@ export default function Layout() {
   const { isMobile, isTablet, isDesktop } = useBreakpoint()
 
   const isAdmin = !!session?.is_admin
-  const isSuper = !!session?.is_super
   const student = session ? { student_id: session.student_id, name: session.name } : null
 
-  useFCM(isAdmin || isSuper)
+  useFCM(isAdmin)
 
   useEffect(() => {
     revalidateSession().then(setSession)
@@ -89,7 +88,7 @@ export default function Layout() {
                   <span style={{ color: '#DCE4F2', fontSize: 13, fontWeight: 600 }}>{session.name}님</span>
                   {isAdmin ? (
                     <NavLink to="/admin" style={{ textDecoration: 'none' }}>
-                      <span style={{ color: '#B8C9E8', fontSize: 12 }}>· {isSuper ? '슈퍼관리자' : '관리자'}</span>
+                      <span style={{ color: '#B8C9E8', fontSize: 12 }}>· 관리자</span>
                     </NavLink>
                   ) : (
                     <button onClick={() => setUpgradeOpen(true)} style={{
@@ -123,20 +122,20 @@ export default function Layout() {
         {/* 데스크톱 사이드바 */}
         {isDesktop && (
           <SidebarDesktop
-            items={navItems} isAdmin={isAdmin} isSuper={isSuper}
+            items={navItems} isAdmin={isAdmin}
             location={location}
           />
         )}
 
         {/* 태블릿 미니 사이드바 */}
         {isTablet && (
-          <SidebarMini items={navItems} isAdmin={isAdmin} isSuper={isSuper} location={location} />
+          <SidebarMini items={navItems} isAdmin={isAdmin} location={location} />
         )}
 
         {/* 모바일 드로어 */}
         {isMobile && drawerOpen && (
           <Drawer
-            items={navItems} isAdmin={isAdmin} isSuper={isSuper} session={session}
+            items={navItems} isAdmin={isAdmin} session={session}
             onClose={() => setDrawerOpen(false)}
             onLogin={() => setLoginOpen(true)}
             onUpgrade={() => setUpgradeOpen(true)}
@@ -152,7 +151,7 @@ export default function Layout() {
         }}>
           {/* applySession: 자식 페이지가 자체적으로 로그인을 확인한 뒤(예: 등록 버튼 누를 때
               인라인으로 뜨는 로그인란) 헤더/전역 세션에도 곧바로 반영할 수 있게 노출 */}
-          <Outlet context={{ isAdmin, isSuper, student, applySession: setSession }} />
+          <Outlet context={{ isAdmin, student, applySession: setSession }} />
         </main>
       </div>
 
@@ -232,7 +231,7 @@ function NavItem({ to, label, icon, end, location, compact = false }) {
   )
 }
 
-function SidebarDesktop({ items, isAdmin, isSuper, location }) {
+function SidebarDesktop({ items, isAdmin, location }) {
   return (
     <aside style={{
       width: 210, background: C.white, borderRight: `1px solid ${C.border}`,
@@ -247,7 +246,7 @@ function SidebarDesktop({ items, isAdmin, isSuper, location }) {
           <>
             <div style={{ margin: '10px 2px', borderTop: `1px solid ${C.border}` }} />
             <div style={{ fontSize: 11, fontWeight: 600, color: '#A7AEBA', letterSpacing: '0.4px', padding: '0 2px 6px' }}>
-              {isSuper ? '슈퍼관리자' : '관리자'}
+              관리자
             </div>
             <NavItem to="/admin" label="관리자 메뉴" icon="admin_panel_settings" location={location} />
           </>
@@ -261,7 +260,7 @@ function SidebarDesktop({ items, isAdmin, isSuper, location }) {
   )
 }
 
-function SidebarMini({ items, isAdmin, isSuper, location }) {
+function SidebarMini({ items, isAdmin, location }) {
   return (
     <aside style={{
       width: 60, background: C.white, borderRight: `1px solid ${C.border}`,
@@ -280,7 +279,7 @@ function SidebarMini({ items, isAdmin, isSuper, location }) {
   )
 }
 
-function Drawer({ items, isAdmin, isSuper, session, onClose, onLogin, onUpgrade, onLogout, location }) {
+function Drawer({ items, isAdmin, session, onClose, onLogin, onUpgrade, onLogout, location }) {
   return (
     <>
       <div onClick={onClose} style={{
@@ -316,7 +315,7 @@ function Drawer({ items, isAdmin, isSuper, session, onClose, onLogin, onUpgrade,
           {session ? (
             <>
               <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text, marginBottom: 8, textAlign: 'center' }}>
-                {session.name}님 {isAdmin && `· ${isSuper ? '슈퍼관리자' : '관리자'}`}
+                {session.name}님 {isAdmin && '· 관리자'}
               </div>
               {!isAdmin && (
                 <button onClick={onUpgrade} style={{

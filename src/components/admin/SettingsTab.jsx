@@ -3,11 +3,11 @@ import { supabase } from '../../supabase'
 import { C, Card, inputStyle, labelStyle, btnPrimary, btnGhost } from '../../design'
 
 // ══════════════════════════════════════════════
-//  슈퍼관리자 탭 (비밀번호 변경 + FCM 토큰 초기화 + 실험실 규칙 + 안전 브리핑)
+//  설정 — 관리자 비밀번호 / 실험실 규칙 / 안전 브리핑 / 알림(FCM) 토큰
+//  (예전 SuperTab에서 슈퍼관리자 관련만 빼고 관리자 설정으로 통합)
 // ══════════════════════════════════════════════
-export default function SuperTab() {
+export default function SettingsTab() {
   const [adminPw, setAdminPw] = useState({ current: '', new1: '', new2: '' })
-  const [superPw, setSuperPw] = useState({ current: '', new1: '', new2: '' })
   const [tokenCount, setTokenCount] = useState(0)
 
   // 실험실 규칙
@@ -49,21 +49,8 @@ export default function SuperTab() {
     if (data?.value !== adminPw.current) { alert('현재 비밀번호가 틀렸습니다'); return }
     await supabase.from('app_settings').update({ value: adminPw.new1 }).eq('key', 'admin_password')
     await supabase.from('fcm_tokens').delete().eq('role', 'admin')
-    alert('✅ 일반관리자 비밀번호가 변경되었습니다.\n기존 관리자 기기의 알림이 초기화되었어요.')
+    alert('✅ 관리자 비밀번호가 변경되었습니다.\n기존 관리자 기기의 알림이 초기화되었어요.')
     setAdminPw({ current: '', new1: '', new2: '' })
-    fetchTokenCount()
-  }
-
-  async function changeSuperPassword() {
-    if (!superPw.new1.trim()) { alert('새 비밀번호를 입력해주세요'); return }
-    if (superPw.new1 !== superPw.new2) { alert('새 비밀번호가 일치하지 않습니다'); return }
-    if (superPw.new1.length < 6) { alert('비밀번호는 6자 이상이어야 합니다'); return }
-    const { data } = await supabase.from('app_settings').select('value').eq('key', 'super_password').single()
-    if (data?.value !== superPw.current) { alert('현재 비밀번호가 틀렸습니다'); return }
-    await supabase.from('app_settings').update({ value: superPw.new1 }).eq('key', 'super_password')
-    await supabase.from('fcm_tokens').delete().eq('role', 'admin')
-    alert('✅ 슈퍼관리자 비밀번호가 변경되었습니다.\nFCM 토큰도 초기화되었어요.')
-    setSuperPw({ current: '', new1: '', new2: '' })
     fetchTokenCount()
   }
 
@@ -231,8 +218,8 @@ export default function SuperTab() {
           ))}
       </Card>
 
-      {/* 일반관리자 비밀번호 변경 */}
-      <Card title="🔑 일반관리자 비밀번호 변경" sub="관리자 비밀번호 변경 시 FCM 토큰도 초기화됩니다">
+      {/* 관리자 비밀번호 변경 */}
+      <Card title="🔑 관리자 비밀번호 변경" sub="변경 시 관리자 기기의 알림(FCM) 토큰도 초기화됩니다">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '360px' }}>
           <div><label style={labelStyle}>현재 비밀번호</label>
             <input type="password" value={adminPw.current} onChange={e => setAdminPw({ ...adminPw, current: e.target.value })} style={inputStyle} /></div>
@@ -244,21 +231,8 @@ export default function SuperTab() {
         </div>
       </Card>
 
-      {/* 슈퍼관리자 비밀번호 변경 */}
-      <Card title="👑 슈퍼관리자 비밀번호 변경">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '360px' }}>
-          <div><label style={labelStyle}>현재 비밀번호</label>
-            <input type="password" value={superPw.current} onChange={e => setSuperPw({ ...superPw, current: e.target.value })} style={inputStyle} /></div>
-          <div><label style={labelStyle}>새 비밀번호 (6자 이상)</label>
-            <input type="password" value={superPw.new1} onChange={e => setSuperPw({ ...superPw, new1: e.target.value })} style={inputStyle} /></div>
-          <div><label style={labelStyle}>새 비밀번호 확인</label>
-            <input type="password" value={superPw.new2} onChange={e => setSuperPw({ ...superPw, new2: e.target.value })} style={inputStyle} /></div>
-          <button onClick={changeSuperPassword} style={{ ...btnPrimary }}>변경</button>
-        </div>
-      </Card>
-
       {/* FCM 토큰 관리 */}
-      <Card title="🔔 FCM 알림 토큰 관리">
+      <Card title="🔔 알림(FCM) 토큰 관리">
         <div style={{ fontSize: '13px', color: C.muted, marginBottom: '16px' }}>
           현재 등록된 알림 토큰: <strong style={{ color: C.navy }}>{tokenCount}개</strong>
         </div>

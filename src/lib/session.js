@@ -36,7 +36,6 @@ export async function revalidateSession() {
     student_id: student.student_id,
     name: student.name,
     is_admin: student.is_admin,
-    is_super: student.is_super,
   }
   writeSession(fresh)
   return fresh
@@ -45,7 +44,7 @@ export async function revalidateSession() {
 export async function lookupStudent(student_id) {
   const { data } = await supabase
     .from('students')
-    .select('student_id, name, birth_date, is_admin, is_super, password_hash')
+    .select('student_id, name, birth_date, is_admin, password_hash')
     .eq('student_id', student_id)
     .maybeSingle()
   return data || null
@@ -55,23 +54,20 @@ export async function registerStudent({ student_id, name, birth_date }) {
   const { data, error } = await supabase
     .from('students')
     .insert({ student_id, name, birth_date })
-    .select('student_id, name, birth_date, is_admin, is_super')
+    .select('student_id, name, birth_date, is_admin')
     .single()
   if (error) throw error
   return data
 }
 
-// 기존 Layout.jsx의 PIN 비교 로직을 그대로 옮김 (관리자 승격에서 재사용)
+// 관리자 비밀번호(app_settings.admin_password) 확인 — 관리자 승격에서 사용
 export async function checkPinPassword(pw) {
   const { data } = await supabase
     .from('app_settings')
-    .select('key, value')
-    .in('key', ['admin_password', 'super_password'])
-  const s = {}
-  data?.forEach(d => { s[d.key] = d.value })
-  if (pw === s['super_password']) return { ok: true, isSuper: true }
-  if (pw === s['admin_password']) return { ok: true, isSuper: false }
-  return { ok: false, isSuper: false }
+    .select('value')
+    .eq('key', 'admin_password')
+    .maybeSingle()
+  return { ok: !!data && pw === data.value }
 }
 
 export async function hashPassword(pw) {
@@ -85,15 +81,15 @@ export async function verifyPassword(pw, hash) {
 }
 
 export async function upgradeToAdmin({ student_id, pin }) {
-  const { ok, isSuper } = await checkPinPassword(pin)
+  const { ok } = await checkPinPassword(pin)
   if (!ok) throw new Error('비밀번호가 틀렸습니다')
 
   const password_hash = await hashPassword(pin)
   const { data, error } = await supabase
     .from('students')
-    .update({ password_hash, is_admin: true, is_super: isSuper })
+    .update({ password_hash, is_admin: true })
     .eq('student_id', student_id)
-    .select('student_id, name, birth_date, is_admin, is_super')
+    .select('student_id, name, birth_date, is_admin')
     .single()
   if (error) throw error
   return data
@@ -111,6 +107,5 @@ export async function loginAdmin({ student_id, birth_date, name, password }) {
     student_id: student.student_id,
     name: student.name,
     is_admin: student.is_admin,
-    is_super: student.is_super,
   }
 }

@@ -20,7 +20,6 @@ export default function AdminUpgradeModal({ open, onClose, student, onSuccess })
         student_id: updated.student_id,
         name: updated.name,
         is_admin: updated.is_admin,
-        is_super: updated.is_super,
       }
       writeSession(session)
       handleClose()

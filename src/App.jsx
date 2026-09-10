@@ -5,7 +5,6 @@ import Layout from './components/Layout'
 import Home from './pages/Home'
 import ReagentLocations from './pages/ReagentLocations'
 import ReagentList from './pages/ReagentList'
-import Items from './pages/Items'
 import Requests from './pages/Requests'
 import Admin from './pages/Admin'
 import Inventory from './pages/Inventory'
@@ -39,7 +38,6 @@ function App() {
         <Route path="reagents/:id" element={<ReagentDetail />} />
         <Route path="reagents/bulk-edit" element={<BulkEdit />} />
         <Route path="safety-signage" element={<SafetySignage />} />
-        <Route path="items" element={<Items />} />
         <Route path="requests" element={<Requests />} />
         <Route path="purchase-request" element={<PurchaseRequest />} />
         <Route path="purchase-request/list" element={<PurchaseRequestList />} />

@@ -297,7 +297,7 @@ export default function ReagentList() {
         setInlineLoginError('등록된 정보와 달라요. 본인이 맞다면 관리자에게 문의하세요.')
         return
       }
-      const session = { student_id: found.student_id, name: found.name, is_admin: false, is_super: false }
+      const session = { student_id: found.student_id, name: found.name, is_admin: false }
       writeSession(session)
       applySession?.(session)
       setShowInlineLogin(false)
