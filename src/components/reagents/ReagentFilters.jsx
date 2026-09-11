@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { C } from '../../design'
+import { FIRE_CLASSES } from '../../lib/hazardCategory'
 
 const COL_ITEMS = [
   ['casNo', 'CAS'], ['company', '제조사'], ['volume', '규격'], ['stock', '재고'],
@@ -8,8 +9,6 @@ const COL_ITEMS = [
 const COL_ITEMS_EXTRA = [
   ['lot', 'Lot No.'], ['expiry', '유효기간'], ['category', '성상'], ['fireClass', '위험물유별'], ['special', '특별관리물질'], ['casCheck', 'CAS확인'], ['ghs', 'GHS'], ['status', '상태'],
 ]
-// 위험물안전관리법 유별 — 학교 "성상별 분류 방법" 문서 기준 고정 목록(제1류~6류)
-const FIRE_CLASSES = ['제1류', '제2류', '제3류', '제4류', '제5류', '제6류']
 
 // 위치 필터(방 탭 + 세부위치 알약) + 표시 열 선택 버튼(누르면 체크 목록이 드롭다운으로 열림).
 // memo — 체크박스 선택 등 필터와 무관한 상위 리렌더에는 반응하지 않는다(모든 prop이 안정).

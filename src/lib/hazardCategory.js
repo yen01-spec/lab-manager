@@ -42,6 +42,10 @@ export const GHS_NAME_TO_CATEGORY = {
   '특정 표적장기 독성-반복 노출': { category: '기타 인체유해성', fireSafetyClass: null },
 }
 
+// 위험물안전관리법 유별 — 학교 "성상별 분류 방법" 문서 기준 고정 목록(제1류~6류).
+// ReagentFilters(위험물유별 필터 pill)와 ReagentList(preset=fire 딥링크)가 공유.
+export const FIRE_CLASSES = ['제1류', '제2류', '제3류', '제4류', '제5류', '제6류']
+
 // 대표 성상구분을 정할 때의 우선순위 — 문서: "물리적 위험성 - 인체 유해성 순으로 구분"
 export const CATEGORY_PRIORITY = [
   '자연발화성 및 금수성', '폭발성', '인화성', '산화성', '부식성',

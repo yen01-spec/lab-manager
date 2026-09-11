@@ -13,9 +13,15 @@ import ReagentTable from '../components/reagents/ReagentTable'
 import MobileReagentCard from '../components/reagents/MobileReagentCard'
 import ReagentToolbar from '../components/reagents/ReagentToolbar'
 import ReagentFilters from '../components/reagents/ReagentFilters'
+import { FIRE_CLASSES } from '../lib/hazardCategory'
 import BulkLookupModal from '../components/reagents/BulkLookupModal'
 import RegisterReagentModal from '../components/reagents/RegisterReagentModal'
 import PickedListModal from '../components/reagents/PickedListModal'
+
+// 자료 탭 → 시약목록 딥링크용 preset (?preset=special|hazard|fire). 내부 judge 기준은 새로 만들지
+// 않고 ReagentFilters가 실제로 쓰는 필터(specialOnly/hazardClassFilter/fireClassFilter)를 그대로
+// 초기값으로 채운다 — preset은 "초기 필터값"일 뿐, 이후 사용자가 자유롭게 더하거나 해제할 수 있다.
+const VALID_PRESETS = ['special', 'hazard', 'fire']
 
 export default function ReagentList() {
   const { isAdmin, student, applySession } = useOutletContext?.() || {}
@@ -24,6 +30,7 @@ export default function ReagentList() {
   const { isMobile } = useBreakpoint()
 
   const initialSearch = searchParams.get('q') || ''
+  const initialPreset = VALID_PRESETS.includes(searchParams.get('preset')) ? searchParams.get('preset') : null
   const {
     locations, setSearch, roomFilter, setRoomFilter, detailFilter, setDetailFilter,
     results, totalCount, fetchResults,
@@ -36,12 +43,16 @@ export default function ReagentList() {
   })
   // 유해분류(인화성/급성독성 등)로 보기 — 예: 인화성 시약을 한 시약장에 모으려는 계획처럼,
   // 특정 유해분류에 해당하는 시약만 걸러보기 위한 필터. 빈 Set이면 필터 없음.
+  // preset=hazard 는 결과가 로드된 뒤 "존재하는 모든 유해분류"를 채워 넣어 적용한다(아래 useEffect).
   const [hazardClassFilter, setHazardClassFilter] = useState(new Set())
+  const [hazardPresetPending, setHazardPresetPending] = useState(initialPreset === 'hazard')
   // 위험물안전관리법 유별(제1류~6류)로 보기 — 학교 "성상별 분류 방법" 문서 기준으로
-  // 유별별 시약장을 실제로 분리할 계획이라, 류 단위로 바로 걸러볼 수 있게 함
-  const [fireClassFilter, setFireClassFilter] = useState(new Set())
+  // 유별별 시약장을 실제로 분리할 계획이라, 류 단위로 바로 걸러볼 수 있게 함.
+  // preset=fire 는 6개 유별을 전부 켠 상태로 시작(= "위험물 전체") — FIRE_CLASSES는 고정 목록이라
+  // fetch 결과를 기다릴 필요 없이 바로 초기화 가능.
+  const [fireClassFilter, setFireClassFilter] = useState(() => initialPreset === 'fire' ? new Set(FIRE_CLASSES) : new Set())
   // 특별관리물질(산업안전보건기준에관한 규칙 별표12, 44종)만 보기 — CAS 기준 매칭
-  const [specialOnly, setSpecialOnly] = useState(false)
+  const [specialOnly, setSpecialOnly] = useState(initialPreset === 'special')
   // CAS-이름 정합성 검증(scripts/verify-cas-consistency.mjs)에서 "불일치(의심)"로 나온
   // 시약만 보기 — PubChem에 그 CAS 자체가 없는(not_found) 경우는 흔해서 제외, 이름이 그
   // 물질과 다른(mismatch) 경우만 실제로 확인이 필요한 항목이라 필터 대상으로 삼음.
@@ -402,6 +413,16 @@ export default function ReagentList() {
     () => [...new Set(results.flatMap(r => r._hazardClassNames || []))].sort(),
     [results],
   )
+  // preset=hazard: 결과가 로드되고 나면(=allHazardClassNames를 알 수 있게 되면) "존재하는 모든
+  // 유해분류"를 한 번만 채워 넣는다 — hazardClassFilter가 모든 이름을 담고 있으면 filter 조건
+  // (.some(name => hazardClassFilter.has(name)))이 "유해분류가 하나라도 있으면 통과"와 같아진다.
+  // 이후 사용자가 개별 유해분류를 해제하면 그 다음부턴 정상적인 다중선택 필터로 동작(1회성 초기화).
+  const applyHazardPreset = useCallback(() => {
+    setHazardClassFilter(new Set(allHazardClassNames))
+    setHazardPresetPending(false)
+  }, [allHazardClassNames])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { if (hazardPresetPending && allHazardClassNames.length > 0) applyHazardPreset() }, [hazardPresetPending, allHazardClassNames, applyHazardPreset])
   const displayResults = useMemo(() => results.filter(r => {
     if (hazardClassFilter.size > 0 && !(r._hazardClassNames || []).some(name => hazardClassFilter.has(name))) return false
     if (fireClassFilter.size > 0 && !fireClassFilter.has(r._fireSafetyClass)) return false

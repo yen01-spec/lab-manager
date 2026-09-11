@@ -1,15 +1,9 @@
 import { useEffect, useState } from 'react'
-import * as XLSX from 'xlsx'
 import { C, inputStyle, btnExcel } from '../../design'
-import { supabase } from '../../supabase'
-
-const CAS_RE = /^\d{2,7}-\d{2}-\d$/
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
-
-function locLabel(loc) {
-  if (!loc) return ''
-  return `${loc.room}${loc.detail ? ' ' + loc.detail : ''}`
-}
+import {
+  fetchActiveLotsSince, buildSchoolRegistrationRows,
+  validateSchoolRegistrationRow, writeSchoolRegistrationExcel,
+} from '../../lib/schoolRegistrationExport'
 
 export default function SchoolRegistrationView() {
   const [days, setDays] = useState(30)
@@ -19,39 +13,8 @@ export default function SchoolRegistrationView() {
 
   async function loadCandidates() {
     setLoading(true)
-    const sinceDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0]
-    const { data: lots } = await supabase.from('reagent_lots')
-      .select('id, lot_no, sealed_count, received_date, expiry_date, location_id, reagents(id, name, cas_no)')
-      .gte('received_date', sinceDate)
-      .eq('status', 'active')
-      .order('received_date', { ascending: false })
-      .limit(500)
-    const casList = [...new Set((lots || []).map(l => l.reagents?.cas_no).filter(Boolean))]
-    const locIds = [...new Set((lots || []).map(l => l.location_id).filter(Boolean))]
-    const [{ data: masters }, { data: locations }] = await Promise.all([
-      casList.length > 0 ? supabase.from('school_chemical_master').select('*').in('cas_no', casList) : Promise.resolve({ data: [] }),
-      locIds.length > 0 ? supabase.from('locations').select('id, room, detail').in('id', locIds) : Promise.resolve({ data: [] }),
-    ])
-    const masterByCas = new Map((masters || []).map(m => [m.cas_no, m]))
-    const locById = new Map((locations || []).map(l => [l.id, l]))
-
-    const built = (lots || []).filter(l => l.reagents).map(l => {
-      const master = l.reagents.cas_no ? masterByCas.get(l.reagents.cas_no) : null
-      return {
-        id: l.id,
-        included: !!master,
-        matched: !!master,
-        cas_no: l.reagents.cas_no || '',
-        name: master?.name || l.reagents.name,
-        unit: master?.unit || '',
-        volume: '',
-        quantity: String(l.sealed_count ?? ''),
-        location: locLabel(locById.get(l.location_id)),
-        received_date: l.received_date || '',
-        expiry_date: l.expiry_date || '',
-        category: master ? '화학' : '',
-      }
-    })
+    const lots = await fetchActiveLotsSince(days)
+    const built = await buildSchoolRegistrationRows(lots)
     setRows(built)
     setLoading(false)
   }
@@ -65,46 +28,16 @@ export default function SchoolRegistrationView() {
   const matchedCount = rows.filter(r => r.matched).length
   const unmatchedCount = rows.length - matchedCount
 
-  function validate(r) {
-    const errors = []
-    if (!CAS_RE.test(r.cas_no)) errors.push('CAS 형식 오류')
-    if (!r.name.trim()) errors.push('화학물질명 필요')
-    if (!r.unit.trim()) errors.push('단위 필요')
-    if (!r.volume.trim() || isNaN(Number(r.volume))) errors.push('용량 숫자 필요')
-    if (!r.quantity.trim() || isNaN(Number(r.quantity))) errors.push('입고수량 숫자 필요')
-    if (r.received_date && !DATE_RE.test(r.received_date)) errors.push('입고일 형식 오류(YYYY-MM-DD)')
-    if (r.expiry_date && !DATE_RE.test(r.expiry_date)) errors.push('유효기간 형식 오류(YYYY-MM-DD)')
-    if (r.category !== '화학' && r.category !== '가스') errors.push('분류는 화학/가스 중 하나')
-    return errors
-  }
-
   function generateExcel() {
     const included = rows.filter(r => r.included)
     if (included.length === 0) { alert('포함할 항목을 선택해주세요.'); return }
-    const invalid = included.map(r => ({ r, errors: validate(r) })).filter(x => x.errors.length > 0)
+    const invalid = included.map(r => ({ r, errors: validateSchoolRegistrationRow(r) })).filter(x => x.errors.length > 0)
     if (invalid.length > 0) {
       alert(`${invalid.length}건에 입력 오류가 있어요:\n` + invalid.slice(0, 5).map(x => `- ${x.r.name || x.r.cas_no}: ${x.errors.join(', ')}`).join('\n'))
       return
     }
     setGenerating(true)
-    // 원본 RegChemicalSample.xlsx "화학물질등록" 시트와 동일한 구조(안내문 7줄 + 헤더 + 데이터)로 생성
-    const aoa = [
-      ['화학물질 등록'],
-      ['※주의'],
-      ['1. CAS No. 123456-12-1의 형식으로 입력하세요 예)10034-93-2'],
-      ["2. 입고일/유효기간은 'YYYY-MM-DD'형식으로 입력하세요(선택입력) 예)2015-04-18"],
-      ['3. 보관위치는 화학물질의 보관위치를 입력하세요(선택입력) 예)배기형시약장1'],
-      ['4. 화학물질의 단위를 꼭 확인하세요. 위험물 지정수량 초과시 과태료 처분을 받을 수 있습니다. (위험물 및 지정수량 시트 참고)'],
-      ['5.분류: 화학 또는 가스 필수 입력'],
-      [],
-      ['CAS No.', '화학물질명', '단위', '용량', '연구실입고수량', '보관위치', '입고일', '유효기간', '분류'],
-      ...included.map(r => [r.cas_no, r.name, r.unit, Number(r.volume), Number(r.quantity), r.location, r.received_date, r.expiry_date, r.category]),
-    ]
-    const ws = XLSX.utils.aoa_to_sheet(aoa)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, '화학물질등록')
-    const dateStr = new Date().toLocaleDateString('ko-KR').replace(/\. /g, '-').replace('.', '')
-    XLSX.writeFile(wb, `화학물질등록_${dateStr}.xlsx`)
+    writeSchoolRegistrationExcel(included)
     setGenerating(false)
   }
 

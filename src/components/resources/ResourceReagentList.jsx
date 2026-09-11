@@ -22,7 +22,7 @@ const LIGHT_BASE = 'id, name, name_ko, cas_no'
 export default function ResourceReagentList({
   filterFn, filterPresets, requireActiveLots = false, lightColumns = '',
   fields, lotFields, selectable = false, onExport, exportLabel = '목록 내보내기',
-  emptyText = '조건에 맞는 시약이 없습니다.', dedupeByCas = false, title, maxDetail = 400,
+  emptyText = '조건에 맞는 시약이 없습니다.', dedupeByCas = false, title, note, maxDetail = 400,
 }) {
   const navigate = useNavigate()
   const [light, setLight] = useState(null)
@@ -114,10 +114,13 @@ export default function ResourceReagentList({
   return (
     <div>
       {title && (
-        <div style={{ marginBottom: 12, fontSize: 13, color: C.text }}>
+        <div style={{ marginBottom: note ? 4 : 12, fontSize: 13, color: C.text }}>
           {title} <b style={{ color: C.navy, fontSize: 16 }}>{rows.length}종</b>
         </div>
       )}
+      {/* Phase P2 §20: 이 "N종"은 CAS 기준 중복제거 물질 종류 수 — 시약목록의 "검색결과 N개"는
+          제조사/제품별 행 수라 기준이 달라 숫자가 다를 수 있다. 필요할 때만 짧게 안내한다. */}
+      {note && <div style={{ marginBottom: 12, fontSize: 11.5, color: C.muted }}>{note}</div>}
 
       {filterPresets && (
         <PillNav items={filterPresets.map(p => ({ key: p.key, label: p.label }))}

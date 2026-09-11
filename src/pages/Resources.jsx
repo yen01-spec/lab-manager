@@ -5,11 +5,9 @@ import { supabase } from '../supabase'
 import PillNav from '../components/PillNav'
 import ResourceGuidePage from '../components/resources/ResourceGuidePage'
 import ResourceReagentList from '../components/resources/ResourceReagentList'
-import { lotLabel } from '../lib/lotNo'
 import { RESOURCE_CATEGORIES, RESOURCE_GUIDES } from '../lib/resourceGuides'
 import { SCHOOL_SAFETY_SYSTEM_FALLBACK, KOSHA_LABEL_FALLBACK } from '../lib/appSettings'
 import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
-import { getHazardCategory } from '../lib/hazardCategory'
 
 // 자료 첫 진입을 가볍게 — 무거운 도구는 해당 섹션을 열 때만 로드
 const SchoolRegistrationView = lazy(() => import('../components/signage/SchoolRegistrationView'))
@@ -19,66 +17,17 @@ const specialFilter = (r) => {
   const info = getSpecialManagementInfo(r.name, r.cas_no)
   return info?.status === 'confirmed' ? true : info?.status === 'suspected' ? 'check' : false
 }
-// 사전유해인자 작성 준비 — 라이트 데이터(hazard, hazard_classifications) 기준
-const HAZARD_LIGHT_COLS = 'hazard, hazard_classifications'
-const isHazardous = (r) => !!(r.hazard && String(r.hazard).trim()) || (r.hazard_classifications || []).length > 0
-const isFireLaw = (r) => !!getHazardCategory(r.hazard_classifications).fireSafetyClass
-const PRIOR_PRESETS = [
-  { key: 'all', label: '전체', fn: () => true },
-  { key: 'hazard', label: '유해·위험 시약', fn: isHazardous },
-  { key: 'special', label: '특별관리물질', fn: specialFilter },
-  { key: 'firelaw', label: '위험물', fn: isFireLaw },
-]
 
-// 작성 참고용 Excel (학교 공식 업로드 양식 아님)
-async function exportReferenceExcel(reagents, filenameBase) {
-  const XLSX = await import('xlsx')
-  const header = ['국문명', '영문명', 'CAS No.', '제조사', '규격', '현재 잔량(%)', '미개봉(병)', '입고일', '보관 위치', 'Lot / 내부관리번호']
-  const rows = []
-  for (const r of reagents) {
-    const lots = r._lots || []
-    if (lots.length === 0) rows.push([r.name_ko || '', r.name || '', r.cas_no || '', r.company || '', r.volume ? `${r.volume}${r.unit || ''}` : '', '', '', '', '', ''])
-    for (const l of lots) rows.push([
-      r.name_ko || '', r.name || '', r.cas_no || '', r.company || '', r.volume ? `${r.volume}${r.unit || ''}` : '',
-      l.current_stock ?? '', l.sealed_count ?? '', l.received_date || '', l._locText || '', lotLabel(l),
-    ])
-  }
-  const ws = XLSX.utils.aoa_to_sheet([['※ 작성 참고용 — 학교 공식 업로드 양식이 아닙니다'], [], header, ...rows])
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, '작성참고')
-  XLSX.writeFile(wb, `${filenameBase}_작성참고_${new Date().toISOString().slice(0, 10)}.xlsx`)
-}
-
+// Phase P2: 검색/필터/선택/일반 Excel 내보내기는 시약목록(ReagentList)이 단일 중심이다.
+// 자료 탭엔 그 기능을 반복하는 임베드를 두지 않고, "시약목록에서 보기(preset 딥링크)" 액션
+// 버튼으로 연결한다(resourceGuides.js의 reagent-search 액션 + preset). specialTargets(현재
+// 보유 특별관리물질 "N종" 요약, 선택/Excel 없음)만 남긴다 — 요약 정보는 유지 가능.
 const EMBEDS = {
   schoolRegistration: <SchoolRegistrationView />,
   specialTargets: (
     <ResourceReagentList filterFn={specialFilter} dedupeByCas title="현재 연구실 특별관리물질"
+      note="CAS 기준으로 중복 제거한 물질 종류 수입니다. 시약목록에서는 제조사·제품별로 여러 행으로 표시될 수 있습니다."
       fields={['casNo', 'lotCount', 'volume']} lotFields={['currentStock', 'location']} />
-  ),
-  specialRegister: (
-    <ResourceReagentList filterFn={specialFilter} dedupeByCas selectable title="현재 연구실 특별관리물질"
-      fields={['nameKo', 'casNo', 'company', 'volume']}
-      lotFields={['lot', 'currentStock', 'sealedCount', 'receivedDate', 'location']}
-      onExport={list => exportReferenceExcel(list, '특별관리물질_등록정보')} exportLabel="등록 정보 목록 내보내기" />
-  ),
-  specialLogInfo: (
-    <ResourceReagentList filterFn={specialFilter} dedupeByCas selectable title="현재 연구실 특별관리물질"
-      fields={['nameKo', 'casNo']}
-      lotFields={['lot', 'currentStock', 'sealedCount', 'receivedDate', 'location']}
-      onExport={list => exportReferenceExcel(list, '특별관리물질_취급일지정보')} exportLabel="취급일지 작성용 정보 내보내기" />
-  ),
-  wasteReagent: (
-    <ResourceReagentList requireActiveLots selectable
-      fields={['nameKo', 'casNo', 'company', 'volume']}
-      lotFields={['lot', 'currentStock', 'sealedCount', 'receivedDate', 'location']}
-      onExport={list => exportReferenceExcel(list, '폐시약')} exportLabel="폐시약 작성 참고용 Excel"
-      emptyText="검색 결과가 없거나 보유 중인 Lot이 없습니다." />
-  ),
-  priorPrepare: (
-    <ResourceReagentList filterPresets={PRIOR_PRESETS} lightColumns={HAZARD_LIGHT_COLS} selectable
-      fields={['nameKo', 'casNo', 'volume', 'hazard']}
-      lotFields={['lot', 'currentStock', 'location']}
-      onExport={list => exportReferenceExcel(list, '사전유해인자')} exportLabel="작성 참고용 Excel 내보내기" />
   ),
 }
 
@@ -116,7 +65,13 @@ export default function Resources() {
       return
     }
     if (a.type === 'reagent-search') {
-      navigate(a.q ? `/reagents/list?q=${encodeURIComponent(a.q)}` : '/reagents/list')
+      // preset: 시약목록의 실제 필터(specialOnly/hazardClassFilter/fireClassFilter)를 그대로
+      // 초기값으로 채우는 딥링크 — 여기서 새 판정 기준을 만들지 않는다(ReagentList.jsx 참고).
+      const qs = new URLSearchParams()
+      if (a.q) qs.set('q', a.q)
+      if (a.preset) qs.set('preset', a.preset)
+      const query = qs.toString()
+      navigate(query ? `/reagents/list?${query}` : '/reagents/list')
       return
     }
     if (a.type === 'route' && a.to) {
