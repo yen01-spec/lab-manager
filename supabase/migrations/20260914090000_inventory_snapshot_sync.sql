@@ -100,6 +100,7 @@ declare
   v_source_filename text;
   v_rows jsonb;
   v_row_count int;
+  v_baseline_raw text[];
   v_baseline_ids uuid[];
   v_current_active_ids uuid[];
   v_updated_lot_count int := 0;
@@ -114,6 +115,7 @@ declare
   v_prefix text;
   v_seq int;
   v_new_id uuid;
+  v_preview_warning_count int;
   rec record;
 begin
   -- 1) 관리자 확인 — localStorage isAdmin은 신뢰하지 않는다. Supabase Auth 세션 +
@@ -144,6 +146,9 @@ begin
     raise exception 'rows가 비어 있습니다.';
   end if;
   v_row_count := jsonb_array_length(v_rows);
+  -- preview_warning_count는 순수 참고/감사용이다 — 보안이나 분기 로직에 절대 쓰지 않는다
+  -- (프론트가 뭐라고 주장하든 실제 DB 반영 여부는 아래 검증들이 전부 독립적으로 결정한다).
+  v_preview_warning_count := coalesce((payload->>'preview_warning_count')::int, 0);
 
   -- 4) 동일 snapshot_id 재실행 방지 — refresh/재시도로 같은 결과를 두 번 반영하지 않음.
   if exists (select 1 from inventory_snapshot_syncs where snapshot_id = v_snapshot_id) then
@@ -210,8 +215,17 @@ begin
   if exists (select 1 from snapshot_rows where cas_no is not null and cas_no !~ '^\d{2,7}-\d{2}-\d$') then
     raise exception 'CAS 형식이 올바르지 않은 행이 있습니다.';
   end if;
+
+  -- 6-a) reagent_id / new_reagent_key / match_confidence 조합 검증(Phase 4b-3a.1 §6/§7).
+  --      "시약이 어느 쪽인지"가 애매한 payload는 전부 차단 — 서버가 임의로 해석하지 않는다.
+  if exists (select 1 from snapshot_rows where reagent_id is null and match_confidence <> 'new') then
+    raise exception '시약이 특정되지 않았는데 match_confidence가 new가 아닌 행이 있습니다.';
+  end if;
   if exists (select 1 from snapshot_rows where reagent_id is null and match_confidence = 'new' and coalesce(new_reagent_key, '') = '') then
     raise exception '신규 시약 행에 new_reagent_key가 없습니다.';
+  end if;
+  if exists (select 1 from snapshot_rows where reagent_id is not null and new_reagent_key is not null) then
+    raise exception '기존 시약(reagent_id)과 신규 시약 그룹(new_reagent_key)이 동시에 지정된 행이 있습니다.';
   end if;
   if exists (select 1 from snapshot_rows where reagent_id is not null and not exists (select 1 from reagents rg where rg.id = reagent_id)) then
     raise exception '존재하지 않는 reagent_id를 가리키는 행이 있습니다.';
@@ -240,10 +254,72 @@ begin
     raise exception '기존 재고(Lot)를 가리키는 행이 match_confidence=new로 표시되어 있습니다.';
   end if;
 
-  -- 7) baseline active Lot 집합 검증(§7/§8) — 미리보기 이후 다른 사용자가 재고를
-  --    바꿨다면(추가/상태변경 등) 오래된 미리보기로 전체를 덮어쓰지 않는다.
-  select coalesce(array_agg(x::uuid), array[]::uuid[]) into v_baseline_ids
+  -- 6-b) 기존 매칭 Lot의 "현재 실제 상태"가 재활성화 가능한 상태인지 확인(Phase 4b-3a.1 §2/§3).
+  --      not_in_snapshot → active 재활성화만 허용한다. used_up/disposed/missing은 정상
+  --      업무 절차(사용완료 표시 취소, 폐기취소 등)를 거쳐야 하는 확정적 상태라, 이 전체
+  --      동기화가 자동으로 되돌리면 안 된다 — 발견 즉시 전체 중단(부분 반영 없음).
+  if exists (
+    select 1 from snapshot_rows r join reagent_lots l on l.id = r.reagent_lot_id
+    where r.reagent_lot_id is not null and l.status not in ('active', 'not_in_snapshot')
+  ) then
+    select l.status into rec
+      from snapshot_rows r join reagent_lots l on l.id = r.reagent_lot_id
+      where r.reagent_lot_id is not null and l.status not in ('active', 'not_in_snapshot')
+      limit 1;
+    raise exception '현재 재고 동기화로 복구할 수 없는 재고 상태입니다: %. 정상 업무 절차로 상태를 먼저 변경한 뒤 새 미리보기를 만들어주세요.', rec.status;
+  end if;
+
+  -- 6-c) 같은 reagent_id에 걸린 여러 행끼리 master 관련 요청이 모순되지 않는지 확인
+  --      (Phase 4b-3a.1 §5) — 한 시약에 병이 여러 개면 정상이지만, company_action/company
+  --      값/expected_reagent_updated_at까지 행마다 달라지면 어느 쪽을 반영할지 알 수 없다.
+  if exists (
+    select reagent_id
+    from snapshot_rows
+    where reagent_id is not null
+    group by reagent_id
+    having count(distinct coalesce(company_action, 'keep')) > 1
+        or count(distinct coalesce(expected_reagent_updated_at::text, '')) > 1
+  ) then
+    raise exception '같은 시약(reagent_id)을 가리키는 행들의 company_action 또는 expected_reagent_updated_at이 서로 다릅니다.';
+  end if;
+  if exists (
+    select reagent_id
+    from snapshot_rows
+    where reagent_id is not null and company_action = 'fill_if_empty'
+    group by reagent_id
+    having count(distinct nullif(company, '')) > 1
+  ) then
+    raise exception '같은 시약(reagent_id)에 대해 서로 다른 제조사(company) 값으로 보완 요청이 들어왔습니다.';
+  end if;
+
+  -- 6-d) new_reagent_key 그룹 내 master 값 일관성(Phase 4b-3a.1 §6) — 같은 그룹의 여러
+  --      병이 서로 다른 시약을 가리키면(예: 같은 key인데 제조사가 다름) 대표 행을 임의로
+  --      골라 마스터를 만들지 않고 즉시 차단한다.
+  if exists (
+    select new_reagent_key
+    from snapshot_rows
+    where reagent_id is null and match_confidence = 'new' and new_reagent_key is not null
+    group by new_reagent_key
+    having count(distinct lower(trim(coalesce(name, '') || '|' || coalesce(name_ko, '') || '|' || coalesce(cas_no, '') || '|'
+                                       || coalesce(company, '') || '|' || coalesce(purity, '') || '|'
+                                       || coalesce(volume::text, '') || '|' || coalesce(unit, '')))) > 1
+  ) then
+    raise exception '같은 신규 시약 그룹(new_reagent_key)에 서로 다른 시약 정보가 섞여 있습니다.';
+  end if;
+
+  -- 7) baseline active Lot 집합 검증(§7/§8, Phase 4b-3a.1 §10) — 미리보기 이후 다른
+  --    사용자가 재고를 바꿨다면(추가/상태변경 등) 오래된 미리보기로 전체를 덮어쓰지 않는다.
+  --    NULL/중복이 섞여 들어오면 set 비교 자체가 무의미해지므로 먼저 걸러낸다.
+  select array_agg(x) into v_baseline_raw
     from jsonb_array_elements_text(coalesce(payload->'baseline_active_lot_ids', '[]'::jsonb)) x;
+  v_baseline_raw := coalesce(v_baseline_raw, array[]::text[]);
+  if exists (select 1 from unnest(v_baseline_raw) x where x is null or x !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') then
+    raise exception 'baseline_active_lot_ids에 올바르지 않은 값이 있습니다.';
+  end if;
+  if (select count(*) from unnest(v_baseline_raw)) <> (select count(distinct x) from unnest(v_baseline_raw) x) then
+    raise exception 'baseline_active_lot_ids에 중복된 값이 있습니다.';
+  end if;
+  select coalesce(array_agg(x::uuid), array[]::uuid[]) into v_baseline_ids from unnest(v_baseline_raw) x;
   select coalesce(array_agg(id), array[]::uuid[]) into v_current_active_ids
     from reagent_lots where status = 'active';
   if (select array_agg(v order by v) from unnest(v_baseline_ids) v)
@@ -254,6 +330,8 @@ begin
 
   -- 8) optimistic lock 사전 확인(§9) — 실제 UPDATE의 WHERE절에도 동일 조건을 넣어
   --    이 체크와 실행 사이의 경합까지 막는다(아래 단계들의 row_count 검증 참고).
+  --    같은 reagent_id 그룹 내 일관성은 6-c에서 이미 확인했으므로 master UPDATE는
+  --    reagent당 정확히 1회만 수행된다(반복 검증으로 인한 self-invalidation 없음).
   if exists (
     select 1 from snapshot_rows r join reagents rg on rg.id = r.reagent_id
     where r.reagent_id is not null and r.expected_reagent_updated_at is not null
@@ -269,7 +347,8 @@ begin
     raise exception '미리보기 이후 재고 정보가 변경되었습니다. 미리보기를 새로 생성해주세요.' using errcode = 'P0002';
   end if;
 
-  -- 9) 신규 시약 마스터 — new_reagent_key 그룹당 정확히 1번만 INSERT(§13/§28).
+  -- 9) 신규 시약 마스터 — new_reagent_key 그룹당 정확히 1번만 INSERT(§13/§28, 6-d에서
+  --    그룹 내 값 일관성을 이미 확인했으므로 대표 행 선택이 임의성을 갖지 않는다).
   --    한 Excel에 같은 신규 시약이 여러 병(행)으로 있어도 마스터는 하나만 생긴다.
   create temporary table snapshot_new_reagents (
     new_reagent_key text primary key,
@@ -308,23 +387,49 @@ begin
     raise exception '시약을 특정할 수 없는 행이 있습니다(reagent_id/new_reagent_key 확인 필요).';
   end if;
 
-  -- 10) 기존 reagent의 company "비어있을 때만 채우기"(§1-9/§11) — 값이 있는 경우
-  --     자동 overwrite 금지. name/name_ko/cas_no/purity/volume/unit/hazard 등 다른
-  --     master 필드는 이 RPC가 절대 건드리지 않는다.
-  update reagents rg
-  set company = sub.company, company_source = 'snapshot_sync'
-  from (
+  -- 10) 기존 reagent의 company "비어있을 때만 채우기"(§1-9/§11, Phase 4b-3a.1 §4) —
+  --     fail-closed: preview가 승인한 전제(값 있음 + DB가 비어있음)가 실행 시점에 더는
+  --     성립하지 않으면 조용히 건너뛰지 않고 즉시 전체 중단한다. company_action이
+  --     'fill_if_empty'인데 DB에 이미 값이 있거나 payload company가 비어있으면 예외.
+  if exists (
+    select 1 from snapshot_rows r join reagents rg on rg.id = r.reagent_id
+    where r.company_action = 'fill_if_empty' and nullif(r.company, '') is null
+  ) then
+    raise exception 'company_action=fill_if_empty인데 채울 제조사 값이 없는 행이 있습니다.';
+  end if;
+  if exists (
+    select 1 from snapshot_rows r join reagents rg on rg.id = r.reagent_id
+    where r.company_action = 'fill_if_empty' and rg.company is not null and rg.company <> ''
+  ) then
+    raise exception '미리보기 이후 시약의 제조사 정보가 이미 채워졌습니다(다른 곳에서 먼저 입력됨). 미리보기를 새로 생성해주세요.' using errcode = 'P0002';
+  end if;
+
+  -- WHERE절에도 "여전히 비어있을 때만"을 다시 넣어 위 사전확인과 이 UPDATE 사이의 경합까지
+  -- 막는다(다른 화면에서 그 사이 company를 직접 채웠을 가능성) — affected 건수가 기대와
+  -- 다르면 그 경합이 실제로 있었다는 뜻이므로 fail-closed로 전체 중단한다.
+  with target as (
     select distinct on (reagent_id) reagent_id, nullif(company, '') as company
     from snapshot_rows
-    where company_action = 'fill_if_empty' and reagent_id is not null and nullif(company, '') is not null
+    where company_action = 'fill_if_empty' and reagent_id is not null
     order by reagent_id, row_no
-  ) sub
-  where rg.id = sub.reagent_id
+  )
+  update reagents rg
+  set company = t.company, company_source = 'snapshot_sync'
+  from target t
+  where rg.id = t.reagent_id
     and (rg.company is null or rg.company = '');
 
-  -- 11) 기존 매칭 Lot UPDATE(§16) — DELETE+INSERT 금지, id 보존. status='active'로
-  --     통일 지정하므로 not_in_snapshot이었다가 다시 등장한 Lot의 재활성화(§18)도
-  --     이 한 문장으로 함께 처리된다. lot_no는 identity 성격이라 여기서 변경하지 않는다.
+  get diagnostics v_actual_match_count = row_count;
+  select count(distinct reagent_id) into v_expected_match_count
+    from snapshot_rows where company_action = 'fill_if_empty' and reagent_id is not null;
+  if v_actual_match_count <> v_expected_match_count then
+    raise exception '미리보기 이후 시약의 제조사 정보가 동시에 채워졌습니다. 미리보기를 새로 생성해주세요.' using errcode = 'P0002';
+  end if;
+
+  -- 11) 기존 매칭 Lot UPDATE(§16, Phase 4b-3a.1 §2) — DELETE+INSERT 금지, id 보존.
+  --     6-b에서 이미 "현재 상태가 active 또는 not_in_snapshot"임을 확인했으므로 여기서
+  --     status='active'로 통일 지정하는 것이 안전하다 — used_up/disposed/missing을 되돌릴
+  --     일은 절대 없다. lot_no는 identity 성격이라 여기서 변경하지 않는다.
   create temporary table snapshot_matched_lots on commit drop as
   select r.row_no, r.reagent_lot_id, l.status as prev_status
   from snapshot_rows r join reagent_lots l on l.id = r.reagent_lot_id
@@ -351,6 +456,9 @@ begin
     raise exception '미리보기 이후 재고 정보가 동시에 변경되었습니다. 미리보기를 새로 생성해주세요.' using errcode = 'P0002';
   end if;
 
+  -- reactivated_lot_count는 오직 not_in_snapshot → active 건만, updated_lot_count는
+  -- active → active 건만(Phase 4b-3a.1 §3) — 서로 절대 섞이지 않는다. used_up/disposed/
+  -- missing은 6-b에서 이미 걸러졌으므로 prev_status가 그 값일 수 없다.
   select count(*) filter (where prev_status = 'active'), count(*) filter (where prev_status = 'not_in_snapshot')
   into v_updated_lot_count, v_reactivated_lot_count
   from snapshot_matched_lots;
@@ -358,12 +466,15 @@ begin
   -- 12) 신규 Lot INSERT(§14) — 제조사 Lot No. 있으면 그대로, 없으면 내부 관리번호를
   --     이 트랜잭션(전역 advisory lock 보유 중) 안에서 순차 채번(§15). 프론트에서
   --     생성한 번호는 절대 신뢰하지 않는다(애초에 payload에 포함하지도 않는다).
+  --     정규식을 "KNU-YYYYMMDD-" 접두어 전체까지 고정해(Phase 4b-3a.1 §15), 우연히
+  --     "-123"으로 끝나는 제조사 Lot No.를 내부번호로 오인해 채번에 섞이지 않게 한다.
   --     주의: BulkAddTab 등 다른 생성 경로는 이 advisory lock을 잡지 않으므로, 정확히
   --     같은 시각에 그쪽에서도 내부번호를 채번 중이면 이론상 번호가 겹칠 수 있다
-  --     (lot_no에는 unique 제약이 없어 오류가 나지는 않고 표시상 라벨만 중복됨).
+  --     (lot_no에는 unique 제약이 없어 오류가 나지는 않고 표시상 라벨만 중복됨 — 완료
+  --     보고의 "내부관리번호 생성 경쟁 경로" 참고, 이번 Phase에서 다른 경로는 수정 안 함).
   v_prefix := 'KNU-' || to_char(current_date, 'YYYYMMDD') || '-';
-  select coalesce(max((regexp_match(lot_no, '-(\d{3,})$'))[1]::int), 0) into v_seq
-    from reagent_lots where lot_no ilike v_prefix || '%';
+  select coalesce(max(substring(lot_no from '^KNU-[0-9]{8}-([0-9]+)$')::int), 0) into v_seq
+    from reagent_lots where lot_no ~ ('^' || v_prefix || '[0-9]+$');
 
   for rec in
     select row_no, reagent_id, location_id, shelf_position, received_date, expiry_date,
@@ -395,22 +506,30 @@ begin
     v_new_lot_count := v_new_lot_count + 1;
   end loop;
 
-  -- 13) snapshot에 없는 기존 active Lot → not_in_snapshot(§17/§20). used_up/disposed/
-  --     missing은 애초에 status='active' 조건에 안 걸려 대상이 아니다. DELETE 없음,
-  --     disposal_date 등 다른 필드도 건드리지 않는다.
+  -- 13) snapshot에 없는 기존 active Lot → not_in_snapshot(§17/§20, Phase 4b-3a.1 §9).
+  --     NOT EXISTS + 명시적 IS NOT NULL 필터로 NULL 3치 논리 함정을 피한다 — reagent_lot_id가
+  --     NULL인 신규 Lot 행이 섞여 있어도(실제로 매 실행마다 섞여 있음) 이 UPDATE의 대상
+  --     판정에는 전혀 영향을 주지 않는다. used_up/disposed/missing은 status='active' 조건에
+  --     안 걸려 대상이 아니다. DELETE 없음, disposal_date 등 다른 필드도 건드리지 않는다.
   create temporary table snapshot_excluded_lots on commit drop as
   with updated as (
     update reagent_lots l
     set status = 'not_in_snapshot'
     where l.status = 'active'
-      and l.id not in (select reagent_lot_id from snapshot_rows where reagent_lot_id is not null)
+      and not exists (
+        select 1 from snapshot_rows r where r.reagent_lot_id is not null and r.reagent_lot_id = l.id
+      )
     returning l.id, l.reagent_id
   )
   select * from updated;
   select count(*) into v_not_in_snapshot_count from snapshot_excluded_lots;
 
-  -- 14) 영향받은 reagent의 active/archived 재계산(§19) — master row는 절대 DELETE하지
-  --     않고 status만 전환. 실제로 값이 바뀐 것만 카운트(원래도 active였던 건 제외).
+  -- 14) 영향받은 reagent의 active/archived 재계산(§19, Phase 4b-3a.1 §23/§24) — master
+  --     row는 절대 DELETE하지 않고 status만 전환. 대상은 이번에 매칭/신규/제외된 모든
+  --     reagent(기존 matched + NEW + not_in_snapshot으로 빠진 Lot의 reagent + 재활성화된
+  --     Lot의 reagent 전부 snapshot_rows/snapshot_excluded_lots 두 집합의 합집합에 포함됨).
+  --     실제로 값이 바뀐 것만 카운트(원래도 active였던 건 제외) — 신규 reagent는 INSERT
+  --     시점에 이미 status='active'라 여기서 "재활성화"로 잘못 세지 않는다.
   create temporary table snapshot_touched_reagents on commit drop as
   select reagent_id from snapshot_rows
   union
@@ -434,7 +553,9 @@ begin
   into v_archived_reagent_count, v_reactivated_reagent_count
   from changed;
 
-  -- 15) 감사 로그
+  -- 15) 감사 로그 — 같은 트랜잭션 안이라 이 INSERT가 실패하면(예: 제약 위반) 위의 모든
+  --     reagent/lot 변경도 함께 rollback된다(Phase 4b-3a.1 §27) — "감사기록 없이 재고만
+  --     바뀐 상태"는 애초에 만들어질 수 없다. EXCEPTION 블록으로 오류를 삼키지 않는다.
   insert into inventory_snapshot_syncs (
     snapshot_id, executed_by, source_filename, source_row_count,
     updated_lot_count, new_lot_count, not_in_snapshot_lot_count, reactivated_lot_count,
@@ -442,12 +563,13 @@ begin
   ) values (
     v_snapshot_id, auth.uid(), v_source_filename, v_row_count,
     v_updated_lot_count, v_new_lot_count, v_not_in_snapshot_count, v_reactivated_lot_count,
-    v_new_reagent_count, v_archived_reagent_count, v_reactivated_reagent_count, 0,
+    v_new_reagent_count, v_archived_reagent_count, v_reactivated_reagent_count, v_preview_warning_count,
     jsonb_build_object(
       'updated_lots', v_updated_lot_count, 'new_lots', v_new_lot_count,
       'not_in_snapshot_lots', v_not_in_snapshot_count, 'reactivated_lots', v_reactivated_lot_count,
       'new_reagents', v_new_reagent_count, 'archived_reagents', v_archived_reagent_count,
-      'reactivated_reagents', v_reactivated_reagent_count
+      'reactivated_reagents', v_reactivated_reagent_count,
+      'preview_warning_count', v_preview_warning_count
     )
   );
 
@@ -478,8 +600,9 @@ $$;
 
 comment on function public.sync_inventory_snapshot(jsonb) is
   '현재 재고 Excel 동기화 — 단일 트랜잭션. is_admin() 필요, 전역 advisory lock으로 동시 실행 방지,
-   baseline/updated_at optimistic lock으로 stale preview 적용 차단. reagent/lot는 UPDATE만(id 보존),
-   신규만 INSERT. Phase 4b-3a에서 작성, 운영 미적용.';
+   baseline/updated_at optimistic lock으로 stale preview 적용 차단. not_in_snapshot 재활성화만 허용
+   (used_up/disposed/missing은 차단). company는 fill_if_empty만 fail-closed로 허용. reagent/lot는
+   UPDATE만(id 보존), 신규만 INSERT. Phase 4b-3a에서 작성, Phase 4b-3a.1에서 보강, 운영 미적용.';
 
 revoke all on function public.sync_inventory_snapshot(jsonb) from public;
 grant execute on function public.sync_inventory_snapshot(jsonb) to authenticated;
