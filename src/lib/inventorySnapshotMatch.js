@@ -336,6 +336,14 @@ function resolveKeepIfBlank(excelVal, existingVal) {
 // reviewChoices: { [rowNo]: { reagent?: 'NEW'|reagentId, lot?: 'NEW'|lotId,
 //                              company?: 'keep'|'treat_as_new'|'fill' } }
 // 순수 함수라 reviewChoices가 바뀔 때마다 다시 불러도 안전(§45 — O(n), 인덱스 재사용).
+// 신규 마스터 grouping 키(Phase 4b-3a §13/§28) — 같은 신규 시약이 여러 병(행)으로 있어도
+// RPC가 마스터를 한 번만 만들도록, 현재 master grouping 정책(§import-inventory-2026-2.mjs)과
+// 동일하게 "정규화 이름 + 제조사 + 순도 + 규격/단위"로 묶는다. CAS만으로 묶지 않는다(§28).
+export function newReagentKey(row) {
+  return [normalizeKey(row.nameEn || row.nameKo), normalizeKey(row.company), normalizeKey(row.purity),
+    normalizeText(row.volume), normalizeKey(row.unit)].join('|')
+}
+
 export function matchInventorySnapshotRows(rows, idx, reviewChoices = {}) {
   return rows.map(row => {
     const validated = validateRow(row, idx)
@@ -346,6 +354,9 @@ export function matchInventorySnapshotRows(rows, idx, reviewChoices = {}) {
       reagentMatch = choice.reagent === 'NEW'
         ? { status: 'new', reviewResolved: true }
         : { status: 'exact', id: choice.reagent, reagent: idx.reagentsById.get(choice.reagent), reviewResolved: true, source: 'review' }
+    }
+    if (reagentMatch.status === 'new' && !reagentMatch.newReagentKey) {
+      reagentMatch = { ...reagentMatch, newReagentKey: newReagentKey(row) }
     }
 
     let lotMatch = matchLotRaw(row, reagentMatch, idx)
@@ -368,7 +379,7 @@ export function matchInventorySnapshotRows(rows, idx, reviewChoices = {}) {
     }
     // "신규 시약으로 처리" 선택 시 이 행은 통째로 신규 취급(§23-B)
     if (companyReview?.resolved === 'treat_as_new') {
-      reagentMatch = { status: 'new', forcedByCompanyReview: true }
+      reagentMatch = { status: 'new', forcedByCompanyReview: true, newReagentKey: newReagentKey(row) }
       lotMatch = { status: 'new' }
     }
 
@@ -470,18 +481,37 @@ export function computeArchivedReagentsPreview(reagents, lotsByReagent, matchedR
   return reagents.filter(r => (lotsByReagent.get(r.id) || []).length > 0 && !keepsStock.has(r.id))
 }
 
-// ── 최종 payload(§35~38) — 준비된(matched/new) 행만, review/error 행은 제외 ─────
-export function buildInventorySnapshotPayload(matchedRows, { snapshotId, sourceFilename }) {
+// snapshot 시작 시점(=미리보기 생성 시점)의 active Lot id 전체 — RPC가 "미리보기 이후
+// 재고가 바뀌었는지"를 판단하는 기준선이 된다(Phase 4b-3a §7/§8). preview를 다시 만들면
+// 이 값도 다시 계산해야 한다(호출부가 매번 새로 넘겨야 함 — 여기서 캐시하지 않는다).
+export function computeBaselineActiveLotIds(allActiveLots) {
+  return allActiveLots.map(l => l.id)
+}
+
+// company_action: RPC가 신뢰할 유일한 "제조사 보완" 신호. 'fill_if_empty'만 실제 UPDATE
+// 후보이고, 그 외(기본값 'keep')는 RPC가 절대 company를 건드리지 않는다(§1-9/§11).
+function companyAction(row) {
+  return row.companyReview?.resolved === 'fill' ? 'fill_if_empty' : 'keep'
+}
+
+// ── 최종 payload(§35~38, Phase 4b-3a §7/§11/§13로 확장) — 준비된(matched/new) 행만,
+// review/error 행은 제외. RPC는 이 payload의 match_confidence/lot_source_hint를 그대로
+// 믿지 않고 서버에서 다시 검증한다(§10) — 여기 있는 값은 어디까지나 "요청 의도"다.
+export function buildInventorySnapshotPayload(matchedRows, { snapshotId, sourceFilename, baselineActiveLotIds }) {
   const rows = matchedRows
     .filter(r => ['changed', 'unchanged', 'new'].includes(rowBucket(r)))
     .map(r => {
       const reviewResolved = !!(r.reagentMatch.reviewResolved || r.lotMatch.reviewResolved || (r.companyReview && r.companyReview.resolved))
       const isNew = r.reagentMatch.status === 'new' || r.lotMatch.status === 'new'
+      const reagentId = r.reagentMatch.status === 'exact' ? r.reagentMatch.id : null
+      const lotId = r.lotMatch.status === 'exact' ? r.lotMatch.id : null
       return {
         row_no: r.rowNo,
-        reagent_id: r.reagentMatch.status === 'exact' ? r.reagentMatch.id : null,
-        reagent_lot_id: r.lotMatch.status === 'exact' ? r.lotMatch.id : null,
+        reagent_id: reagentId,
+        reagent_lot_id: lotId,
         match_confidence: isNew ? 'new' : (reviewResolved ? 'review_confirmed' : 'exact'),
+        // 신규 마스터 grouping — 같은 신규 시약의 여러 병이 마스터를 한 번만 만들도록(§13/§28).
+        new_reagent_key: reagentId ? null : (r.reagentMatch.newReagentKey || null),
         name: r.nameEn || r.nameKo || null, name_ko: r.nameKo || null, cas_no: r.casNo || null,
         company: r.company || null, cat_no: r.resolvedCatNo || null, purity: r.purity || null,
         volume: r.volume || null, unit: r.unit || null,
@@ -489,9 +519,19 @@ export function buildInventorySnapshotPayload(matchedRows, { snapshotId, sourceF
         location_id: r.resolvedLocation?.id || null, shelf_position: r.resolvedShelfPosition || null,
         received_date: r.resolvedReceivedDate || null, expiry_date: r.resolvedExpiryDate || null,
         current_stock: r.resolvedStock.current_stock, sealed_count: r.resolvedStock.sealed_count,
+        // 기존 EXACT reagent의 company를 "비어있을 때만" 채우는 명시적 승인 신호(§11).
+        company_action: reagentId ? companyAction(r) : 'keep',
+        // stale preview 방어(§7/§9) — RPC가 이 값과 실제 DB updated_at을 대조해 다르면 전체 중단.
+        expected_reagent_updated_at: reagentId ? (r.reagentMatch.reagent?.updated_at || null) : null,
+        expected_lot_updated_at: lotId ? (r.lotMatch.lot?.updated_at || null) : null,
       }
     })
-  return { snapshot_id: snapshotId, source_filename: sourceFilename, rows }
+  return {
+    snapshot_id: snapshotId,
+    source_filename: sourceFilename,
+    baseline_active_lot_ids: baselineActiveLotIds || [],
+    rows,
+  }
 }
 
 // ── 최종 적용 준비 상태(§36) ─────────────────────────────────────

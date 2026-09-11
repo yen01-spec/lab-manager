@@ -112,7 +112,7 @@ export default function Admin() {
           {tab === 'data-add' && <ReagentAddTab locations={locations} student={student} />}
           {tab === 'data-bulk-add' && <BulkAddTab locations={locations} student={student} />}
           {tab === 'data-bulk' && <BulkUpdateTab />}
-          {tab === 'data-inventory-sync' && <InventorySnapshotSyncTab student={student} />}
+          {tab === 'data-inventory-sync' && <InventorySnapshotSyncTab />}
           {tab === 'log' && <LogTab />}
           {tab === 'settings' && <SettingsTab />}
         </div>

@@ -1,24 +1,32 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { C, Card, btnPrimary, btnExcel, inputStyle } from '../../design'
 import { fetchAllPages } from '../../lib/fetchAllPages'
 import { downloadInventorySnapshotExport, downloadInventorySnapshotBackup } from '../../lib/inventorySnapshotExcel'
 import {
   parseInventorySnapshotAoa, runGlobalValidation, buildMatchIndexes, matchInventorySnapshotRows,
-  computeExcludedLots, computeArchivedReagentsPreview, buildInventorySnapshotPayload, checkSyncReadiness,
+  computeExcludedLots, computeArchivedReagentsPreview, computeBaselineActiveLotIds,
+  buildInventorySnapshotPayload, checkSyncReadiness,
   rowBucket, STRONG_CONFIRM_TEXT, GUIDE_SHEET_NAME,
 } from '../../lib/inventorySnapshotMatch'
+import { applyInventorySnapshotSync } from '../../lib/inventorySnapshotApply'
+import { isAuthedAdmin, getAdminAuthUser, signInAdmin, signOutAdmin } from '../../lib/adminAuth'
 import InventorySnapshotReviewPanel from './InventorySnapshotReviewPanel'
 import InventorySnapshotPreviewTable from './InventorySnapshotPreviewTable'
+import InventorySnapshotResultSummary from './InventorySnapshotResultSummary'
 
 // ══════════════════════════════════════════════════════════════
-//  현재 재고 Excel 동기화 (Phase 4b-2)
+//  현재 재고 Excel 동기화 (Phase 4b-2 미리보기 + Phase 4b-3a RPC 연동 준비)
 //
 //  "Excel 일괄 추가"(append-only, 신규만)와는 완전히 다른 기능이다 — 이건 현재 보유 재고
 //  전체를 Excel 기준으로 맞추는 current inventory snapshot synchronization.
-//  이번 Phase에서는 미리보기까지만 만든다: 실제 INSERT/UPDATE/DELETE/RPC 호출은 전혀 없다
-//  (Phase 4b-3에서 supabaseAdmin + is_admin() 기반 RPC로 별도 구현 예정).
+//
+//  Phase 4b-3a 시점 상태: RPC 호출 코드(applyInventorySnapshotSync)는 완성돼 있지만,
+//  이 RPC를 만드는 migration(20260913...inventory_snapshot_sync.sql)이 아직 운영 DB에
+//  적용되지 않았고, 실제 적용 버튼도 항상 disabled다 — 그래서 실행하면 반드시 실패한다.
+//  4b-3b에서 migration을 검토·적용한 뒤 disabled guard만 제거하면 그대로 동작하는 구조.
 // ══════════════════════════════════════════════════════════════
 
 const STEPS = [
@@ -31,12 +39,14 @@ const STEPS = [
 
 async function fetchMatchBaseData() {
   // 매칭에 필요한 최소 컬럼만, 업로드 1회당 딱 한 번만 조회한다(§14).
+  // updated_at은 화면에 쓰지 않지만 Phase 4b-3a의 stale-preview 방어(RPC의 optimistic lock)에
+  // 필요해 payload에 그대로 실어 보낸다 — 여기서 미리 받아두지 않으면 적용 시점에 다시 조회해야 한다.
   const [reagents, lots, { data: locations }] = await Promise.all([
     fetchAllPages((from, to) => supabase.from('reagents')
-      .select('id, name, name_ko, cas_no, company, purity, volume, unit, status')
+      .select('id, name, name_ko, cas_no, company, purity, volume, unit, status, updated_at')
       .neq('status', 'archived').range(from, to)),
     fetchAllPages((from, to) => supabase.from('reagent_lots')
-      .select('id, reagent_id, lot_no, lot_source, cat_no, sealed_count, current_stock, location_id, shelf_position, received_date, expiry_date, status')
+      .select('id, reagent_id, lot_no, lot_source, cat_no, sealed_count, current_stock, location_id, shelf_position, received_date, expiry_date, status, updated_at')
       .eq('status', 'active').range(from, to)),
     supabase.from('locations').select('id, room, detail'),
   ])
@@ -60,7 +70,8 @@ function StepHeader({ step }) {
   )
 }
 
-export default function InventorySnapshotSyncTab({ student }) {
+export default function InventorySnapshotSyncTab() {
+  const navigate = useNavigate()
   const [step, setStep] = useState(1)
   const [busy, setBusy] = useState(false)
   const [busyMsg, setBusyMsg] = useState('')
@@ -73,6 +84,38 @@ export default function InventorySnapshotSyncTab({ student }) {
   const [reviewChoices, setReviewChoices] = useState({})
   const [confirmText, setConfirmText] = useState('')
   const [snapshotId] = useState(() => (globalThis.crypto?.randomUUID?.() || String(Date.now())))
+
+  // 실제 적용에 필요한 Supabase Auth 관리자 세션(자료 CMS와 동일한 admin_users/is_admin()
+  // 구조 재사용 — 별도 Auth 구현 없음). 이 세션이 있어도 STEP 5의 적용 버튼은 여전히
+  // disabled다(§26) — 로그인 상태 자체를 4b-3a에서 미리 확인해두는 목적.
+  const [adminAuth, setAdminAuth] = useState({ ready: false, authed: false, email: null })
+  const [authForm, setAuthForm] = useState({ email: '', password: '' })
+  const [authBusy, setAuthBusy] = useState(false)
+  const [authError, setAuthError] = useState('')
+  const [applyBusy, setApplyBusy] = useState(false)
+  const [applyResult, setApplyResult] = useState(null)
+
+  useEffect(() => {
+    ;(async () => {
+      const ok = await isAuthedAdmin()
+      const u = ok ? await getAdminAuthUser() : null
+      setAdminAuth({ ready: true, authed: ok, email: u?.email || null })
+    })()
+  }, [])
+
+  async function submitAdminLogin(e) {
+    e.preventDefault()
+    setAuthBusy(true); setAuthError('')
+    const r = await signInAdmin(authForm.email, authForm.password)
+    setAuthBusy(false)
+    if (!r.ok) { setAuthError(r.error); return }
+    setAuthForm({ email: '', password: '' })
+    setAdminAuth({ ready: true, authed: true, email: r.user?.email || null })
+  }
+  async function handleAdminLogout() {
+    await signOutAdmin()
+    setAdminAuth(a => ({ ...a, authed: false, email: null }))
+  }
 
   const matchedRows = useMemo(
     () => (idx && normalizedRows) ? matchInventorySnapshotRows(normalizedRows, idx, reviewChoices) : [],
@@ -88,9 +131,15 @@ export default function InventorySnapshotSyncTab({ student }) {
     [idx, baseData, matchedRows],
   )
   const reviewRows = useMemo(() => matchedRows.filter(r => rowBucket(r) === 'review'), [matchedRows])
+  // baseline_active_lot_ids — 미리보기(=이 데이터를 불러온 시점)의 active Lot 전체.
+  // RPC가 이 목록과 실행 시점 DB 상태를 대조해 그 사이 재고가 바뀌었으면 통째로 중단한다.
+  const baselineActiveLotIds = useMemo(
+    () => baseData ? computeBaselineActiveLotIds(baseData.lots) : [],
+    [baseData],
+  )
   const payload = useMemo(
-    () => buildInventorySnapshotPayload(matchedRows, { snapshotId, sourceFilename: fileName }),
-    [matchedRows, snapshotId, fileName],
+    () => buildInventorySnapshotPayload(matchedRows, { snapshotId, sourceFilename: fileName, baselineActiveLotIds }),
+    [matchedRows, snapshotId, fileName, baselineActiveLotIds],
   )
 
   const summary = useMemo(() => {
@@ -155,6 +204,26 @@ export default function InventorySnapshotSyncTab({ student }) {
     setReviewChoices(prev => ({ ...prev, [rowNo]: { ...prev[rowNo], ...patch } }))
   }
 
+  // 실제 적용 handler — 코드는 완성돼 있지만 아래 버튼이 항상 disabled라 지금은 호출될 수
+  // 없다(§26/§46). 4b-3b에서 migration 적용 후 버튼의 disabled guard만 제거하면 그대로 쓴다.
+  // 실패해도 선택한 파일/REVIEW 결정/미리보기 state를 초기화하지 않는다(§35) — 사용자가
+  // 오류를 확인하고 그대로 재시도하거나 Excel을 고쳐 다시 업로드할 수 있어야 한다.
+  async function handleApplySync() {
+    if (!adminAuth.authed) { setError('실제 적용에는 Supabase Auth 관리자 로그인이 필요합니다.'); return }
+    if (!readiness.ready) { setError('오류 또는 확인 필요 항목이 남아 있어 적용할 수 없습니다.'); return }
+    if (confirmText.trim() !== STRONG_CONFIRM_TEXT) { setError(`"${STRONG_CONFIRM_TEXT}"를 정확히 입력해주세요.`); return }
+    setApplyBusy(true); setError(''); setApplyResult(null)
+    try {
+      const result = await applyInventorySnapshotSync(payload)
+      setApplyResult(result)
+    } catch (e) {
+      // stale preview(§7~9)·중복 실행(§24)·동시 실행(§6) 등 RPC의 한국어 예외 메시지를 그대로 노출.
+      setError(e.message)
+    } finally {
+      setApplyBusy(false)
+    }
+  }
+
   async function handleDownloadBackup() {
     setBusy(true); setBusyMsg('현재 DB 상태로 백업 파일을 만드는 중...'); setError('')
     try {
@@ -179,7 +248,8 @@ export default function InventorySnapshotSyncTab({ student }) {
         연 1회 재고 정리 등에서 Excel 기준으로 <b>현재 보유 재고 전체</b>를 일괄 확인·동기화합니다.
         <br />신규 시약만 추가하는 기능이 아닙니다 — 기존 시약/Lot은 최대한 그대로 유지하며 위치·잔량만 갱신하고,
         Excel에서 빠진 재고는 삭제하지 않고 "현재 목록 제외" 예정으로만 표시합니다.
-        <br /><b>이 화면(4b-2)에서는 실제로 아무것도 저장하지 않습니다.</b> 검토와 준비까지만 하고, 실제 적용은 이후 단계(4b-3)에서 관리자 인증을 거쳐 진행됩니다.
+        <br /><b>실제 적용 버튼은 아직 비활성화돼 있습니다.</b> DB에 반영하는 RPC 자체는 만들어졌지만, 그 RPC를 만드는 DB 변경이
+        운영에 적용되기 전까지는 이 화면에서 아무것도 저장되지 않습니다.
       </div>
 
       <StepHeader step={step} />
@@ -272,6 +342,13 @@ export default function InventorySnapshotSyncTab({ student }) {
       {/* STEP 5 */}
       {step === 5 && (
         <div>
+          {applyResult ? (
+            <InventorySnapshotResultSummary
+              result={applyResult}
+              onGoReagentList={() => navigate('/reagents/list')}
+            />
+          ) : (
+          <>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: readiness.ready ? '#E7F5EC' : '#FDECEC', color: readiness.ready ? '#1E7A46' : C.dangerDark }}>
               {readiness.ready ? '✓ 적용 준비 조건 충족' : `⚠ 오류 ${readiness.blockingErrors}건 · 확인 필요 ${readiness.unresolvedReview}건 남음`}
@@ -286,8 +363,33 @@ export default function InventorySnapshotSyncTab({ student }) {
             <button onClick={handleDownloadBackup} disabled={busy} style={{ ...btnExcel, opacity: busy ? 0.6 : 1 }}>💾 적용 전 현재 재고 백업 다운로드</button>
           </div>
 
+          <div style={{ marginBottom: 20, padding: '14px 16px', background: '#F7F9FC', border: `1px solid ${C.border}`, borderRadius: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 8 }}>2) 관리자 인증(실제 적용에만 필요)</div>
+            <p style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>
+              자료 탭 공식자료 관리와 동일한 Supabase Auth 관리자 로그인입니다. 이 앱의 일반 로그인과는 별개이며,
+              로그인해도 미리보기 단계(STEP 1~4)에는 영향이 없습니다.
+            </p>
+            {!adminAuth.ready ? (
+              <div style={{ fontSize: 12, color: C.muted }}>확인 중...</div>
+            ) : adminAuth.authed ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 12.5, color: '#1E7A46', fontWeight: 700 }}>✓ 로그인됨 · {adminAuth.email}</span>
+                <button onClick={handleAdminLogout} style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>로그아웃</button>
+              </div>
+            ) : (
+              <form onSubmit={submitAdminLogin} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <input type="email" required placeholder="이메일" value={authForm.email}
+                  onChange={e => setAuthForm(f => ({ ...f, email: e.target.value }))} style={{ ...inputStyle, width: 200 }} />
+                <input type="password" required placeholder="비밀번호" value={authForm.password}
+                  onChange={e => setAuthForm(f => ({ ...f, password: e.target.value }))} style={{ ...inputStyle, width: 160 }} />
+                <button type="submit" disabled={authBusy} style={{ ...btnPrimary, padding: '8px 16px' }}>{authBusy ? '확인 중...' : '로그인'}</button>
+              </form>
+            )}
+            {authError && <div style={{ marginTop: 8, fontSize: 12, color: C.dangerDark }}>{authError}</div>}
+          </div>
+
           <div style={{ marginBottom: 20, padding: '14px 16px', background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#8A5A16', marginBottom: 8 }}>2) 최종 확인</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#8A5A16', marginBottom: 8 }}>3) 최종 확인</div>
             <div style={{ fontSize: 12.5, color: '#6B4A0F', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
 {`현재 재고 목록을 Excel 기준으로 동기화합니다.
 
@@ -307,26 +409,30 @@ export default function InventorySnapshotSyncTab({ student }) {
           </div>
 
           <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 6 }}>3) 적용</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 6 }}>4) 적용</div>
             <p style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>
-              실제 적용은 Supabase Auth 관리자 로그인(자료 CMS와 동일한 <code>admin_users</code> + <code>is_admin()</code> 구조) 기반 RPC로 처리될 예정입니다(Phase 4b-3).
-              이번 단계에서는 실행되지 않습니다. 준비된 요약: 반영 대상 {payload.rows.length.toLocaleString()}행
+              실제 적용은 <code>sync_inventory_snapshot</code> RPC(Supabase Auth 관리자 + <code>is_admin()</code> 인가, 단일 트랜잭션)로
+              처리됩니다. <b>이 RPC를 만드는 DB 변경이 아직 운영에 적용되지 않아 이번 단계에서는 버튼을 계속 막아둡니다.</b>
+              준비된 요약: 반영 대상 {payload.rows.length.toLocaleString()}행
               (신규 {summary.new.toLocaleString()} · 변경 {summary.changed.toLocaleString()} · 변경없음 {summary.unchanged.toLocaleString()}),
               제외 예정 {excludedLots.length.toLocaleString()}건.
             </p>
-            <button disabled style={{
+            <button onClick={handleApplySync} disabled style={{
               ...btnPrimary, background: C.muted, cursor: 'not-allowed', opacity: 0.7,
-            }} title="Phase 4b-3에서 RPC가 만들어진 뒤 활성화됩니다">
-              동기화 적용 — Phase 4b-3에서 활성화
+            }} title="DB 적용 전 검토 단계 — Phase 4b-3b에서 migration 적용 후 활성화됩니다">
+              동기화 적용 — DB 적용 전 검토 단계
             </button>
-            {student && strongConfirmOk && readiness.ready && (
-              <div style={{ marginTop: 8, fontSize: 11.5, color: '#1E7A46' }}>✓ 적용 준비 완료 (실제 적용 대기 — RPC 없음)</div>
+            {applyBusy && <span style={{ marginLeft: 10, fontSize: 12, color: C.muted }}>적용 중...</span>}
+            {adminAuth.authed && strongConfirmOk && readiness.ready && (
+              <div style={{ marginTop: 8, fontSize: 11.5, color: '#1E7A46' }}>✓ 적용 준비 완료(관리자 인증·확인 문구·검증 모두 통과) — 실제 적용은 4b-3b에서 활성화됩니다.</div>
             )}
           </div>
 
           <div style={{ marginTop: 20 }}>
             <button onClick={() => setStep(4)} style={{ ...btnPrimary, background: C.white, color: C.text, border: `1px solid ${C.border}` }}>← 이전</button>
           </div>
+          </>
+          )}
         </div>
       )}
     </Card>
