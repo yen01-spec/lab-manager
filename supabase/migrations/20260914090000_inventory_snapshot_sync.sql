@@ -510,15 +510,26 @@ begin
   end loop;
 
   -- 13) snapshot에 없는 기존 active Lot → not_in_snapshot(§17/§20, Phase 4b-3a.1 §9).
-  --     NOT EXISTS + 명시적 IS NOT NULL 필터로 NULL 3치 논리 함정을 피한다 — reagent_lot_id가
-  --     NULL인 신규 Lot 행이 섞여 있어도(실제로 매 실행마다 섞여 있음) 이 UPDATE의 대상
-  --     판정에는 전혀 영향을 주지 않는다. used_up/disposed/missing은 status='active' 조건에
-  --     안 걸려 대상이 아니다. DELETE 없음, disposal_date 등 다른 필드도 건드리지 않는다.
+  --     대상을 반드시 "l.id = any(v_baseline_ids)"로 제한한다 — v_baseline_ids는 §7에서
+  --     이미 "이 RPC 실행 직전 DB의 실제 active Lot 집합"과 정확히 일치함을 검증한 값이다
+  --     (Phase 4b-3b-S2.1에서 수정, S2 실측 발견). 이 제한이 없으면 방금 12)에서 막 INSERT한
+  --     신규 Lot과, 이번 실행에서 not_in_snapshot -> active로 막 재활성화된 Lot까지 전부
+  --     "status='active'인데 어떤 snapshot_rows.reagent_lot_id도 안 가리킨다"는 조건에 걸려
+  --     같은 트랜잭션 안에서 곧바로 다시 not_in_snapshot으로 뒤집혀 버린다(신규 Lot은
+  --     reagent_lot_id 없이 reagent_id/new_reagent_key로만 들어오므로 그 값을 가리키는
+  --     snapshot_rows 행이 존재할 수 없고, 재활성화 Lot은 11)에서 이미 매칭 완료된 상태라
+  --     아래 NOT EXISTS만으로는 구분되지 않았다 — "신규/재활성화 Lot이 섞여 있어도 영향
+  --     없다"던 이전 주석은 틀렸다). v_baseline_ids로 제한하면 "원래부터 active였는데 이번
+  --     snapshot에서 빠진 Lot"만 정확히 대상이 된다 — 신규 Lot도 재활성화 Lot도 baseline에는
+  --     없었으므로 자연히 제외 대상에서 빠진다. NOT EXISTS + 명시적 IS NOT NULL 필터는 그대로
+  --     둔다(NULL 3치 논리 함정 방지 목적은 유효). used_up/disposed/missing은 status='active'
+  --     조건에 안 걸려 대상이 아니다. DELETE 없음, disposal_date 등 다른 필드도 건드리지 않는다.
   create temporary table snapshot_excluded_lots on commit drop as
   with updated as (
     update reagent_lots l
     set status = 'not_in_snapshot'
     where l.status = 'active'
+      and l.id = any(v_baseline_ids)
       and not exists (
         select 1 from snapshot_rows r where r.reagent_lot_id is not null and r.reagent_lot_id = l.id
       )

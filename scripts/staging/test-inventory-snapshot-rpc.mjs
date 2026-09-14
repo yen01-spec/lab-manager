@@ -807,6 +807,68 @@ async function T31_advisoryLock() {
   return { overlapAchieved: 'unclear', r1error: r1.error?.message, r2error: r2.error?.message, note: '오류는 났지만 advisory lock(55P03)이 아니라 다른 원인(예: baseline stale)으로 실패 — 진짜 lock 경합을 못 만듦' }
 }
 
+// Phase 4b-3b-S2.1 §14 — 신규 Lot과 기존 Lot 제외가 같은 payload에 섞여도 서로 침범하지
+// 않는지(신규가 제외로 오염되지 않고, 제외가 신규로 오염되지 않는지) 확인.
+async function T32_mixedNewAndExcluded() {
+  await reset()
+  const baselineIds = await activeLotIds() // A1,A2,B1,G1,H1
+  const aReagent = await getReagent(REAGENT.A)
+  const rows = [
+    ...(await Promise.all(baselineIds.filter((id) => id !== LOT.B1).map((id) => existingRow(id)))), // B1만 제거
+    row({
+      reagent_id: REAGENT.A, reagent_lot_id: null, match_confidence: 'new',
+      name: aReagent.name, name_ko: aReagent.name_ko, company: aReagent.company,
+      purity: aReagent.purity, volume: aReagent.volume, unit: aReagent.unit,
+      lot_no: 'TEST-MIXED-N1', location_id: LOC_A, current_stock: 7, sealed_count: 1,
+      expected_reagent_updated_at: aReagent.updated_at,
+    }),
+  ]
+  const admin = clientAs(ADMIN_TOKEN)
+  const { data, error } = await callRpc(admin, makePayload({ baselineIds, rows }))
+  if (error) throw new Error(`RPC 실패: ${error.message}`)
+  assertEq(data.not_in_snapshot_lots, 1, 'not_in_snapshot_lots=1 (B1만)')
+  assertEq(data.new_lots, 1, 'new_lots=1 (N1)')
+  const b1 = await getLot(LOT.B1)
+  assertEq(b1.status, 'not_in_snapshot', 'B1 -> not_in_snapshot')
+  const { data: n1rows } = await service.from('reagent_lots').select('*').eq('lot_no', 'TEST-MIXED-N1')
+  assertEq(n1rows.length, 1, 'N1 1건 생성')
+  assertEq(n1rows[0].status, 'active', 'N1 status=active (제외 UPDATE에 오염되지 않음)')
+  return { rpcResult: data, b1_status: b1.status, n1_status: n1rows[0].status }
+}
+
+// Phase 4b-3b-S2.1 §15 — not_in_snapshot 재활성화와 기존 Lot 제외가 같은 payload에 섞여도
+// 재활성화된 Lot이 같은 트랜잭션의 제외 UPDATE에 다시 걸리지 않는지 확인(baseline에는
+// C1이 애초에 없으므로 이번 수정으로 자연히 보호되어야 함).
+async function T33_mixedReactivationAndExcluded() {
+  await reset()
+  const baselineIds = await activeLotIds() // A1,A2,B1,G1,H1 (C1은 not_in_snapshot이라 baseline에 없음)
+  const c1 = await getLot(LOT.C1)
+  const cReagent = await getReagent(REAGENT.C)
+  const rows = [
+    ...(await Promise.all(baselineIds.filter((id) => id !== LOT.B1).map((id) => existingRow(id)))), // B1 제외
+    row({
+      reagent_id: c1.reagent_id, reagent_lot_id: c1.id, match_confidence: 'exact',
+      name: cReagent.name, name_ko: cReagent.name_ko, company: cReagent.company,
+      purity: cReagent.purity, volume: cReagent.volume, unit: cReagent.unit,
+      lot_no: c1.lot_no, location_id: c1.location_id,
+      current_stock: c1.current_stock, sealed_count: c1.sealed_count,
+      expected_reagent_updated_at: cReagent.updated_at, expected_lot_updated_at: c1.updated_at,
+    }), // C1 재등장(재활성화)
+  ]
+  const admin = clientAs(ADMIN_TOKEN)
+  const { data, error } = await callRpc(admin, makePayload({ baselineIds, rows }))
+  if (error) throw new Error(`RPC 실패: ${error.message}`)
+  assertEq(data.reactivated_lots, 1, 'reactivated_lots=1 (C1)')
+  assertEq(data.not_in_snapshot_lots, 1, 'not_in_snapshot_lots=1 (B1)')
+  const c1After = await getLot(LOT.C1)
+  assertEq(c1After.status, 'active', 'C1 -> active (제외 UPDATE에 다시 안 걸림)')
+  const b1After = await getLot(LOT.B1)
+  assertEq(b1After.status, 'not_in_snapshot', 'B1 -> not_in_snapshot')
+  const a1After = await getLot(LOT.A1)
+  assertEq(a1After.status, 'active', 'A1 계속 active')
+  return { rpcResult: data, c1_status: c1After.status, b1_status: b1After.status }
+}
+
 // ── 7) 실행 ──────────────────────────────────────────────────
 const ALL_TESTS = [
   ['T01_unchanged', T01_unchanged],
@@ -840,6 +902,8 @@ const ALL_TESTS = [
   ['T29_auditAccuracy', T29_auditAccuracy],
   ['T30_idFkPreservation', T30_idFkPreservation],
   ['T31_advisoryLock', T31_advisoryLock],
+  ['T32_mixedNewAndExcluded', T32_mixedNewAndExcluded],
+  ['T33_mixedReactivationAndExcluded', T33_mixedReactivationAndExcluded],
 ]
 
 async function main() {
