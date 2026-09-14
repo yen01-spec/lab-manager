@@ -125,8 +125,11 @@ begin
   end if;
 
   -- 2) 동시 실행 방지 — 트랜잭션 종료 시 자동 해제되는 xact advisory lock.
+  --    errcode는 표준 SQLSTATE 55P03(lock_not_available) 사용 — 'LOCKED'는 PostgreSQL이
+  --    인식하는 조건명/SQLSTATE가 아니라서(Phase 4b-3b-S1 db lint에서 42704로 발견) 이
+  --    RAISE 자체가 런타임에 실패했었다(§Phase 4b-3b-S1.1에서 수정).
   if not pg_try_advisory_xact_lock(hashtext('inventory_snapshot_sync')) then
-    raise exception '다른 관리자가 현재 재고 동기화를 진행 중입니다. 잠시 후 다시 시도해주세요.' using errcode = 'LOCKED';
+    raise exception '다른 관리자가 현재 재고 동기화를 진행 중입니다. 잠시 후 다시 시도해주세요.' using errcode = '55P03';
   end if;
 
   -- 3) payload 최상위 검증
@@ -604,8 +607,13 @@ comment on function public.sync_inventory_snapshot(jsonb) is
    (used_up/disposed/missing은 차단). company는 fill_if_empty만 fail-closed로 허용. reagent/lot는
    UPDATE만(id 보존), 신규만 INSERT. Phase 4b-3a에서 작성, Phase 4b-3a.1에서 보강, 운영 미적용.';
 
+-- Supabase는 public 스키마 함수 생성 시 postgres role의 ALTER DEFAULT PRIVILEGES로
+-- anon/authenticated/service_role에 EXECUTE를 자동 부여한다 — "revoke all ... from public"은
+-- PUBLIC 의사역할 권한만 지우고 이 role별 default grant는 안 지워서, anon에 EXECUTE가 그대로
+-- 남는 문제가 있었다(Phase 4b-3b-S1 발견). anon은 명시적으로 다시 revoke한다.
 revoke all on function public.sync_inventory_snapshot(jsonb) from public;
+revoke execute on function public.sync_inventory_snapshot(jsonb) from anon;
 grant execute on function public.sync_inventory_snapshot(jsonb) to authenticated;
--- anon에는 execute 권한 자체를 주지 않는다. authenticated에게 열어도 함수 최상단
--- is_admin() 검사가 최종 인가 — 일반 로그인 사용자(비관리자)가 authenticated 세션을
--- 가졌다 해도(현재 앱은 Supabase Auth 로그인을 안 쓰므로 사실상 해당 없음) 거부된다.
+-- anon에는 이제 execute 권한 자체가 없다(위 explicit revoke). authenticated에게 열어도
+-- 함수 최상단 is_admin() 검사가 최종 인가 — 일반 로그인 사용자(비관리자)가 authenticated
+-- 세션을 가졌다 해도(현재 앱은 Supabase Auth 로그인을 안 쓰므로 사실상 해당 없음) 거부된다.
