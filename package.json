@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "supabase:link:staging": "supabase link --project-ref vvafhcqypvejvsuksooi",
     "supabase:guard:staging": "node scripts/guard-staging-target.mjs",
-    "supabase:push:staging": "npm run supabase:guard:staging && supabase db push"
+    "supabase:push:staging": "npm run supabase:guard:staging && supabase db push",
+    "supabase:link:production": "supabase link --project-ref ylvebibsevesazntalos",
+    "supabase:guard:production": "node scripts/guard-production-target.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",
