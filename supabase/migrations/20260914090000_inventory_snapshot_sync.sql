@@ -429,31 +429,67 @@ begin
     raise exception '미리보기 이후 시약의 제조사 정보가 동시에 채워졌습니다. 미리보기를 새로 생성해주세요.' using errcode = 'P0002';
   end if;
 
-  -- 11) 기존 매칭 Lot UPDATE(§16, Phase 4b-3a.1 §2) — DELETE+INSERT 금지, id 보존.
-  --     6-b에서 이미 "현재 상태가 active 또는 not_in_snapshot"임을 확인했으므로 여기서
-  --     status='active'로 통일 지정하는 것이 안전하다 — used_up/disposed/missing을 되돌릴
-  --     일은 절대 없다. lot_no는 identity 성격이라 여기서 변경하지 않는다.
+  -- 11) 기존 매칭 Lot UPDATE(§16, Phase 4b-3a.1 §2; no-op 제외는 Phase 4b-3b-S2.2) —
+  --     DELETE+INSERT 금지, id 보존. 6-b에서 이미 "현재 상태가 active 또는 not_in_snapshot"
+  --     임을 확인했으므로 여기서 status='active'로 통일 지정하는 것이 안전하다 —
+  --     used_up/disposed/missing을 되돌릴 일은 절대 없다. lot_no는 identity 성격이라
+  --     여기서 변경하지 않는다.
+  --
+  --     실제 저장값이 하나도 안 바뀌는 row는 UPDATE하지 않는다(IS DISTINCT FROM 비교,
+  --     최종 저장값 기준 — coalesce 결과와 비교) — updated_at이 매 실행마다 불필요하게
+  --     갱신되지 않고, updated_lots가 "실제로 값이 바뀐 Lot 수"라는 의미를 갖는다.
+  --     단 stale(낙관적 락) 검증은 no-op 여부와 무관하게 기존과 동일하게 전부 적용되어야
+  --     한다("값이 결과적으로 같더라도 stale이면 차단") — 그래서 eligible(식별+락 통과,
+  --     no-op 필터 없음)과 changed(식별+락 통과+실제 값 변경)를 같은 WITH문의 두 CTE로
+  --     나눠 같은 스냅샷에서 원자적으로 계산한다. 두 CTE 사이에는 다른 statement가 끼어들
+  --     수 없으므로 기존의 "단일 UPDATE 문 WHERE절에 낙관적 락 조건을 넣어 원자적으로
+  --     검증"하던 안전성과 동일하다 — 동시성 정책 자체는 바뀌지 않는다.
   create temporary table snapshot_matched_lots on commit drop as
   select r.row_no, r.reagent_lot_id, l.status as prev_status
   from snapshot_rows r join reagent_lots l on l.id = r.reagent_lot_id
   where r.reagent_lot_id is not null;
 
-  update reagent_lots l
-  set
-    location_id = r.location_id,
-    current_stock = r.current_stock,
-    sealed_count = r.sealed_count,
-    shelf_position = coalesce(nullif(r.shelf_position, ''), l.shelf_position),
-    cat_no = coalesce(nullif(r.cat_no, ''), l.cat_no),
-    received_date = coalesce(r.received_date, l.received_date),
-    expiry_date = coalesce(r.expiry_date, l.expiry_date),
-    status = 'active',
-    needs_review = false
-  from snapshot_rows r
-  where l.id = r.reagent_lot_id
-    and (r.expected_lot_updated_at is null or l.updated_at = r.expected_lot_updated_at);
+  create temporary table snapshot_changed_lots on commit drop as
+  with eligible as (
+    select r.reagent_lot_id
+    from snapshot_rows r
+    join reagent_lots l on l.id = r.reagent_lot_id
+    where r.reagent_lot_id is not null
+      and (r.expected_lot_updated_at is null or l.updated_at = r.expected_lot_updated_at)
+  ),
+  changed as (
+    update reagent_lots l
+    set
+      location_id = r.location_id,
+      current_stock = r.current_stock,
+      sealed_count = r.sealed_count,
+      shelf_position = coalesce(nullif(r.shelf_position, ''), l.shelf_position),
+      cat_no = coalesce(nullif(r.cat_no, ''), l.cat_no),
+      received_date = coalesce(r.received_date, l.received_date),
+      expiry_date = coalesce(r.expiry_date, l.expiry_date),
+      status = 'active',
+      needs_review = false
+    from snapshot_rows r
+    where l.id = r.reagent_lot_id
+      and (r.expected_lot_updated_at is null or l.updated_at = r.expected_lot_updated_at)
+      and (
+        l.location_id is distinct from r.location_id
+        or l.current_stock is distinct from r.current_stock
+        or l.sealed_count is distinct from r.sealed_count
+        or l.shelf_position is distinct from coalesce(nullif(r.shelf_position, ''), l.shelf_position)
+        or l.cat_no is distinct from coalesce(nullif(r.cat_no, ''), l.cat_no)
+        or l.received_date is distinct from coalesce(r.received_date, l.received_date)
+        or l.expiry_date is distinct from coalesce(r.expiry_date, l.expiry_date)
+        or l.status is distinct from 'active'
+        or l.needs_review is distinct from false
+      )
+    returning l.id
+  )
+  select ec.eligible_count, c.id as lot_id
+  from (select count(*) as eligible_count from eligible) ec
+  left join changed c on true;
 
-  get diagnostics v_actual_match_count = row_count;
+  select eligible_count into v_actual_match_count from snapshot_changed_lots limit 1;
   select count(*) into v_expected_match_count from snapshot_matched_lots;
   if v_actual_match_count <> v_expected_match_count then
     raise exception '미리보기 이후 재고 정보가 동시에 변경되었습니다. 미리보기를 새로 생성해주세요.' using errcode = 'P0002';
@@ -461,10 +497,15 @@ begin
 
   -- reactivated_lot_count는 오직 not_in_snapshot → active 건만, updated_lot_count는
   -- active → active 건만(Phase 4b-3a.1 §3) — 서로 절대 섞이지 않는다. used_up/disposed/
-  -- missing은 6-b에서 이미 걸러졌으므로 prev_status가 그 값일 수 없다.
-  select count(*) filter (where prev_status = 'active'), count(*) filter (where prev_status = 'not_in_snapshot')
+  -- missing은 6-b에서 이미 걸러졌으므로 prev_status가 그 값일 수 없다. 실제로 값이 바뀐
+  -- (snapshot_changed_lots에 lot_id가 있는) row만 센다(Phase 4b-3b-S2.2) — status 자체가
+  -- 바뀌는 재활성화는 위 changed 조건의 "status is distinct from 'active'"에 항상 걸리므로
+  -- no-op 필터 때문에 재활성화가 누락될 수 없다.
+  select count(*) filter (where m.prev_status = 'active'), count(*) filter (where m.prev_status = 'not_in_snapshot')
   into v_updated_lot_count, v_reactivated_lot_count
-  from snapshot_matched_lots;
+  from snapshot_changed_lots c
+  join snapshot_matched_lots m on m.reagent_lot_id = c.lot_id
+  where c.lot_id is not null;
 
   -- 12) 신규 Lot INSERT(§14) — 제조사 Lot No. 있으면 그대로, 없으면 내부 관리번호를
   --     이 트랜잭션(전역 advisory lock 보유 중) 안에서 순차 채번(§15). 프론트에서

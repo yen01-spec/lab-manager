@@ -280,33 +280,48 @@ async function T01_unchanged() {
     if (lot.updated_at !== beforeLots[id]) changedCount += 1
     assertEq(lot.id, id, 'lot id preserved')
   }
+  assertEq(data.updated_lots, 0, 'updated_lots=0 (Phase 4b-3b-S2.2 핵심 — 완전 무변경 snapshot)')
+  assertEq(changedCount, 0, '실제 updated_at 변경 Lot 수=0')
+  const { count: syncCountAfter } = await service.from('inventory_snapshot_syncs').select('id', { count: 'exact', head: true }).eq('snapshot_id', data.snapshot_id)
+  assertEq(syncCountAfter, 1, 'inventory_snapshot_syncs에는 실행 기록 1건은 남음(Lot 변경 0건과는 별개)')
   return { rpcResult: data, updated_lots_field: data.updated_lots, baselineCount: baselineIds.length, beforeUpdatedAt: beforeLots, afterUpdatedAt, changedCount }
 }
 
 async function T02_stockChange() {
   await reset()
   const baselineIds = await activeLotIds()
+  const beforeUpdatedAt = {}
+  for (const id of baselineIds) beforeUpdatedAt[id] = (await getLot(id)).updated_at
   const rows = await Promise.all(baselineIds.map((id) => existingRow(id, id === LOT.A1 ? { current_stock: 35 } : {})))
   const admin = clientAs(ADMIN_TOKEN)
   const { data, error } = await callRpc(admin, makePayload({ baselineIds, rows }))
   if (error) throw new Error(`RPC 실패: ${error.message}`)
+  assertEq(data.updated_lots, 1, 'updated_lots=1 (A1만 실제 변경)')
   const a1 = await getLot(LOT.A1)
   assertEq(a1.id, LOT.A1, 'A1 id preserved')
   assertEq(a1.current_stock, 35, 'A1 current_stock updated')
+  assertTrue(a1.updated_at !== beforeUpdatedAt[LOT.A1], 'A1 updated_at 변경됨')
   const a2 = await getLot(LOT.A2)
   assertEq(a2.current_stock, 0, 'A2 unchanged')
+  assertEq(a2.updated_at, beforeUpdatedAt[LOT.A2], 'A2 updated_at 불변(no-op)')
   return { rpcResult: data, a1_current_stock: a1.current_stock }
 }
 
 async function T03_locationChange() {
   await reset()
   const baselineIds = await activeLotIds()
+  const beforeUpdatedAt = {}
+  for (const id of baselineIds) beforeUpdatedAt[id] = (await getLot(id)).updated_at
   const rows = await Promise.all(baselineIds.map((id) => existingRow(id, id === LOT.A2 ? { location_id: LOC_B } : {})))
   const admin = clientAs(ADMIN_TOKEN)
   const { data, error } = await callRpc(admin, makePayload({ baselineIds, rows }))
   if (error) throw new Error(`RPC 실패: ${error.message}`)
+  assertEq(data.updated_lots, 1, 'updated_lots=1 (A2만 실제 변경)')
   const a2 = await getLot(LOT.A2)
   assertEq(a2.id, LOT.A2, 'A2 id preserved')
+  assertTrue(a2.updated_at !== beforeUpdatedAt[LOT.A2], 'A2 updated_at 변경됨')
+  const a1 = await getLot(LOT.A1)
+  assertEq(a1.updated_at, beforeUpdatedAt[LOT.A1], 'A1 updated_at 불변(no-op)')
   assertEq(a2.location_id, LOC_B, 'A2 location updated')
   assertEq(a2.lot_no, 'TEST-A2', 'A2 lot_no unchanged')
   assertEq(a2.sealed_count, 1, 'A2 sealed_count unchanged')
@@ -869,6 +884,63 @@ async function T33_mixedReactivationAndExcluded() {
   return { rpcResult: data, c1_status: c1After.status, b1_status: b1After.status }
 }
 
+// Phase 4b-3b-S2.2 §14 — 한 row에서 여러 필드가 동시에 바뀌어도 updated_lots는 "필드 수"가
+// 아니라 "row 수" 기준(=1)이어야 한다.
+async function T34_multiFieldSameRow() {
+  await reset()
+  const baselineIds = await activeLotIds()
+  const rows = await Promise.all(baselineIds.map((id) => existingRow(id, id === LOT.A1
+    ? { current_stock: 20, location_id: LOC_B, shelf_position: 'S-9' }
+    : {})))
+  const admin = clientAs(ADMIN_TOKEN)
+  const { data, error } = await callRpc(admin, makePayload({ baselineIds, rows }))
+  if (error) throw new Error(`RPC 실패: ${error.message}`)
+  assertEq(data.updated_lots, 1, 'updated_lots=1 (필드 3개가 바뀌어도 row는 1개)')
+  const a1 = await getLot(LOT.A1)
+  assertEq(a1.current_stock, 20, 'current_stock 반영')
+  assertEq(a1.location_id, LOC_B, 'location_id 반영')
+  assertEq(a1.shelf_position, 'S-9', 'shelf_position 반영')
+  return { rpcResult: data, a1 }
+}
+
+// Phase 4b-3b-S2.2 §15 — "blank 입력 시 기존값 유지" 정책 필드(cat_no)에 이미 값이 있는
+//상태에서 payload가 blank를 보내면 최종 저장값이 기존과 같으므로 no-op(UPDATE 없음)이어야
+// 한다.
+async function T35_blankRetainNoOp() {
+  await reset()
+  const { error: setupErr } = await service.from('reagent_lots').update({ cat_no: 'TEST-CAT-EXISTING' }).eq('id', LOT.A1)
+  if (setupErr) throw new Error(`fixture 준비 실패: ${setupErr.message}`)
+  const baselineIds = await activeLotIds()
+  const beforeA1 = await getLot(LOT.A1)
+  const rows = await Promise.all(baselineIds.map((id) => existingRow(id, id === LOT.A1 ? { cat_no: null } : {})))
+  const admin = clientAs(ADMIN_TOKEN)
+  const { data, error } = await callRpc(admin, makePayload({ baselineIds, rows }))
+  if (error) throw new Error(`RPC 실패: ${error.message}`)
+  assertEq(data.updated_lots, 0, 'updated_lots=0 (blank는 기존 cat_no를 유지 — 최종값 동일 -> no-op)')
+  const a1 = await getLot(LOT.A1)
+  assertEq(a1.cat_no, 'TEST-CAT-EXISTING', 'cat_no 유지')
+  assertEq(a1.updated_at, beforeA1.updated_at, 'updated_at 불변')
+  return { rpcResult: data, cat_no: a1.cat_no }
+}
+
+// Phase 4b-3b-S2.2 §16 — retain 필드가 DB에서 NULL인데 payload가 실제 값을 주면 그건
+// no-op이 아니라 진짜 변경이므로 반드시 UPDATE 되어야 한다.
+async function T36_nullToValue() {
+  await reset()
+  const baselineIds = await activeLotIds()
+  const beforeA1 = await getLot(LOT.A1)
+  assertEq(beforeA1.cat_no, null, '사전조건: fixture A1.cat_no는 NULL')
+  const rows = await Promise.all(baselineIds.map((id) => existingRow(id, id === LOT.A1 ? { cat_no: 'TEST-CAT-NEW' } : {})))
+  const admin = clientAs(ADMIN_TOKEN)
+  const { data, error } = await callRpc(admin, makePayload({ baselineIds, rows }))
+  if (error) throw new Error(`RPC 실패: ${error.message}`)
+  assertEq(data.updated_lots, 1, 'updated_lots=1 (NULL -> 실제값은 진짜 변경)')
+  const a1 = await getLot(LOT.A1)
+  assertEq(a1.cat_no, 'TEST-CAT-NEW', 'cat_no 반영')
+  assertTrue(a1.updated_at !== beforeA1.updated_at, 'updated_at 변경됨')
+  return { rpcResult: data, cat_no: a1.cat_no }
+}
+
 // ── 7) 실행 ──────────────────────────────────────────────────
 const ALL_TESTS = [
   ['T01_unchanged', T01_unchanged],
@@ -904,6 +976,9 @@ const ALL_TESTS = [
   ['T31_advisoryLock', T31_advisoryLock],
   ['T32_mixedNewAndExcluded', T32_mixedNewAndExcluded],
   ['T33_mixedReactivationAndExcluded', T33_mixedReactivationAndExcluded],
+  ['T34_multiFieldSameRow', T34_multiFieldSameRow],
+  ['T35_blankRetainNoOp', T35_blankRetainNoOp],
+  ['T36_nullToValue', T36_nullToValue],
 ]
 
 async function main() {
