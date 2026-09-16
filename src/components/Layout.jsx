@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { useFCM } from '../hooks/useFCM'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { C, Icon } from '../design'
-import { readSession, revalidateSession, clearSession } from '../lib/session'
+import { readSession, revalidateSession, logoutSession } from '../lib/session'
 import LoginModal from './LoginModal'
 import AdminUpgradeModal from './AdminUpgradeModal'
 
@@ -28,7 +28,7 @@ export default function Layout() {
   const { isMobile, isTablet, isDesktop } = useBreakpoint()
 
   const isAdmin = !!session?.is_admin
-  const student = session ? { student_id: session.student_id, name: session.name } : null
+  const student = session ? { student_id: session.student_id, name: session.name, session_token: session.session_token } : null
 
   useFCM(isAdmin)
 
@@ -37,8 +37,8 @@ export default function Layout() {
   }, [])
 
   function handleLogout() {
-    clearSession()
     setSession(null)
+    logoutSession() // best-effort 서버 세션 revoke(비동기, 응답 안 기다림) + localStorage clear
   }
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
 

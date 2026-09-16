@@ -16,10 +16,13 @@ export default function AdminUpgradeModal({ open, onClose, student, onSuccess })
     setError('')
     try {
       const updated = await upgradeToAdmin({ student_id: student.student_id, pin })
+      // student_admin_upgrade는 새 토큰을 발급하지 않는다(이미 로그인된 상태에서만 쓰는
+      // 흐름이라 기존 session_token을 그대로 이어서 쓴다 — Phase S-RLS2).
       const session = {
         student_id: updated.student_id,
         name: updated.name,
         is_admin: updated.is_admin,
+        session_token: student.session_token,
       }
       writeSession(session)
       handleClose()

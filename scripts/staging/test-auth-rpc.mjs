@@ -135,12 +135,9 @@ await test('student_admin_login: wrong password still rejected after upgrade', a
   assertEq(data.status, 'wrong_password', 'status')
 })
 
-await test('student_session_refresh: reflects current is_admin', async () => {
-  const { data, error } = await anon.rpc('student_session_refresh', { p_student_id: 'TEST-STU-0002' })
-  if (error) throw new Error(error.message)
-  assertEq(data.status, 'ok', 'status')
-  assertEq(data.is_admin, true, 'is_admin')
-})
+// student_session_refresh는 20260916100000부터 p_student_id가 아니라 p_session_token을
+// 받는다(Phase S-RLS2 B안 — 신원을 client가 보낸 student_id로 믿지 않기 위함). 토큰
+// 발급/검증 흐름은 scripts/staging/test-session-token.mjs에서 별도로 더 철저히 테스트.
 
 await test('admin_password_change: wrong current rejected', async () => {
   const { error } = await anon.rpc('admin_password_change', { p_current: 'WRONG', p_new: 'TEST-ADMIN-PIN-0002' })

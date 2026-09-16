@@ -123,7 +123,7 @@ export default function LoginModal({ open, onClose, onSuccess }) {
         birth_date: form.birth_date.trim(),
         name: form.name.trim(),
       })
-      finish({ student_id: student.student_id, name: student.name, is_admin: false })
+      finish({ student_id: student.student_id, name: student.name, is_admin: false, session_token: student.session_token })
     } catch (err) {
       setError(err.message || '등록 중 오류가 발생했습니다')
       setStep('id_entry')

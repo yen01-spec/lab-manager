@@ -7,6 +7,7 @@ import { getHazardCategory } from '../lib/hazardCategory'
 import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
 import { resolveLotNo } from '../lib/lotNo'
 import LotNoInput from '../components/reagents/LotNoInput'
+import { getSessionToken } from '../lib/session'
 
 // 국가유해물질정보(KECO) GHS 조회 API가 주는 공식 픽토그램 코드(pctgrmCd) → 표시용 매핑.
 // 예전엔 hazard 텍스트에서 키워드를 추측해서 이모지를 붙였는데, 이 API 응답에 이미
@@ -340,13 +341,15 @@ export default function ReagentDetail() {
     if (!disposalForm.reason.trim()) { alert('폐기 사유를 입력해주세요'); return }
     if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
     const targetLot = lots.find(l => l.id === disposalForm.lot_id)
-    await supabase.from('disposal_requests').insert({
-      reagent_id: id, lot_id: targetLot?.id || null,
-      reagent_name: reagent.name, lot_no: targetLot?.lot_no || null,
-      quantity: disposalForm.quantity, reason: disposalForm.reason,
-      requested_by: student.name, requested_by_student_id: student.student_id,
-      status: 'pending',
+    // Phase S-RLS2(B안) — requested_by/requested_by_student_id는 더 이상 client에서 보내지
+    // 않는다. 서버가 session_token으로 직접 신원을 조회해서 기록한다(위조 불가).
+    const { error } = await supabase.rpc('disposal_request_submit', {
+      p_session_token: getSessionToken(),
+      p_reagent_id: id, p_lot_id: targetLot?.id || null,
+      p_reagent_name: reagent.name, p_lot_no: targetLot?.lot_no || null,
+      p_quantity: disposalForm.quantity, p_reason: disposalForm.reason,
     })
+    if (error) { alert(error.message || '폐기 신청 중 오류가 발생했어요'); return }
     alert('폐기 신청이 완료됐어요!')
     setShowDisposalModal(false)
     setDisposalForm({ lot_id: '', quantity: '1', reason: '' })
