@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { C, inputStyle, labelStyle, btnPrimary, btnGhost, Icon } from '../design'
-import { lookupStudent, registerStudent, loginAdmin, writeSession } from '../lib/session'
+import { checkStudentLogin, registerStudent, loginAdmin, writeSession } from '../lib/session'
 
 const EMPTY_FORM = { student_id: '', birth_date: '', name: '', password: '' }
 
@@ -98,17 +98,15 @@ export default function LoginModal({ open, onClose, onSuccess }) {
         return
       }
 
-      const student = await lookupStudent(form.student_id.trim())
-      if (!student) {
+      const session = await checkStudentLogin({
+        student_id: form.student_id.trim(), name: form.name.trim(), birth_date: form.birth_date.trim(),
+      })
+      if (!session) {
         setStep('confirm_new')
         return
       }
-      if (student.name !== form.name.trim() || student.birth_date !== form.birth_date.trim()) {
-        setError('등록된 정보와 다릅니다. 본인이 맞다면 관리자에게 문의하세요')
-        return
-      }
       // 비밀번호 없이 로그인 — 관리자 권한이 있어도 이번 세션은 일반 사용자로 시작
-      finish({ student_id: student.student_id, name: student.name, is_admin: false })
+      finish(session)
     } catch (err) {
       setError(err.message || '처리 중 오류가 발생했습니다')
     } finally {

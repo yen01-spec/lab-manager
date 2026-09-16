@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../supabase'
 import { C, Card, inputStyle, labelStyle, btnPrimary, btnGhost } from '../../design'
 import { getSetting, setSetting, SCHOOL_SAFETY_SYSTEM_FALLBACK, KOSHA_LABEL_FALLBACK } from '../../lib/appSettings'
+import { changeAdminPassword as changeAdminPasswordRpc } from '../../lib/session'
 
 // ══════════════════════════════════════════════
 //  설정 — 관리자 비밀번호 / 실험실 규칙 / 안전 브리핑 / 알림(FCM) 토큰
@@ -64,9 +65,12 @@ export default function SettingsTab() {
     if (!adminPw.new1.trim()) { alert('새 비밀번호를 입력해주세요'); return }
     if (adminPw.new1 !== adminPw.new2) { alert('새 비밀번호가 일치하지 않습니다'); return }
     if (adminPw.new1.length < 6) { alert('비밀번호는 6자 이상이어야 합니다'); return }
-    const { data } = await supabase.from('app_settings').select('value').eq('key', 'admin_password').single()
-    if (data?.value !== adminPw.current) { alert('현재 비밀번호가 틀렸습니다'); return }
-    await supabase.from('app_settings').update({ value: adminPw.new1 }).eq('key', 'admin_password')
+    try {
+      await changeAdminPasswordRpc({ current: adminPw.current, next: adminPw.new1 })
+    } catch (err) {
+      alert(err.message || '현재 비밀번호가 틀렸습니다')
+      return
+    }
     await supabase.from('fcm_tokens').delete().eq('role', 'admin')
     alert('✅ 관리자 비밀번호가 변경되었습니다.\n기존 관리자 기기의 알림이 초기화되었어요.')
     setAdminPw({ current: '', new1: '', new2: '' })

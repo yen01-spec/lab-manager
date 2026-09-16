@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs'
 import { supabase } from '../supabase'
 
 const SESSION_KEY = 'lm_session'
@@ -20,92 +19,66 @@ export function clearSession() {
   localStorage.removeItem(SESSION_KEY)
 }
 
-// 캐시된 세션을 students 테이블 최신 상태로 다시 확인한다.
+// 캐시된 세션을 최신 상태로 다시 확인한다(RLS 보안 감사, 2026-09-16 — students 테이블에서
+// birth_date/password_hash 컬럼 권한 자체를 회수했으므로 SECURITY DEFINER RPC로 조회).
 // 학번이 사라졌으면 세션을 지우고, 아니면 이름/관리자 여부를 최신값으로 갱신한다.
 export async function revalidateSession() {
   const cached = readSession()
   if (!cached) return null
 
-  const student = await lookupStudent(cached.student_id)
-  if (!student) {
+  const { data, error } = await supabase.rpc('student_session_refresh', { p_student_id: cached.student_id })
+  if (error || !data || data.status !== 'ok') {
     clearSession()
     return null
   }
 
-  const fresh = {
-    student_id: student.student_id,
-    name: student.name,
-    is_admin: student.is_admin,
-  }
+  const fresh = { student_id: data.student_id, name: data.name, is_admin: data.is_admin }
   writeSession(fresh)
   return fresh
 }
 
-export async function lookupStudent(student_id) {
-  const { data } = await supabase
-    .from('students')
-    .select('student_id, name, birth_date, is_admin, password_hash')
-    .eq('student_id', student_id)
-    .maybeSingle()
-  return data || null
+// 비밀번호 없는 "일반 로그인" 확인 — 존재하지 않으면 null(신규등록 단계로), 이름/생년월일이
+// 다르면 throw, 일치하면 세션 후보 반환(is_admin은 항상 false로 시작 — 기존 동작 그대로).
+export async function checkStudentLogin({ student_id, name, birth_date }) {
+  const { data, error } = await supabase.rpc('student_check_login', {
+    p_student_id: student_id, p_name: name, p_birth_date: birth_date,
+  })
+  if (error) throw new Error(error.message)
+  if (data.status === 'not_found') return null
+  if (data.status === 'mismatch') throw new Error('등록된 정보와 다릅니다. 본인이 맞다면 관리자에게 문의하세요')
+  return { student_id: data.student_id, name: data.name, is_admin: false }
 }
 
 export async function registerStudent({ student_id, name, birth_date }) {
-  const { data, error } = await supabase
-    .from('students')
-    .insert({ student_id, name, birth_date })
-    .select('student_id, name, birth_date, is_admin')
-    .single()
-  if (error) throw error
-  return data
-}
-
-// 관리자 비밀번호(app_settings.admin_password) 확인 — 관리자 승격에서 사용
-export async function checkPinPassword(pw) {
-  const { data } = await supabase
-    .from('app_settings')
-    .select('value')
-    .eq('key', 'admin_password')
-    .maybeSingle()
-  return { ok: !!data && pw === data.value }
-}
-
-export async function hashPassword(pw) {
-  const salt = await bcrypt.genSalt(10)
-  return bcrypt.hash(pw, salt)
-}
-
-export async function verifyPassword(pw, hash) {
-  if (!hash) return false
-  return bcrypt.compare(pw, hash)
-}
-
-export async function upgradeToAdmin({ student_id, pin }) {
-  const { ok } = await checkPinPassword(pin)
-  if (!ok) throw new Error('비밀번호가 틀렸습니다')
-
-  const password_hash = await hashPassword(pin)
-  const { data, error } = await supabase
-    .from('students')
-    .update({ password_hash, is_admin: true })
-    .eq('student_id', student_id)
-    .select('student_id, name, birth_date, is_admin')
-    .single()
-  if (error) throw error
+  const { data, error } = await supabase.rpc('student_register', {
+    p_student_id: student_id, p_name: name, p_birth_date: birth_date,
+  })
+  if (error) throw new Error(error.message)
   return data
 }
 
 export async function loginAdmin({ student_id, birth_date, name, password }) {
-  const student = await lookupStudent(student_id)
-  if (!student) throw new Error('등록되지 않은 학번입니다')
-  if (student.name !== name || student.birth_date !== birth_date) {
-    throw new Error('등록된 정보와 다릅니다. 관리자에게 문의하세요')
-  }
-  const valid = await verifyPassword(password, student.password_hash)
-  if (!valid) throw new Error('비밀번호가 틀렸습니다')
-  return {
-    student_id: student.student_id,
-    name: student.name,
-    is_admin: student.is_admin,
-  }
+  const { data, error } = await supabase.rpc('student_admin_login', {
+    p_student_id: student_id, p_name: name, p_birth_date: birth_date, p_password: password,
+  })
+  if (error) throw new Error(error.message)
+  if (data.status === 'not_found') throw new Error('등록되지 않은 학번입니다')
+  if (data.status === 'mismatch') throw new Error('등록된 정보와 다릅니다. 관리자에게 문의하세요')
+  if (data.status === 'wrong_password') throw new Error('비밀번호가 틀렸습니다')
+  return { student_id: data.student_id, name: data.name, is_admin: data.is_admin }
+}
+
+// 관리자 승격 — 공유 PIN을 입력하면 그 값이 그대로 본인 비밀번호가 된다(기존 동작 그대로).
+// PIN 대조/해싱 전부 서버(student_admin_upgrade RPC)에서 처리.
+export async function upgradeToAdmin({ student_id, pin }) {
+  const { data, error } = await supabase.rpc('student_admin_upgrade', { p_student_id: student_id, p_pin: pin })
+  if (error) throw new Error(error.message)
+  return data
+}
+
+// 관리자 공유 PIN 변경(SettingsTab) — 현재값 대조도 서버에서 처리.
+export async function changeAdminPassword({ current, next }) {
+  const { data, error } = await supabase.rpc('admin_password_change', { p_current: current, p_new: next })
+  if (error) throw new Error(error.message)
+  return data
 }

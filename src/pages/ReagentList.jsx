@@ -3,7 +3,7 @@ import { useOutletContext, useSearchParams, useNavigate } from 'react-router-dom
 import { supabase } from '../supabase'
 import { C, PageBanner } from '../design'
 import { exportReagents } from '../exportUtils'
-import { lookupStudent, writeSession } from '../lib/session'
+import { checkStudentLogin, writeSession } from '../lib/session'
 import { computeSortLetter } from '../lib/sortLetter'
 import { resolveLotNo } from '../lib/lotNo'
 import { groupReagentsByName } from '../lib/nameGroup'
@@ -303,16 +303,17 @@ export default function ReagentList() {
     setInlineLoginLoading(true)
     setInlineLoginError('')
     try {
-      const found = await lookupStudent(student_id.trim())
-      if (!found) {
-        setInlineLoginError('등록되지 않은 학번이에요. 처음이시면 상단의 "로그인" 버튼으로 먼저 등록해주세요.')
-        return
-      }
-      if (found.name !== name.trim() || found.birth_date !== birth_date.trim()) {
+      let session
+      try {
+        session = await checkStudentLogin({ student_id: student_id.trim(), name: name.trim(), birth_date: birth_date.trim() })
+      } catch {
         setInlineLoginError('등록된 정보와 달라요. 본인이 맞다면 관리자에게 문의하세요.')
         return
       }
-      const session = { student_id: found.student_id, name: found.name, is_admin: false }
+      if (!session) {
+        setInlineLoginError('등록되지 않은 학번이에요. 처음이시면 상단의 "로그인" 버튼으로 먼저 등록해주세요.')
+        return
+      }
       writeSession(session)
       applySession?.(session)
       setShowInlineLogin(false)
