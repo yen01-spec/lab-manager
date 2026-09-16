@@ -126,11 +126,12 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
           to_location_id: moveLocation, to_location_name: toLocName, moved_by: movedBy,
         })
       } else {
-        await supabase.from('location_requests').insert({
-          reagent_id: info.reagentId, lot_id: lotId, reagent_name: info.reagentName,
-          from_location_id: info.fromLocationId, from_location_name: fromLocName,
-          to_location_id: moveLocation, to_location_name: toLocName,
-          requested_by: movedBy, status: 'pending',
+        // Phase S-RLS3 Batch 1 — requested_by는 서버가 session_token으로 조회한 이름을 쓴다
+        // (movedBy 입력란은 관리자 분기 전용 표시로 남기고, 이 경로에선 더 이상 안 보냄).
+        await supabase.rpc('location_request_submit', {
+          p_session_token: student?.session_token, p_reagent_id: info.reagentId, p_lot_id: lotId, p_reagent_name: info.reagentName,
+          p_from_location_id: info.fromLocationId, p_from_location_name: fromLocName,
+          p_to_location_id: moveLocation, p_to_location_name: toLocName, p_notes: null,
         })
       }
     }

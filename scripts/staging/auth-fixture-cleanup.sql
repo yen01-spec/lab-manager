@@ -1,6 +1,10 @@
 -- STAGING TEST ONLY
 -- NEVER APPLY TO PRODUCTION
 -- NOT A PRODUCTION MIGRATION
+drop function if exists public.location_request_submit(text, uuid, uuid, text, uuid, text, uuid, text, text);
+drop function if exists public.reagent_change_request_submit(text, uuid, text, text, text);
+drop table if exists location_requests;
+drop table if exists reagent_change_requests;
 drop function if exists public.disposal_request_submit(text, uuid, uuid, text, text, text, text);
 drop table if exists disposal_requests;
 drop function if exists public.student_logout(text);

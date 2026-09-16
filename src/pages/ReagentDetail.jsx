@@ -262,12 +262,13 @@ export default function ReagentDetail() {
       setReagent(prev => ({ ...prev, [field]: value, ...(sourceField ? { [sourceField]: 'manual' } : {}) }))
     } else {
       if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
-      await supabase.from('reagent_change_requests').insert({
-        reagent_id: id, field_name: field,
-        old_value: String(reagent[field] ?? ''), new_value: String(value),
-        requested_by: student.name, requested_by_student_id: student.student_id,
-        status: 'pending',
+      // Phase S-RLS3 Batch 1 — requested_by/requested_by_student_id는 더 이상 client가
+      // 보내지 않는다. 서버가 session_token으로 직접 신원을 조회해서 기록한다.
+      const { error } = await supabase.rpc('reagent_change_request_submit', {
+        p_session_token: getSessionToken(), p_reagent_id: id, p_field_name: field,
+        p_old_value: String(reagent[field] ?? ''), p_new_value: String(value),
       })
+      if (error) { alert(error.message || '수정 신청 중 오류가 발생했어요'); return }
       alert('수정 신청 완료! 관리자 승인 후 반영됩니다.')
       fetchPendingChanges()
     }
@@ -394,12 +395,13 @@ export default function ReagentDetail() {
       setShowMoveModal(false)
       fetchAll()
     } else {
-      await supabase.from('location_requests').insert({
-        reagent_id: id, lot_id: moveForm.lot_id, reagent_name: reagent.name,
-        from_location_id: targetLot?.location_id || null, from_location_name: fromLocName,
-        to_location_id: moveForm.to_location_id, to_location_name: toLocName,
-        requested_by: student.name, notes: moveForm.notes, status: 'pending',
+      // Phase S-RLS3 Batch 1 — requested_by는 서버가 session_token으로 조회한 이름을 쓴다.
+      const { error } = await supabase.rpc('location_request_submit', {
+        p_session_token: getSessionToken(), p_reagent_id: id, p_lot_id: moveForm.lot_id, p_reagent_name: reagent.name,
+        p_from_location_id: targetLot?.location_id || null, p_from_location_name: fromLocName,
+        p_to_location_id: moveForm.to_location_id, p_to_location_name: toLocName, p_notes: moveForm.notes,
       })
+      if (error) { alert(error.message || '위치 이동 신청 중 오류가 발생했어요'); return }
       alert('위치 이동 신청 완료! 관리자 승인 후 처리됩니다.')
       setShowMoveModal(false)
     }
