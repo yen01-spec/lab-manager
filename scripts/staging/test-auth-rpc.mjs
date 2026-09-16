@@ -157,6 +157,18 @@ await test('admin_password_change: correct current changes it, old pin then inva
   assertEq(data.is_admin, true, '새 PIN으로는 정상 동작')
 })
 
+await test('anon cannot delete students', async () => {
+  const { error } = await anon.from('students').delete().eq('student_id', 'TEST-STU-0001')
+  assertTrue(!!error, '직접 DELETE가 차단되지 않음')
+})
+
+await test('app_settings: anon cannot insert/update/delete directly (defense in depth, RLS already blocked this)', async () => {
+  const { error: insErr } = await anon.from('app_settings').insert({ key: 'TEST-DIRECT-KEY', value: 'x' })
+  assertTrue(!!insErr, 'app_settings 직접 INSERT가 차단되지 않음')
+  const { error: updErr } = await anon.from('app_settings').update({ value: 'x' }).eq('key', 'lab_name')
+  assertTrue(!!updErr, 'app_settings 직접 UPDATE가 차단되지 않음')
+})
+
 console.log('\n=== RESULT SUMMARY ===')
 console.log(JSON.stringify(results, null, 2))
 const failed = results.filter((r) => r.status === 'FAIL')

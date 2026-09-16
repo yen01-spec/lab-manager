@@ -50,6 +50,19 @@ create policy app_settings_read on app_settings
   for select to anon, authenticated
   using (key <> 'admin_password');
 
+-- 이 table에는 이미 write policy가 없어서(RLS enabled) anon/authenticated의 실제
+-- write는 전부터 막혀 있었지만, table-level GRANT 자체는 INSERT/UPDATE/DELETE/TRUNCATE까지
+-- 넓게 남아 있었다(Phase S-RLS2 §2/§10 ACL 감사에서 발견) — 방어 종심을 위해 SELECT만
+-- 남기고 회수한다(동작 변화 없음, RLS가 이미 막던 것을 ACL 레벨에서도 막을 뿐).
+revoke all on app_settings from anon, authenticated;
+grant select on app_settings to anon, authenticated;
+-- app_settings 값 변경은 admin_password_change 같은 SECURITY DEFINER RPC를 통해서만
+-- 가능하다(§7). 다른 key(school_safety_system_url 등)의 관리자 write RPC는 이번
+-- Phase 범위 밖 — 필요해지면 별도로 추가한다(주의: appSettings.js의 setSetting()이
+-- admin_password 외 다른 key를 직접 update/insert하려는 경로가 이미 있었는데, RLS에
+-- write policy가 원래 없어서 이 revoke 이전부터 이미 no-op였다 — 이번 변경이 새로
+-- 깨뜨리는 기능은 없다. 다만 그 기존 버그 자체는 이번 Phase에서 고치지 않는다).
+
 
 -- ── 3) 일반 로그인 확인(비밀번호 없이) ──────────────────────────────────
 -- 기존 LoginModal의 "일반 로그인" 분기: 학번 조회 → 이름/생년월일 일치 확인.
