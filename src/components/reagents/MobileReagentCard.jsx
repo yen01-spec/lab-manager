@@ -23,8 +23,8 @@ export default function MobileReagentCard({ r, locations, isPicked, onTogglePick
         border: `1px solid ${C.border}`, borderRadius: '12px', padding: '14px 16px',
         display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer',
       }}>
-      <div onClick={e => { e.stopPropagation(); onTogglePick(r, e) }} style={{ paddingTop: '2px' }}>
-        <input type="checkbox" checked={isPicked} onChange={() => {}} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+      <div onClick={e => { e.stopPropagation(); onTogglePick(r, e) }} style={{ padding: '10px 10px 10px 0', margin: '-10px 0 -10px -6px', display: 'flex', alignItems: 'flex-start' }}>
+        <input type="checkbox" checked={isPicked} onChange={() => {}} aria-label={`${r.name} 선택 목록에 담기`} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginBottom: '4px' }}>

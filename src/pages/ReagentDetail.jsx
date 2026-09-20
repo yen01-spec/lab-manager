@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useOutletContext, useNavigate, useLocation } from 'react-router-dom'
 import { supabase, supabaseAdmin } from '../supabase'
 import { reviewDisposalRequest } from '../lib/adminReview'
+import { useBusyAction } from '../hooks/useBusyAction'
 import { useAdminSession } from '../hooks/useAdminSession'
 import AdminAuthBanner from '../components/admin/AdminAuthBanner'
 import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../design'
@@ -335,7 +336,7 @@ export default function ReagentDetail() {
     fetchAll()
   }
 
-  async function submitDisposal() {
+  async function submitDisposalImpl() {
     if (!disposalForm.lot_id) { alert('폐기할 Lot을 선택해주세요'); return }
     if (!disposalForm.reason.trim()) { alert('폐기 사유를 입력해주세요'); return }
     if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
@@ -364,7 +365,7 @@ export default function ReagentDetail() {
     fetchAll()
   }
 
-  async function submitMove() {
+  async function submitMoveImpl() {
     if (!moveForm.lot_id) { alert('이동할 Lot을 선택해주세요'); return }
     if (!moveForm.to_location_id) { alert('이동할 위치를 선택해주세요'); return }
     if (!isAdmin && !student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
@@ -394,7 +395,7 @@ export default function ReagentDetail() {
   }
 
   // 이미 등록된 시약(마스터)에 새로 구매한 Lot을 추가 — 재구매 시 신규 시약으로 다시 등록할 필요 없게 하는 핵심 경로
-  async function submitAddLot() {
+  async function submitAddLotImpl() {
     if (!addLotForm.location_id) { alert('보관 위치를 선택해주세요'); return }
     if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
     // 내부 관리번호(KNU-날짜-순번)는 서버가 원자적으로 부여하고, 최초 재고 이력도 서버가 기록한다.
@@ -411,6 +412,10 @@ export default function ReagentDetail() {
     setAddLotForm({ lot_no: '', noLotReason: '', cat_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
     fetchAll()
   }
+
+  const [submitAddLot] = useBusyAction(submitAddLotImpl)
+  const [submitMove] = useBusyAction(submitMoveImpl)
+  const [submitDisposal] = useBusyAction(submitDisposalImpl)
 
   async function setLotStatus(lot, status) {
     if (!isAdmin) return

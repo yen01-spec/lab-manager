@@ -31,7 +31,7 @@ export const C = {
   borderDiv:   '#E7EAF0',   // 섹션 구분
   text:        '#1A2230',   // 본문 (짙음)
   textSub:     '#586173',   // 본문 보조
-  muted:       '#9AA1AD',   // 캡션, 메타
+  muted:       '#5F6B7A',   // 캡션, 메타 (WCAG AA 4.5:1 이상)
   chipNeutral: '#EEF1F6',   // 중립 배지 배경
   chipText:    '#3A4660',   // 중립 배지 텍스트
 }
@@ -307,7 +307,11 @@ export function Modal({ open, onClose, title, width = 520, children }) {
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div style={{
+      <div
+        role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}
+        ref={el => { if (el && !el.contains(document.activeElement)) el.focus() }}
+        onKeyDown={e => { if (e.key === 'Escape') onClose() }}
+        style={{
         background: C.white,
         borderRadius: '14px',
         boxShadow: shadow.modal,
@@ -317,6 +321,7 @@ export function Modal({ open, onClose, title, width = 520, children }) {
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
+        outline: 'none',
       }}>
         {/* header */}
         <div style={{
@@ -329,7 +334,7 @@ export function Modal({ open, onClose, title, width = 520, children }) {
         }}>
           <span style={{ fontSize: '15px', fontWeight: '700', color: C.navyDeep }}>{title}</span>
           <button
-            onClick={onClose}
+            onClick={onClose} aria-label="닫기"
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
               color: C.muted, padding: '4px', borderRadius: '6px',

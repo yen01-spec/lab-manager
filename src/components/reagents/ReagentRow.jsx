@@ -55,7 +55,7 @@ const ReagentRow = memo(function ReagentRow({
         onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = baseBg }}>
         <td style={{ ...tdStyle, textAlign: 'center', borderRight: `1px solid ${C.borderRow}` }}
           onClick={e => onTogglePick(r, e)}>
-          <input type="checkbox" checked={isSelected} onChange={() => {}}
+          <input type="checkbox" checked={isSelected} onChange={() => {}} aria-label={`${r.name} 선택 목록에 담기`}
             style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
         </td>
         <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', maxWidth: '300px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}`, ...ucBg(uc?.fields.name) }}>

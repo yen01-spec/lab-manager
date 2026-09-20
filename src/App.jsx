@@ -21,7 +21,7 @@ import SafetySignage from './pages/SafetySignage'
 function RequireAdmin({ children }) {
   const { isAdmin, adminSession } = useOutletContext()
   if (!adminSession?.ready) {
-    return <div style={{ padding: '60px 20px', textAlign: 'center', color: '#9AA1AD', fontSize: 14 }}>관리자 로그인 상태를 확인하는 중…</div>
+    return <div style={{ padding: '60px 20px', textAlign: 'center', color: '#5F6B7A', fontSize: 14 }}>관리자 로그인 상태를 확인하는 중…</div>
   }
   if (!isAdmin) {
     return (

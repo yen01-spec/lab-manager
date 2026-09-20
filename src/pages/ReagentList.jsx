@@ -8,6 +8,7 @@ import { computeSortLetter } from '../lib/sortLetter'
 import { groupReagentsByName } from '../lib/nameGroup'
 import { useReagentSearch } from '../hooks/useReagentSearch'
 import { useReagentListParams } from '../hooks/useReagentListParams'
+import { useBusyAction } from '../hooks/useBusyAction'
 import { loadViewSnapshot, saveViewSnapshot } from '../lib/reagentListView'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import ReagentTable from '../components/reagents/ReagentTable'
@@ -209,7 +210,7 @@ export default function ReagentList() {
 
   // studentOverride: 인라인 로그인 확인 직후 곧바로 이어서 제출할 때, 아직 리액트 상태에
   // 반영 안 된(비동기라 한 틱 늦음) student 대신 방금 확인된 세션을 바로 써야 하므로 받음.
-  async function submitMade(studentOverride) {
+  async function submitMadeImpl(studentOverride) {
     const activeStudent = studentOverride || student
     if (!madeForm.name.trim()) { alert('시약명을 입력해주세요'); return }
     if (!madeForm.location_id) { alert('보관 위치를 선택해주세요'); return }
@@ -251,7 +252,7 @@ export default function ReagentList() {
     setNewReagentForm(prev => ({ ...prev, reagent_id: null }))
   }
 
-  async function submitNewReagent(studentOverride) {
+  async function submitNewReagentImpl(studentOverride) {
     const activeStudent = studentOverride || student
     if (!newReagentForm.name.trim()) { alert('시약명을 입력해주세요'); return }
     if (!newReagentForm.location_id) { alert('보관 위치를 선택해주세요'); return }
@@ -276,6 +277,9 @@ export default function ReagentList() {
     setDupCandidates([])
     fetchResults()
   }
+
+  const [submitMade] = useBusyAction(submitMadeImpl)
+  const [submitNewReagent] = useBusyAction(submitNewReagentImpl)
 
   // 인라인 로그인란에 입력한 학번/생년월일/이름을 확인 → 맞으면 로그인 처리(전역 세션에도
   // 반영)와 동시에, 원래 누르려던 등록(신규/직접제조)을 그대로 이어서 제출한다.

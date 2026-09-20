@@ -181,7 +181,7 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
       <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchAll()}
           placeholder="시약명 검색" style={{ ...inputStyle, maxWidth: '200px' }} />
-        <select value={roomFilter} onChange={e => setRoomFilter(e.target.value)} style={{ ...inputStyle, maxWidth: '160px' }}>
+        <select aria-label="실험실 필터" value={roomFilter} onChange={e => setRoomFilter(e.target.value)} style={{ ...inputStyle, maxWidth: '160px' }}>
           <option value="">전체 실험실</option>
           {rooms.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
@@ -219,7 +219,7 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                <th style={thStyle}><input type="checkbox" checked={selectableLotIds.length > 0 && checkedLotIds.size === selectableLotIds.length} onChange={toggleAll} /></th>
+                <th style={thStyle}><input type="checkbox" aria-label="모든 Lot 선택" checked={selectableLotIds.length > 0 && checkedLotIds.size === selectableLotIds.length} onChange={toggleAll} /></th>
                 <th style={thStyle}>시약명</th>
                 <th style={thStyle}>Lot No.</th>
                 <th style={thStyle}>위치</th>
@@ -238,7 +238,7 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
                   return (
                     <tr key={lot.id} onClick={() => toggleLot(lot.id)} style={{ cursor: pend ? 'default' : 'pointer', background: rowBg }}>
                       <td style={tdStyle} onClick={e => e.stopPropagation()}>
-                        <input type="checkbox" checked={checkedLotIds.has(lot.id)} disabled={!!pend} onChange={() => toggleLot(lot.id)} />
+                        <input type="checkbox" aria-label={`${r.name} Lot ${lot.lot_no || '번호없음'} 선택`} checked={checkedLotIds.has(lot.id)} disabled={!!pend} onChange={() => toggleLot(lot.id)} />
                       </td>
                       <td style={{ ...tdStyle, fontWeight: i === 0 ? '600' : '400', color: i === 0 ? C.navy : C.muted, fontSize: i === 0 ? '13px' : '12px', paddingLeft: i === 0 ? undefined : '24px' }}>
                         {i === 0 ? (

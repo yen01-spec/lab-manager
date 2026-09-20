@@ -124,3 +124,21 @@ textarea.autosize-cell {
   background-size: 1.5px 6px;
   background-position: calc(50% - 3.5px) center, 50% center, calc(50% + 3.5px) center;
 }
+
+
+/* ── 접근성/모바일 공통 ───────────────────────────────── */
+:focus-visible { outline: 2px solid #2F6BDB; outline-offset: 2px; }
+/* iOS Safari는 16px 미만 입력칸에 포커스하면 화면을 확대해버린다 — 폰 크기에서는 입력칸 글자를 16px로 */
+@media (max-width: 767px) {
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),
+  select, textarea { font-size: 16px !important; }
+}
+/* 터치 기기: 버튼/선택창은 44px 이상(WCAG·Apple HIG 권장 터치 영역) */
+@media (pointer: coarse) {
+  button, [role=button], select { min-height: 44px; }
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]), textarea { min-height: 44px; }
+  header button { min-width: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

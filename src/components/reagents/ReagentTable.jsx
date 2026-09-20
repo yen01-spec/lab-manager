@@ -138,7 +138,7 @@ export default function ReagentTable({
               <thead>
                 <tr>
                   <th style={{ ...thStyle, borderRight: `1px solid ${C.borderRow}` }} title="선택 목록에 담기">
-                    <input type="checkbox" checked={allPicked}
+                    <input type="checkbox" checked={allPicked} aria-label="현재 목록 전체를 선택 목록에 담기"
                       onChange={() => togglePickAll(data)}
                       style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
                     <div style={{ fontSize: '9.5px', fontWeight: '400', color: C.muted, marginTop: '2px', whiteSpace: 'nowrap' }}>담기</div>

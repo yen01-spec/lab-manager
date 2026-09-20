@@ -105,7 +105,7 @@ export default function ReagentAutocomplete({
         onFocus={() => { if (options.length > 0) setOpen(true) }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         onKeyDown={handleKeyDown}
-        placeholder={placeholder}
+        placeholder={placeholder} aria-label={placeholder}
         style={inputStyleProp}
       />
       {open && options.length > 0 && (

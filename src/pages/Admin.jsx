@@ -78,7 +78,7 @@ export default function Admin() {
             <div key={t.key}>
               {t.section && (
                 <div style={{ padding: '12px 16px 5px', fontSize: '10px', fontWeight: '700',
-                  color: '#A7AEBA', letterSpacing: '0.08em' }}>{t.section}</div>
+                  color: '#5F6B7A', letterSpacing: '0.08em' }}>{t.section}</div>
               )}
               <button onClick={() => setTab(t.key)} style={{
                 display: 'flex', alignItems: 'center', gap: '8px',

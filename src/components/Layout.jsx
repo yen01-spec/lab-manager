@@ -68,7 +68,7 @@ export default function Layout() {
         {/* 왼쪽: 햄버거(모바일) + 로고 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {isMobile && (
-            <button onClick={() => setDrawerOpen(true)} style={{
+            <button onClick={() => setDrawerOpen(true)} aria-label="메뉴 열기" style={{
               background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)',
               cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center',
             }}>
@@ -216,8 +216,8 @@ function NavItem({ to, label, icon, end, location, compact = false }) {
           borderLeft: active ? `3px solid ${C.blue}` : '3px solid transparent',
           cursor: 'pointer',
         }}>
-          <Icon name={icon} size={21} color={active ? C.blue : '#9AA1AD'} />
-          <span style={{ fontSize: 9, color: active ? C.blueDark : '#9AA1AD', fontWeight: active ? 700 : 400, textAlign: 'center' }}>
+          <Icon name={icon} size={21} color={active ? C.blue : '#5F6B7A'} />
+          <span style={{ fontSize: 9, color: active ? C.blueDark : '#5F6B7A', fontWeight: active ? 700 : 400, textAlign: 'center' }}>
             {label.length > 4 ? label.slice(0, 4) : label}
           </span>
         </div>
@@ -232,7 +232,7 @@ function NavItem({ to, label, icon, end, location, compact = false }) {
           onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#F0F4FD' }}
           onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
         >
-          <Icon name={icon} size={20} color={active ? C.blue : '#9AA1AD'} />
+          <Icon name={icon} size={20} color={active ? C.blue : '#5F6B7A'} />
           <span style={{ fontSize: 13.5, fontWeight: active ? 600 : 500, color: active ? C.blueDark : '#586173' }}>
             {label}
           </span>
@@ -250,13 +250,13 @@ function SidebarDesktop({ items, isAdmin, location }) {
       overflowY: 'auto', display: 'flex', flexDirection: 'column',
       zIndex: 100,
     }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#A7AEBA', letterSpacing: '0.4px', padding: '18px 14px 8px' }}>메뉴</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#5F6B7A', letterSpacing: '0.4px', padding: '18px 14px 8px' }}>메뉴</div>
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 12px' }}>
         {items.map(item => <NavItem key={item.to} {...item} location={location} />)}
         {isAdmin && (
           <>
             <div style={{ margin: '10px 2px', borderTop: `1px solid ${C.border}` }} />
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#A7AEBA', letterSpacing: '0.4px', padding: '0 2px 6px' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#5F6B7A', letterSpacing: '0.4px', padding: '0 2px 6px' }}>
               관리자
             </div>
             <NavItem to="/admin" label="관리자 메뉴" icon="admin_panel_settings" location={location} />
@@ -306,12 +306,12 @@ function Drawer({ items, isAdmin, session, adminEmail, onClose, onLogin, onAdmin
             <div style={{ width: 28, height: 28, borderRadius: 7, background: C.blue, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, color: '#fff' }}>K</div>
             <span style={{ color: '#fff', fontWeight: 700, fontSize: 13 }}>시약관리 시스템</span>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+          <button onClick={onClose} aria-label="메뉴 닫기" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
             <Icon name="close" size={20} color="rgba(255,255,255,0.6)" />
           </button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#A7AEBA', letterSpacing: '0.4px', padding: '6px 2px 8px' }}>메뉴</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#5F6B7A', letterSpacing: '0.4px', padding: '6px 2px 8px' }}>메뉴</div>
           <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {items.map(item => <NavItem key={item.to} {...item} location={location} />)}
             {isAdmin && (

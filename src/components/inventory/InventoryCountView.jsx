@@ -4,6 +4,7 @@ import { C, PageBanner, btnPrimary, btnGhost, inputStyle, labelStyle, thStyle, t
 import { fetchAllPages } from '../../lib/fetchAllPages'
 import { smallBtnStyle, diffCellStyle } from '../../lib/inventoryUtils'
 import { computeSortLetter } from '../../lib/sortLetter'
+import { useBusyAction } from '../../hooks/useBusyAction'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import CompanyPicker from '../CompanyPicker'
 import StagedCompanyField from './StagedCompanyField'
@@ -266,7 +267,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     setSearch('')
     setDebouncedSearch('')
   }
-  async function submitInlineNewReagent() {
+  async function submitInlineNewReagentImpl() {
     if (!student?.session_token) { alert('로그인 후 이용해주세요'); return }
     if (!newEntryForm.name.trim()) { alert('화학물질명을 입력해주세요'); return }
     if (!newEntryForm.location_id) { alert('위치를 선택해주세요'); return }
@@ -287,6 +288,8 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     setDebouncedSearch('')
     fetchLots()
   }
+
+  const [submitInlineNewReagent] = useBusyAction(submitInlineNewReagentImpl)
 
   // 알파벳 인덱스 — 실제 존재하는 첫 글자만 추출
   const availableLetters = [...new Set(lots.map(l => {

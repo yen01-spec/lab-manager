@@ -128,7 +128,11 @@ export default function LoginModal({ open, onClose, onSuccess, onAdminLogin }) {
       position: 'fixed', inset: 0, background: 'rgba(16,24,40,0.45)', zIndex: 1000,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }} onClick={e => { if (e.target === e.currentTarget) handleClose() }}>
-      <div style={{
+      <div role="dialog" aria-modal="true" aria-label="로그인" tabIndex={-1}
+        ref={el => { if (el && !el.contains(document.activeElement)) el.focus() }}
+        onKeyDown={e => { if (e.key === 'Escape') handleClose() }}
+        style={{
+        outline: 'none',
         width: '100%', maxWidth: 860, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', maxHeight: '92vh', overflowY: 'auto',
         background: C.white, border: `1px solid ${C.border}`, borderRadius: 16,
         boxShadow: '0 24px 64px rgba(16,24,40,.2)', overflow: 'hidden', position: 'relative',
@@ -136,7 +140,7 @@ export default function LoginModal({ open, onClose, onSuccess, onAdminLogin }) {
         <button onClick={handleClose} style={{
           position: 'absolute', top: 14, right: 14, background: 'rgba(16,24,40,0.06)', border: 'none',
           borderRadius: 8, width: 30, height: 30, cursor: 'pointer', color: C.muted, fontSize: 16, zIndex: 2,
-        }}>×</button>
+        }} aria-label="닫기">×</button>
 
         {/* 왼쪽 브랜드 패널 (모바일에서는 숨김) */}
         {!isMobile && <div style={{
