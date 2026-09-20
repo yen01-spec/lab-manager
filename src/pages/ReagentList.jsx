@@ -42,7 +42,7 @@ export default function ReagentList() {
     setSpecialOnly, setCasMismatchOnly,
   } = useReagentListParams()
   const {
-    locations, results, loading, totalCount, fetchResults,
+    locations, results, loading, overlayInfo, totalCount, fetchResults,
   } = useReagentSearch({ search, roomFilter, detailFilter })
 
   // 뒤로가기(POP)로 돌아왔을 때만 펼침/표시 열 복원 — 스크롤 위치는 목록(useVirtualListRestore)이 복원.
@@ -467,6 +467,15 @@ export default function ReagentList() {
           검색결과 <strong style={{ color: C.navy }}>{groupedResultCount.toLocaleString()}개</strong>
           <span style={{ color: C.muted, fontSize: '12.5px' }}> (전체 {totalCount.toLocaleString()}개)</span>
         </div>
+
+        {overlayInfo && (
+          <div role="status" style={{ margin: '0 0 12px', padding: '9px 14px', borderRadius: '8px', background: '#EEF5FF', border: '1px solid #B9D2F5', color: '#1F4E96', fontSize: '12.5px', lineHeight: 1.6 }}>
+            <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: '#DDEBFF', border: '1px solid #9DBEF0', verticalAlign: '-2px', marginRight: 6 }} />
+            <b>{overlayInfo.year}년 재고실사{overlayInfo.label ? ` · ${overlayInfo.label}` : ''}</b>
+            {overlayInfo.status === 'reviewed' ? ' 검토 중' : overlayInfo.status === 'paused' ? ' 일시중단' : ' 진행 중'} — 실사에서 확인된 {overlayInfo.count}개 Lot의 값이 <b>파란 배경(미확정)</b>으로 표시됩니다.
+            실제 재고 장부는 관리자가 &quot;DB 최종 반영&quot;을 하기 전까지 바뀌지 않아요.
+          </div>
+        )}
 
         {/* 선택 목록 액션 바 */}
         {pickedIds.size > 0 && (

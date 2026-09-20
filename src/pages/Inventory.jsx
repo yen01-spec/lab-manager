@@ -18,17 +18,17 @@ export default function Inventory() {
     sessions, activeSession, locations,
     startForm, setStartForm, zoneMode, setZoneMode, showStartModal, setShowStartModal,
     reviewSession, setReviewSession,
-    progress, myCountedCount, pendingConfirmCount, pausing, rooms,
-    zoneTokenOf, fetchProgress, fetchPendingConfirmCount,
+    progress, myCountedCount, busy, rooms,
+    zoneTokenOf, fetchProgress,
     startSession, pauseSession, resumeSession, cancelSession,
-    completeSession, finalizeSession, undoSessionCompletion,
+    completeSession, reopenSession, finalizeSession,
   } = useInventorySession(student)
 
   // 다른 페이지에 갔다가 재고실사로 돌아와도 "실사 입력" 화면에 있던 걸 유지 —
   // Inventory 컴포넌트가 라우트 이동으로 언마운트되면서 view 상태가 사라지는 문제 보정.
   const restoredViewRef = useRef(false)
   useEffect(() => {
-    if (restoredViewRef.current || !activeSession || !student) return
+    if (restoredViewRef.current || !activeSession || !student || activeSession.status !== 'active') return
     let saved
     try { saved = JSON.parse(sessionStorage.getItem('inv_count_view') || 'null') } catch { saved = null }
     if (!saved || saved.sessionId !== activeSession.id) return
@@ -50,7 +50,7 @@ export default function Inventory() {
       myName={myName}
       student={student}
       isAdmin={isAdmin}
-      onBack={() => { setView('main'); fetchProgress(); fetchPendingConfirmCount(); sessionStorage.removeItem('inv_count_view') }}
+      onBack={() => { setView('main'); fetchProgress(); sessionStorage.removeItem('inv_count_view') }}
     />
   )
 
@@ -77,6 +77,11 @@ export default function Inventory() {
               <div style={{ background: '#FFF3E0', border: '1px solid #FFB74D', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#E65100' }}>
                 <strong>⏸ 실사가 임시저장 상태로 중단되었습니다.</strong>
                 <div style={{ marginTop: '2px', fontSize: '12px', color: '#BF5700' }}>관리자가 재개할 때까지 입력이 제한됩니다.</div>
+              </div>
+            ) : activeSession.status === 'reviewed' ? (
+              <div style={{ background: '#E8F1FF', border: '1px solid #9DBEF0', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#1F4E96' }}>
+                <strong>🔎 관리자 검토 중입니다.</strong>
+                <div style={{ marginTop: '2px', fontSize: '12px' }}>입력은 마감되었고, 관리자가 최종 반영하면 재고에 확정됩니다. 그때까지 시약목록엔 미확정 값(파란 배경)으로 보여요.</div>
               </div>
             ) : (
               <>
@@ -126,19 +131,17 @@ export default function Inventory() {
               title={`📊 ${activeSession.year}년 재고 실사${activeSession.label ? ` · ${activeSession.label}` : ''}`}
               sub={`시작일: ${activeSession.start_date} · 시작자: ${activeSession.created_by} · 범위: ${activeSession.zones?.length ? activeSession.zones.join(', ') : '전체'} · ${activeSession.purpose === 'full_census' ? '전수조사' : '현재목록 재고실사'}`}
               extra={isAdmin && (
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {activeSession.status === 'paused'
-                    ? <button onClick={resumeSession} style={{ ...btnPrimary, background: '#1565C0' }}>▶ 재개</button>
-                    : <button onClick={pauseSession} disabled={pausing} style={{ ...btnGhost, color: '#E65100', borderColor: '#E65100', opacity: pausing ? 0.6 : 1 }}>⏸ 일시중단</button>
-                  }
-                  <button onClick={cancelSession} style={{ ...btnGhost, color: C.danger, borderColor: C.danger }}>🗑️ 실사 취소</button>
-                  {activeSession.status !== 'paused' && (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {activeSession.status === 'paused' && <button onClick={resumeSession} disabled={busy} style={{ ...btnPrimary, background: '#1565C0' }}>▶ 재개</button>}
+                  {activeSession.status === 'active' && <button onClick={pauseSession} disabled={busy} style={{ ...btnGhost, color: '#E65100', borderColor: '#E65100', opacity: busy ? 0.6 : 1 }}>⏸ 일시중단</button>}
+                  <button onClick={cancelSession} disabled={busy} style={{ ...btnGhost, color: C.danger, borderColor: C.danger }}>🗑️ 실사 취소</button>
+                  {activeSession.status === 'active' && (
+                    <button onClick={completeSession} disabled={busy} style={{ ...btnPrimary, background: '#1565C0', minWidth: '150px', textAlign: 'center' }}>✅ 실사 완료 처리</button>
+                  )}
+                  {activeSession.status === 'reviewed' && (
                     <>
-                      <button onClick={completeSession} style={{ ...btnPrimary, background: '#1565C0', width: '150px', textAlign: 'center' }}>✅ 실사 완료 처리</button>
-                      {pendingConfirmCount > 0 && (
-                        <button onClick={undoSessionCompletion} style={{ ...btnGhost, color: C.danger, borderColor: C.danger }}>↩ 완료 취소</button>
-                      )}
-                      <button onClick={finalizeSession} style={{ ...btnPrimary, background: '#38A169', width: '150px', textAlign: 'center' }}>🏁 실사 DB 반영하기</button>
+                      <button onClick={reopenSession} disabled={busy} style={{ ...btnGhost, color: '#1565C0', borderColor: '#1565C0' }}>↩ 검토 취소(다시 열기)</button>
+                      <button onClick={finalizeSession} disabled={busy} style={{ ...btnPrimary, background: '#38A169', minWidth: '150px', textAlign: 'center' }}>🏁 DB 최종 반영</button>
                     </>
                   )}
                 </div>
@@ -167,7 +170,13 @@ export default function Inventory() {
                   <div style={{ height: '100%', borderRadius: '5px', background: progressPct === 100 ? '#38A169' : C.navy, width: `${progressPct}%`, transition: 'width 0.3s' }} />
                 </div>
               </div>
-              {activeSession.status === 'paused' && !isAdmin ? null : (
+              {activeSession.status === 'reviewed' && (
+                <div style={{ background: '#E8F1FF', border: '1px solid #9DBEF0', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#1F4E96' }}>
+                  <strong>🔎 검토 단계</strong> — 학생 입력은 마감되었습니다. 시약목록에는 실사값이 <b>미확정(파란 배경)</b>으로 보이고,
+                  실제 재고 장부는 {isAdmin ? '"DB 최종 반영"을 누르면' : '관리자가 최종 반영하면'} 바뀝니다.
+                </div>
+              )}
+              {activeSession.status !== 'active' ? null : (
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                   {student ? (
                     <span style={{ fontSize: '13.5px', color: C.text }}>👤 {student.name}님으로 시작합니다</span>

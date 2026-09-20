@@ -1,6 +1,15 @@
 -- STAGING TEST ONLY
 -- NEVER APPLY TO PRODUCTION
 -- NOT A PRODUCTION MIGRATION
+drop function if exists public.inventory_session_finalize(bigint);
+drop function if exists public.inventory_session_transition(bigint, text);
+drop function if exists public.inventory_session_start(int, date, text, text, text[], uuid[]);
+drop function if exists public.inventory_new_registration(text, bigint, uuid, jsonb, jsonb, text);
+drop function if exists public.inventory_count_save(text, bigint, jsonb);
+drop function if exists public._inventory_open_session_check(bigint, text);
+drop table if exists inventory_assignments;
+drop table if exists inventory_counts;
+drop table if exists inventory_sessions;
 drop function if exists public.purchase_request_log_update(uuid, text, text, text, text);
 drop function if exists public.purchase_request_submit(text, jsonb, jsonb);
 drop function if exists public.notice_increment_views(uuid);

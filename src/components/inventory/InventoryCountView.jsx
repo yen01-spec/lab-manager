@@ -4,7 +4,6 @@ import { C, PageBanner, btnPrimary, btnGhost, inputStyle, labelStyle, thStyle, t
 import { fetchAllPages } from '../../lib/fetchAllPages'
 import { smallBtnStyle, diffCellStyle } from '../../lib/inventoryUtils'
 import { computeSortLetter } from '../../lib/sortLetter'
-import { resolveLotNo } from '../../lib/lotNo'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import CompanyPicker from '../CompanyPicker'
 import StagedCompanyField from './StagedCompanyField'
@@ -117,17 +116,27 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
   // 시약이라도 병이 여러 개면 각각 별도 Lot으로 등록돼 있어야 함), 실사에서 입력받는 실측값은
   // "잔량(%)" 하나뿐. 미개봉 병 수(sealed_count)는 장부값 그대로 자동으로 같이 저장해서
   // (반영 로직이 계속 sealed_count도 갱신하므로) 다른 화면에는 영향이 없게 함.
+  // 모든 임시저장은 서버 RPC(inventory_count_save)로만 — 신원은 session_token으로 서버가 확정하고
+  // 실사가 진행 중(active)일 때만 저장된다. 장부(reagents/reagent_lots)는 여기서 절대 바뀌지 않는다.
+  async function saveCount(lot, fields) {
+    const existing = counts[lot.id]
+    if (!existing) return false
+    if (!student?.session_token) { alert('로그인 후 이용해주세요'); return false }
+    const { data, error } = await supabase.rpc('inventory_count_save', {
+      p_session_token: student.session_token, p_count_id: existing.id, p_fields: fields,
+    })
+    if (error) { alert(error.message || '저장 중 오류가 발생했어요'); return false }
+    setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], ...data } }))
+    return true
+  }
+
   async function saveStock(lot, value) {
     const numVal = Number(value)
     if (isNaN(numVal) || numVal < 0) return
     setSaving(prev => ({ ...prev, [lot.id]: true }))
     const existing = counts[lot.id]
     const bookSealed = existing?.book_sealed ?? lot.sealed_count
-    const updateData = { actual_stock: numVal, actual_sealed: bookSealed, counted_by: myName, counted_by_student_id: student?.student_id ?? null, counted_at: new Date().toISOString() }
-    if (existing) {
-      await supabase.from('inventory_counts').update(updateData).eq('id', existing.id)
-      setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], ...updateData } }))
-    }
+    await saveCount(lot, { actual_stock: numVal, actual_sealed: bookSealed })
     setSaving(prev => ({ ...prev, [lot.id]: false }))
   }
 
@@ -144,10 +153,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
 
   // 미확인(분실) 표시 — 스테이징만(실사 완료 처리 시점에 reagent_lots.status='missing'으로 반영)
   async function setMissing(lot, value) {
-    const existing = counts[lot.id]
-    if (!existing) return
-    await supabase.from('inventory_counts').update({ reported_missing: value }).eq('id', existing.id)
-    setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], reported_missing: value } }))
+    await saveCount(lot, { reported_missing: value })
   }
 
   // 이상기록도 잔량/미개봉처럼 열에 바로 입력하는 칸(Tab/Enter로 이동) — 모달 없음.
@@ -156,8 +162,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     if (!existing) return
     const trimmed = value.trim() || null
     if (trimmed === (existing.abnormal_note || null)) return
-    await supabase.from('inventory_counts').update({ abnormal_note: trimmed }).eq('id', existing.id)
-    setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], abnormal_note: trimmed } }))
+    await saveCount(lot, { abnormal_note: trimmed })
   }
 
   // 폐기 신청 — 실사 완료 처리 흐름과 무관하게 기존 disposal_requests 신청→승인 구조 그대로 재사용.
@@ -204,10 +209,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
   // 위치 변경(종합실사 전용) — 스테이징만(실사 완료 처리 시점에 location_id 반영 + location_history 기록).
   // 열에 있는 select에서 고르는 즉시 저장(별도 저장 버튼 없음).
   async function changeLocation(lot, locationId) {
-    const existing = counts[lot.id]
-    if (!existing) return
-    await supabase.from('inventory_counts').update({ staged_location_id: locationId || null }).eq('id', existing.id)
-    setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], staged_location_id: locationId || null } }))
+    await saveCount(lot, { staged_location_id: locationId || null })
   }
 
   // 시약 기본정보(시약명/CAS/회사/용량/단위/성상/유해정보) 실사 중 수정 — 잔량/미개봉과 같은
@@ -221,9 +223,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     if (!existing) return
     const alreadyStaged = existing.staged_reagent_fields || {}
     if (field in alreadyStaged && alreadyStaged[field] === value) return
-    const nextStaged = { ...alreadyStaged, [field]: value }
-    await supabase.from('inventory_counts').update({ staged_reagent_fields: nextStaged }).eq('id', existing.id)
-    setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], staged_reagent_fields: nextStaged } }))
+    await saveCount(lot, { staged_reagent_fields: { ...alreadyStaged, [field]: value } })
   }
 
   // Lot 고유정보(Cat No./Lot No.) 실사 중 수정 — saveReagentField와 동일한 스테이징 방식이지만
@@ -233,9 +233,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     if (!existing) return
     const alreadyStaged = existing.staged_lot_fields || {}
     if (field in alreadyStaged && alreadyStaged[field] === value) return
-    const nextStaged = { ...alreadyStaged, [field]: value }
-    await supabase.from('inventory_counts').update({ staged_lot_fields: nextStaged }).eq('id', existing.id)
-    setCounts(prev => ({ ...prev, [lot.id]: { ...prev[lot.id], staged_lot_fields: nextStaged } }))
+    await saveCount(lot, { staged_lot_fields: { ...alreadyStaged, [field]: value } })
   }
 
   // 신규(미등록) 시약 등록 — 검색해서 기존 목록에 전혀 없으면 상단 검색창 아래 드롭다운에
@@ -269,39 +267,20 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     setDebouncedSearch('')
   }
   async function submitInlineNewReagent() {
-    if (!myName.trim()) { alert('로그인 후 이용해주세요'); return }
+    if (!student?.session_token) { alert('로그인 후 이용해주세요'); return }
     if (!newEntryForm.name.trim()) { alert('화학물질명을 입력해주세요'); return }
     if (!newEntryForm.location_id) { alert('위치를 선택해주세요'); return }
-    let reagentId = newEntryForm.reagent_id
-    if (!reagentId) {
-      const { data: r, error } = await supabase.from('reagents').insert({
-        name: newEntryForm.name.trim(), purity: newEntryForm.purity || null, cas_no: newEntryForm.cas_no || null, company: newEntryForm.company || null,
-        category: newEntryForm.category || null, volume: newEntryForm.volume || null, unit: newEntryForm.unit || null,
-        reagent_type: 'purchased', status: 'active', registered_by: student?.student_id ?? null,
-        sort_letter: computeSortLetter(newEntryForm.name),
-      }).select().single()
-      if (error) { alert('시약 등록 실패: ' + error.message); return }
-      reagentId = r.id
-    }
-    const stockNum = Number(newEntryForm.current_stock) || 0
-    const lot = await resolveLotNo({ lotNo: newEntryForm.lot_no })
-    const { data: newLot, error: lotErr } = await supabase.from('reagent_lots').insert({
-      reagent_id: reagentId, lot_no: lot.lot_no, lot_source: lot.lot_source, cat_no: newEntryForm.cat_no || null,
-      sealed_count: 1, current_stock: stockNum, location_id: newEntryForm.location_id, status: 'active',
-    }).select().single()
-    if (lotErr) { alert('Lot 등록 실패: ' + lotErr.message); return }
-    await supabase.from('inventory_counts').insert({
-      session_id: session.id, reagent_id: reagentId, lot_id: newLot.id,
-      book_sealed: 0, book_stock: 0, book_status: 'active', book_location_id: newEntryForm.location_id,
-      actual_sealed: 1, actual_stock: stockNum,
-      abnormal_note: newEntryForm.abnormal_note.trim() || null,
-      counted_by: myName, counted_by_student_id: student?.student_id ?? null, counted_at: new Date().toISOString(),
-      is_new_registration: true,
+    // 서버 RPC가 시약/Lot/실사 항목을 한 번에 만든다(미확정 표시로 생성 — 최종 반영 때 확정, 취소하면 삭제).
+    const { error } = await supabase.rpc('inventory_new_registration', {
+      p_session_token: student.session_token, p_session_id: session.id, p_reagent_id: newEntryForm.reagent_id,
+      p_reagent: newEntryForm.reagent_id ? null : {
+        name: newEntryForm.name.trim(), purity: newEntryForm.purity, cas_no: newEntryForm.cas_no, company: newEntryForm.company,
+        category: newEntryForm.category, volume: newEntryForm.volume, unit: newEntryForm.unit, sort_letter: computeSortLetter(newEntryForm.name),
+      },
+      p_lot: { location_id: newEntryForm.location_id, current_stock: newEntryForm.current_stock, lot_no: newEntryForm.lot_no, cat_no: newEntryForm.cat_no },
+      p_abnormal_note: newEntryForm.abnormal_note || null,
     })
-    await supabase.from('stock_logs').insert({
-      target_type: 'reagent', lot_id: newLot.id, user_name: `[실사] ${myName}`,
-      before_sealed: 0, after_sealed: 1, before_stock: 0, after_stock: stockNum,
-    })
+    if (error) { alert('등록 실패: ' + error.message); return }
     alert(newEntryForm.reagent_id ? '기존 시약에 새 Lot이 등록되었습니다!' : '미등록 시약이 입력되었습니다!')
     setNewEntryMode(false)
     setSearch('')

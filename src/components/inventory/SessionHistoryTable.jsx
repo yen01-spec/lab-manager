@@ -3,7 +3,7 @@ import { smallBtnStyle } from '../../lib/inventoryUtils'
 
 // 완료/중단된 회차 목록("실사 이력") — 완료된 회차는 관리자가 교차확인 모달을 열 수 있음.
 export default function SessionHistoryTable({ sessions, isAdmin, onReview }) {
-  const pastSessions = sessions.filter(s => s.status !== 'active' && s.status !== 'paused')
+  const pastSessions = sessions.filter(s => !['active', 'paused', 'reviewed'].includes(s.status))
   if (pastSessions.length === 0) return null
   return (
     <Card title="📁 실사 이력">
@@ -19,7 +19,7 @@ export default function SessionHistoryTable({ sessions, isAdmin, onReview }) {
               <td style={tdStyle}>{s.created_by}</td>
               <td style={tdStyle}>
                 <span style={{ background: s.status === 'completed' ? '#E8F5E9' : '#F5F5F5', color: s.status === 'completed' ? '#2E7D32' : '#616161', padding: '2px 10px', borderRadius: '10px', fontSize: '11px', fontWeight: '700' }}>
-                  {s.status === 'completed' ? '완료' : '중단'}
+                  {s.status === 'completed' ? '최종 반영' : '취소'}
                 </span>
               </td>
               <td style={tdStyle}>

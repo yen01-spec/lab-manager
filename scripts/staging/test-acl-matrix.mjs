@@ -47,9 +47,7 @@ const M = [
   { t: 'reagents', mode: 'open', ops: ['insert', 'update', 'delete'] },
   { t: 'stock_logs', mode: 'open', ops: ['insert'] },
   { t: 'location_history', mode: 'open', ops: ['insert'] },
-  { t: 'inventory_sessions', mode: 'open', ops: ['insert', 'update'] },
-  { t: 'inventory_counts', mode: 'open', ops: ADM },
-  { t: 'inventory_assignments', mode: 'open', ops: [] },
+  { t: 'inventory_sessions', mode: 'pub_admin', ops: [] },
   { t: 'hazard_ledger_notes', mode: 'open', ops: ['insert', 'update'] },
 ]
 const PAYLOAD = {
@@ -59,9 +57,11 @@ const PAYLOAD = {
   location_history: () => ({ reagent_name: 'acl' }),
   notices: () => ({ title: 'acl', type: 'notice' }),
   purchase_request_logs: () => ({}),
+  stock_logs: () => ({ target_type: 'reagent', user_name: 'acl' }),
+  inventory_sessions: () => ({ year: 2026, start_date: '2026-01-01', created_by: 'acl' }),
 }
 const payload = (t) => (PAYLOAD[t] ? PAYLOAD[t]() : { v: 'acl-' + randomBytes(3).toString('hex') })
-const patch = (t) => (['reagents'].includes(t) ? { name: 'ACL-UPDATED' } : t === 'locations' ? { room: 'ACL-ROOM2' } : t === 'admin_logs' ? { description: 'u' } : t === 'notices' ? { title: 'u' } : t === 'location_history' ? { reagent_name: 'u' } : t === 'purchase_request_logs' ? { status: 'approved' } : { v: 'updated' })
+const patch = (t) => (['reagents'].includes(t) ? { name: 'ACL-UPDATED' } : t === 'locations' ? { room: 'ACL-ROOM2' } : t === 'admin_logs' ? { description: 'u' } : t === 'notices' ? { title: 'u' } : t === 'location_history' ? { reagent_name: 'u' } : t === 'purchase_request_logs' ? { status: 'approved' } : t === 'inventory_sessions' ? { label: 'u' } : t === 'stock_logs' ? { notes: 'u' } : { v: 'updated' })
 
 const seeded = {}
 async function seed(t) { return must(await service.from(t).insert(payload(t)).select('id').single(), `seed ${t}`).id }

@@ -10,6 +10,8 @@ import LotRow from './LotRow'
 // 내려줬는데, 필터가 바뀔 때마다 참조가 바뀌어 memo가 전부 무효화됐음 → 제거함.)
 // onSaveEdit/onChangeEdit도 실제로 편집 중인 행에만 값을 넘기고, 나머지 행에는 항상
 // undefined(고정값)를 넘긴다.
+const UNCONF_BG = '#DDEBFF'
+
 const ReagentRow = memo(function ReagentRow({
   r, locations, visibleCols, isAdmin,
   isPicked, isExpanded, isEditingSealed, isEditingStock, editValue,
@@ -33,6 +35,9 @@ const ReagentRow = memo(function ReagentRow({
   }
 
   const baseBg = isLow ? '#FFF8F8' : hasPendingConfirm ? '#F0F7FF' : C.white
+  // 재고실사 미확정 값(최종 반영 전)이 표시 중인 셀은 배경색으로 구분
+  const uc = r._unconf
+  const ucBg = (on) => (on ? { background: UNCONF_BG } : null)
   const selectedBg = '#EEF2FB'
   const isSelected = isPicked
 
@@ -53,7 +58,7 @@ const ReagentRow = memo(function ReagentRow({
           <input type="checkbox" checked={isSelected} onChange={() => {}}
             style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
         </td>
-        <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', maxWidth: '300px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
+        <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', maxWidth: '300px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}`, ...ucBg(uc?.fields.name) }}>
           {canExpand && (
             <span onClick={e => { e.stopPropagation(); onToggleExpand(r.id) }}
               style={{ marginRight: '5px', color: C.blue, fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
@@ -72,6 +77,7 @@ const ReagentRow = memo(function ReagentRow({
             color: '#1F4E96', padding: '1px 7px', borderRadius: '999px', fontWeight: '700' }}>직접제조</span>}
           {isLow && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
             color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
+          {uc?.missing && <span title="실사에서 미확인(분실)으로 보고됨 — 미확정" style={{ marginLeft: '6px', fontSize: '10px', background: '#FFF3CD', color: '#8A5A16', padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>미확인 보고</span>}
           {hasPendingConfirm && (
             <span
               onClick={isAdmin ? e => { e.stopPropagation(); onConfirmPending(r) } : undefined}
@@ -81,20 +87,21 @@ const ReagentRow = memo(function ReagentRow({
                 cursor: isAdmin ? 'pointer' : 'default' }}>검토대기{isAdmin ? ' ✓' : ''}</span>
           )}
         </td>
-        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{r.purity || '-'}</td>
+        <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}`, ...ucBg(uc?.fields.purity) }}>{r.purity || '-'}</td>
         {visibleCols.casNo && (
-          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{r.cas_no || '-'}</td>
+          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}`, ...ucBg(uc?.fields.cas_no) }}>{r.cas_no || '-'}</td>
         )}
         {visibleCols.company && (
-          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '110px', borderRight: `1px solid ${C.borderRow}` }} title={r.company || ''}>{r.company || '-'}</td>
+          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '110px', borderRight: `1px solid ${C.borderRow}`, ...ucBg(uc?.fields.company) }} title={r.company || ''}>{r.company || '-'}</td>
         )}
         {visibleCols.volume && (
-          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>
+          <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}`, ...ucBg(uc?.fields.volume || uc?.fields.unit) }}>
             {r.volume ? `${r.volume}${r.unit}` : '-'}
           </td>
         )}
         {visibleCols.stock && (
-        <td style={{ ...tdStyle, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }} onClick={e => e.stopPropagation()}>
+        <td style={{ ...tdStyle, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}`, ...ucBg(uc?.stock) }} onClick={e => e.stopPropagation()}
+          title={uc?.stock ? '재고실사에서 확인된 미확정 값 — 관리자가 최종 반영하기 전까지 장부에는 아직 반영되지 않았어요' : undefined}>
           {activeLots.length > 0 ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <div style={{ width: '36px', height: '6px', borderRadius: '3px', background: '#F0F2F6', overflow: 'hidden', flexShrink: 0 }}>
@@ -134,13 +141,13 @@ const ReagentRow = memo(function ReagentRow({
         </td>
         )}
         {visibleCols.location && (
-        <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px', borderRight: `1px solid ${C.borderRow}` }}
+        <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px', borderRight: `1px solid ${C.borderRow}`, ...ucBg(uc?.location) }}
           title={loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : ''}>
           {multiLocation ? '위치별 상이' : loc ? `${loc.room}${loc.detail ? ' · ' + loc.detail : ''}` : '-'}
         </td>
         )}
         {visibleCols.lot && (
-          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{onlyLot?.lot_no || '-'}</td>
+          <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}`, ...ucBg(uc?.lotNo) }}>{onlyLot?.lot_no || '-'}</td>
         )}
         {visibleCols.expiry && (
           <td style={{ ...tdStyle, fontSize: '12px', color: C.muted, whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}` }}>{onlyLot?.expiry_date || '-'}</td>

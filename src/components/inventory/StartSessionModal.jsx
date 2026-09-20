@@ -22,10 +22,7 @@ export default function StartSessionModal({
           <label style={labelStyle}>시작일 *</label>
           <DateSplitInput value={startForm.start_date} onChange={v => setStartForm({ ...startForm, start_date: v })} />
         </div>
-        <div style={{ marginBottom: '14px' }}>
-          <label style={labelStyle}>관리자 이름 *</label>
-          <input value={startForm.created_by} onChange={e => setStartForm({ ...startForm, created_by: e.target.value })} placeholder="본인 이름" style={inputStyle} />
-        </div>
+        <div style={{ marginBottom: '14px', fontSize: '12px', color: C.muted }}>시작자는 로그인한 관리자 계정으로 자동 기록됩니다.</div>
         <div style={{ marginBottom: '20px' }}>
           <label style={labelStyle}>실사 모드 *</label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

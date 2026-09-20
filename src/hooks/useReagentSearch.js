@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../supabase'
+import { fetchAllPages } from '../lib/fetchAllPages'
 import { getHazardCategory } from '../lib/hazardCategory'
 import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
 
@@ -20,6 +21,59 @@ const GHS_PICTOGRAM_MAP = {
 function getGhsPictograms(codes) {
   if (!codes) return []
   return codes.split('^').filter(Boolean).map(code => ({ code, ...(GHS_PICTOGRAM_MAP[code] || { emoji: '❓', label: code }) }))
+}
+
+
+// ── 재고실사 진행 중(시작~최종 반영 전) 미확정 실사값 오버레이 ───────────────────────────
+// 실사 흐름: 학생이 Lot을 [완료]하면 실사값이 inventory_counts에 저장될 뿐 장부(reagents/reagent_lots)는
+// 그대로다(최종 반영 때 서버가 한 번에 반영). 그래도 시약목록에서는 "실사에서 확인한 값"이 보이도록
+// 완료된 항목의 값을 화면 표시용으로만 덮어쓰고, 어느 값이 미확정인지(_unconf)를 표시해 셀 배경색으로 알린다.
+const R_KEYS = ['name', 'cas_no', 'company', 'hazard', 'category', 'volume', 'unit', 'purity']
+
+async function fetchInventoryOverlay() {
+  const { data: sess } = await supabase.from('inventory_sessions').select('id, status, label, year')
+    .in('status', ['active', 'paused', 'reviewed']).order('created_at', { ascending: false }).limit(1)
+  if (!sess || sess.length === 0) return null
+  const rows = await fetchAllPages((from, to) => supabase.from('inventory_counts')
+    .select('lot_id, reagent_id, actual_sealed, actual_stock, reported_missing, staged_location_id, staged_reagent_fields, staged_lot_fields')
+    .eq('session_id', sess[0].id).not('actual_sealed', 'is', null).range(from, to))
+  const byLot = new Map()
+  const byReagent = new Map()
+  for (const c of rows || []) {
+    byLot.set(c.lot_id, c)
+    if (c.staged_reagent_fields && !byReagent.has(c.reagent_id)) byReagent.set(c.reagent_id, c.staged_reagent_fields)
+  }
+  return { session: sess[0], byLot, byReagent, count: byLot.size }
+}
+
+function applyOverlay(r, overlay) {
+  if (!overlay) return r
+  const unconf = { stock: false, location: false, lotNo: false, missing: false, fields: {} }
+  let touched = false
+  const lots = (r.reagent_lots || []).map(l => {
+    const c = overlay.byLot.get(l.id)
+    if (!c) return l
+    touched = true
+    unconf.stock = true
+    const nl = { ...l, sealed_count: c.actual_sealed, current_stock: c.actual_stock ?? l.current_stock }
+    if (c.staged_location_id && c.staged_location_id !== l.location_id) { nl.location_id = c.staged_location_id; unconf.location = true }
+    for (const k of ['lot_no', 'cat_no']) {
+      const v = c.staged_lot_fields?.[k]
+      if (v != null && v !== (l[k] ?? '')) { nl[k] = v; if (k === 'lot_no') unconf.lotNo = true }
+    }
+    if (c.reported_missing) unconf.missing = true
+    return nl
+  })
+  if (!touched) return r
+  const next = { ...r, reagent_lots: lots }
+  const staged = overlay.byReagent.get(r.id)
+  if (staged) {
+    for (const k of R_KEYS) {
+      if (k in staged && String(staged[k] ?? '') !== String(r[k] ?? '')) { next[k] = staged[k]; unconf.fields[k] = true }
+    }
+  }
+  next._unconf = unconf
+  return next
 }
 
 // Lot 필터링/평균 계산/GHS 매칭처럼 시약 데이터 자체(Lot 목록·유해성 문구)에만 좌우되고
@@ -65,6 +119,7 @@ export function useReagentSearch({ search = '', roomFilter = '', detailFilter = 
   const [locations, setLocations] = useState([])
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(true)
+  const [overlayInfo, setOverlayInfo] = useState(null) // 진행 중 실사가 있을 때 { status, label, year, count }
   const [totalCount, setTotalCount] = useState(0)
   const fetchRequestRef = useRef(0)
 
@@ -130,7 +185,12 @@ export function useReagentSearch({ search = '', roomFilter = '', detailFilter = 
       alert(`⚠️ 시약이 ${count}개로 많아 일부만 표시됩니다. 관리자에게 문의하세요.`)
     }
     if (data) {
-      const sorted = data.sort((a, b) => a.name.localeCompare(b.name)).map(enrichReagent)
+      let overlay = null
+      try { overlay = await fetchInventoryOverlay() } catch { overlay = null }
+      if (fetchRequestRef.current !== myRequestId) return
+      // 정렬은 장부 이름 기준(실사 중 이름 수정으로 목록 순서가 튀지 않게), 표시값만 오버레이
+      const sorted = data.sort((a, b) => a.name.localeCompare(b.name)).map(r => enrichReagent(applyOverlay(r, overlay)))
+      setOverlayInfo(overlay ? { status: overlay.session.status, label: overlay.session.label, year: overlay.session.year, count: overlay.count } : null)
       setResults(sorted)
       setLoading(false)
       return sorted
@@ -139,6 +199,6 @@ export function useReagentSearch({ search = '', roomFilter = '', detailFilter = 
   }
 
   return {
-    locations, results, setResults, loading, totalCount, fetchResults, fetchLocations,
+    locations, results, setResults, loading, overlayInfo, totalCount, fetchResults, fetchLocations,
   }
 }

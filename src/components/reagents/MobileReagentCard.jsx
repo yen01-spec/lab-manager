@@ -7,6 +7,8 @@ export default function MobileReagentCard({ r, locations, isPicked, onTogglePick
   const activeLots = r._activeLots
   const isLow = r._isLow
   const hasPendingConfirm = r._hasPendingConfirm
+  const uc = r._unconf
+  const ucStyle = (on) => (on ? { background: '#DDEBFF', borderRadius: '4px', padding: '0 4px' } : null)
 
   let loc = null
   if (activeLots.length > 0 && r._activeLocIds.length <= 1) {
@@ -26,18 +28,19 @@ export default function MobileReagentCard({ r, locations, isPicked, onTogglePick
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginBottom: '4px' }}>
-          <span style={{ fontWeight: '700', color: C.navy, fontSize: '15px' }}>{r.name}</span>
+          <span style={{ fontWeight: '700', color: C.navy, fontSize: '15px', ...ucStyle(uc?.fields.name) }}>{r.name}</span>
           {r.purity && <span style={{ fontSize: '11.5px', color: C.muted }}>({r.purity})</span>}
           {r.reagent_type === 'self_made' && <span style={{ fontSize: '9.5px', background: '#EAF1FB', color: '#1F4E96', padding: '1px 7px', borderRadius: '999px', fontWeight: '700' }}>직접제조</span>}
           {isLow && <span style={{ fontSize: '10px', background: '#FFEBEE', color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
+          {uc?.missing && <span style={{ fontSize: '10px', background: '#FFF3CD', color: '#8A5A16', padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>미확인 보고</span>}
           {hasPendingConfirm && <span style={{ fontSize: '10px', background: '#E3F2FD', color: '#1565C0', padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>검토대기</span>}
         </div>
         <div style={{ fontSize: '12.5px', color: C.muted, marginBottom: '6px' }}>
           {r.cas_no || '-'}{r.company ? ` · ${r.company}` : ''}
         </div>
         <div style={{ display: 'flex', gap: '14px', fontSize: '13px', color: C.text }}>
-          <span>📍 {locText}</span>
-          <span>{activeLots.length > 0 ? `${r._totalSealed}병 · 잔량 ${r._avgStock}%` : '보유 0병'}</span>
+          <span style={ucStyle(uc?.location)}>📍 {locText}</span>
+          <span style={ucStyle(uc?.stock)}>{activeLots.length > 0 ? `${r._totalSealed}병 · 잔량 ${r._avgStock}%` : '보유 0병'}</span>
         </div>
       </div>
       <span style={{ color: C.muted, fontSize: '18px', flexShrink: 0 }}>›</span>
