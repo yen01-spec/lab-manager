@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { chromium, CHROME, BASE, buildReagents, installMock } from './harness.mjs'
 const b = await chromium.launch({ executablePath: CHROME, headless: true })
 const reagents = buildReagents(200)
