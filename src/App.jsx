@@ -1,13 +1,12 @@
 import Notices from './pages/Notices'
 import Safety from './pages/Safety'
 import Resources from './pages/Resources'
-import { Routes, Route, useOutletContext } from 'react-router-dom'
+import { Routes, Route, Navigate, useOutletContext } from 'react-router-dom'
 import Layout from './components/Layout'
 import AdminAuthBanner from './components/admin/AdminAuthBanner'
 import Home from './pages/Home'
 import ReagentLocations from './pages/ReagentLocations'
 import ReagentList from './pages/ReagentList'
-import Requests from './pages/Requests'
 import Admin from './pages/Admin'
 import Inventory from './pages/Inventory'
 import NoticeDetail from './pages/NoticeDetail'
@@ -45,7 +44,8 @@ function App() {
         <Route path="reagents/:id" element={<ReagentDetail />} />
         <Route path="reagents/bulk-edit" element={<BulkEdit />} />
         <Route path="safety-signage" element={<SafetySignage />} />
-        <Route path="requests" element={<Requests />} />
+        {/* 구 구매요청 화면(purchase_requests)은 폐기됨 — 옛 링크/북마크는 구매요청서로 안내 */}
+        <Route path="requests" element={<Navigate to="/purchase-request" replace />} />
         <Route path="purchase-request" element={<PurchaseRequest />} />
         <Route path="purchase-request/list" element={<PurchaseRequestList />} />
         <Route path="admin" element={<RequireAdmin><Admin /></RequireAdmin>} />

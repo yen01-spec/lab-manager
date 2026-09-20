@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 .env
 .env.local
+
+# 운영 데이터 백업/스냅샷 파일은 절대 커밋하지 않는다
+inventory_before_sync_*.xlsx
+*_backup_*.xlsx
