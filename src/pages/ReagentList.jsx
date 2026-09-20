@@ -8,6 +8,7 @@ import { computeSortLetter } from '../lib/sortLetter'
 import { groupReagentsByName } from '../lib/nameGroup'
 import { useReagentSearch } from '../hooks/useReagentSearch'
 import { useReagentListParams } from '../hooks/useReagentListParams'
+import { useBatchFilter } from '../hooks/useBatchFilter'
 import { useBusyAction } from '../hooks/useBusyAction'
 import { loadViewSnapshot, saveViewSnapshot } from '../lib/reagentListView'
 import { useBreakpoint } from '../hooks/useBreakpoint'
@@ -16,6 +17,7 @@ import MobileReagentList from '../components/reagents/MobileReagentList'
 import ReagentToolbar from '../components/reagents/ReagentToolbar'
 import ReagentFilters from '../components/reagents/ReagentFilters'
 import BulkLookupModal from '../components/reagents/BulkLookupModal'
+import BatchFilterBar from '../components/reagents/BatchFilterBar'
 import RegisterReagentModal from '../components/reagents/RegisterReagentModal'
 import { invalidateReagentIndex } from '../lib/reagentSearch'
 import PickedListModal from '../components/reagents/PickedListModal'
@@ -39,10 +41,11 @@ export default function ReagentList() {
 
   const {
     search, roomFilter, detailFilter, hazardClassFilter, fireClassFilter, specialOnly, casMismatchOnly,
-    hazardPresetPending,
+    hazardPresetPending, batchFlag,
     setSearch, setRoomFilter, setDetailFilter, setHazardClassFilter, setFireClassFilter,
-    setSpecialOnly, setCasMismatchOnly,
+    setSpecialOnly, setCasMismatchOnly, setBatchFlag,
   } = useReagentListParams()
+  const { batch, idSet: batchIds, apply: applyBatch, clear: clearBatchFilter } = useBatchFilter({ flag: batchFlag, setFlag: setBatchFlag })
   const {
     locations, results, loading, overlayInfo, totalCount, fetchResults,
   } = useReagentSearch({ search, roomFilter, detailFilter })
@@ -65,12 +68,12 @@ export default function ReagentList() {
   // 인라인 편집 (목록에서 재고 숫자 바로 수정)
   const [inlineEdit, setInlineEdit] = useState(null)
 
-  // 시약 일괄조회 (여러 시약명을 한번에 붙여넣어 존재유무/위치 확인 — 학기 준비용)
-  const [showBulkLookupModal, setShowBulkLookupModal] = useState(false)
-  const [bulkLookupText, setBulkLookupText] = useState('')
-  const [bulkLookupResults, setBulkLookupResults] = useState(null)
-  const [bulkLookupLoading, setBulkLookupLoading] = useState(false)
+  // 시약 일괄검색 — 입력 모달만 있고 결과는 아래 시약목록 자체에 필터로 적용된다(useBatchFilter).
+  const [showBatchModal, setShowBatchModal] = useState(false)
+  const [unmatchedOpen, setUnmatchedOpen] = useState(false)
   const [zippingMsds, setZippingMsds] = useState(false)
+  const batchBarRef = useRef(null)
+  const [focusBarNext, setFocusBarNext] = useState(false)
 
   // 신규 시약 등록 모달 — "신규 시약 등록"/"직접 제조 시약 등록" 두 탭을 하나의 모달에서 전환
   const [showRegisterModal, setShowRegisterModal] = useState(false)
@@ -130,44 +133,12 @@ export default function ReagentList() {
     navigate('/purchase-request', { state: { prefillReagentItems } })
   }
 
-  async function runBulkLookup() {
-    const lines = [...new Set(bulkLookupText.split('\n').map(l => l.trim()).filter(Boolean))]
-    if (lines.length === 0) return
-    setBulkLookupLoading(true)
-    const orFilter = lines.map(l => `name.ilike.%${l.replace(/[,()]/g, ' ').trim()}%`).join(',')
-    const { data } = await supabase.from('reagents')
-      .select('*, reagent_lots(*), locations(*)')
-      .or(orFilter)
-      .neq('status', 'archived')
-    const pool = data || []
-    const results = lines.map(line => {
-      const lower = line.toLowerCase()
-      const matches = pool.filter(r => r.name.toLowerCase().includes(lower))
-      return { query: line, matches }
-    })
-    setBulkLookupResults(results)
-    setBulkLookupLoading(false)
-  }
-
-  function addBulkLookupMatchesToPicked() {
-    setPickedIds(prev => {
-      const next = new Map(prev)
-      bulkLookupResults?.forEach(({ matches }) => matches.forEach(r => next.set(r.id, r)))
-      return next
-    })
-    setShowBulkLookupModal(false)
-  }
-
-  // 일괄 검색 결과 중 MSDS 파일이 등록된 시약들의 MSDS를 하나의 ZIP으로 묶어서 다운로드.
+  // 현재 목록(일괄검색 결과 포함)에서 MSDS 파일이 등록된 시약들의 MSDS를 하나의 ZIP으로 묶어서 다운로드.
   // JSZip은 이 버튼을 눌렀을 때만 필요하므로 동적 import — 안 쓰는 사용자의 초기 로딩엔
   // 영향 없게(번들에 항상 포함되지 않게) 함.
-  async function downloadMsdsZip() {
-    const items = []
-    const seen = new Set()
-    bulkLookupResults?.forEach(({ matches }) => matches.forEach(r => {
-      if (r.msds_url && !seen.has(r.id)) { seen.add(r.id); items.push(r) }
-    }))
-    if (items.length === 0) { alert('조회 결과 중 등록된 MSDS 파일이 있는 시약이 없어요.'); return }
+  async function downloadMsdsZip(list) {
+    const items = list.filter(r => r.msds_url)
+    if (items.length === 0) { alert('현재 목록 중 등록된 MSDS 파일이 있는 시약이 없어요.'); return }
     setZippingMsds(true)
     try {
       const { default: JSZip } = await import('jszip')
@@ -375,10 +346,27 @@ export default function ReagentList() {
   // 아래 콜백들은 memo된 ReagentToolbar에 내려가므로 참조를 고정한다 — 체크박스 선택 등
   // 무관한 리렌더에 검색창/버튼줄이 함께 리렌더되지 않게.
   const handleSearchSelect = openDetail
-  const openBulkLookup = useCallback(() => { setShowBulkLookupModal(true); setBulkLookupResults(null) }, [])
+  const openBulkLookup = useCallback(() => setShowBatchModal(true), [])
   const openRegister = useCallback(() => { setRegisterTab('new'); setShowRegisterModal(true) }, [])
 
   const rooms = useMemo(() => [...new Set(locations.map(l => l.room))], [locations])
+
+  // [조회] → 필터 저장 → 모달 닫기 → 요약 줄로 포커스/스크롤(목록 상단)
+  async function handleBatchApply(text) {
+    const r = await applyBatch(text)
+    if (!r.ok) return r
+    setShowBatchModal(false); setUnmatchedOpen(false)
+    setFocusBarNext(true)
+    return r
+  }
+  // 적용된 필터 요약 줄이 화면에 나타나고 모달이 닫힌 뒤에 그 줄로 포커스/스크롤(모달의 "열었던 버튼으로 포커스 복귀"보다 나중)
+  useEffect(() => {
+    if (!focusBarNext || !batch || showBatchModal || !batchBarRef.current) return
+    batchBarRef.current.focus({ preventScroll: true })
+    batchBarRef.current.scrollIntoView({ block: 'start' })
+    setFocusBarNext(false)
+  }, [focusBarNext, batch, showBatchModal])
+  function handleBatchClear() { clearBatchFilter(); setUnmatchedOpen(false) }
 
   // 아래 파생값들은 조회 결과(results)나 필터 상태에만 좌우되는데, 예전엔 검색창 타이핑 등
   // 무관한 리렌더에도 매번 다시 계산됐다(각각 1,300여 개 순회 + Set/그룹 Map 생성).
@@ -396,12 +384,14 @@ export default function ReagentList() {
   }, [allHazardClassNames, setHazardClassFilter])
   useEffect(() => { if (hazardPresetPending && allHazardClassNames.length > 0) applyHazardPreset() }, [hazardPresetPending, allHazardClassNames, applyHazardPreset])
   const displayResults = useMemo(() => results.filter(r => {
+    if (batchIds && !batchIds.has(r.id)) return false   // 일괄검색 = 다른 필터와 AND
     if (hazardClassFilter.size > 0 && !(r._hazardClassNames || []).some(name => hazardClassFilter.has(name))) return false
     if (fireClassFilter.size > 0 && !fireClassFilter.has(r._fireSafetyClass)) return false
     if (specialOnly && !r._specialManagement) return false
     if (casMismatchOnly && !r._casMismatch) return false
     return true
-  }), [results, hazardClassFilter, fireClassFilter, specialOnly, casMismatchOnly])
+  }), [results, batchIds, hazardClassFilter, fireClassFilter, specialOnly, casMismatchOnly])
+  const shownLots = useMemo(() => displayResults.reduce((n, r) => n + r._activeLots.length, 0), [displayResults])
   // 홈 화면 "전체 시약 N종"과 기준을 맞추려 제조사/순도 무시하고 이름만으로 센 값 —
   // ReagentTable도 내부에서 letter별로 다시 그룹핑하므로 여기선 개수만 필요.
   const groupedResultCount = useMemo(() => groupReagentsByName(displayResults).length, [displayResults])
@@ -438,6 +428,13 @@ export default function ReagentList() {
           specialOnly={specialOnly} setSpecialOnly={setSpecialOnly}
           casMismatchOnly={casMismatchOnly} setCasMismatchOnly={setCasMismatchOnly}
         />
+
+        {batch && (
+          <BatchFilterBar ref={batchBarRef} batch={batch} shownLots={shownLots}
+            unmatchedOpen={unmatchedOpen} onToggleUnmatched={() => setUnmatchedOpen(v => !v)}
+            onEdit={() => setShowBatchModal(true)} onClear={handleBatchClear}
+            canDownloadMsds={displayResults.some(r => r.msds_url)} onDownloadMsds={() => downloadMsdsZip(displayResults)} zippingMsds={zippingMsds} />
+        )}
 
         {/* 필터를 조작한 시선이 바로 이어지도록, 결과 개수를 필터 바로 아래·표 바로 위에 표시.
             홈 화면 "전체 시약 N종"과 기준을 맞추기 위해 제조사/순도 무시하고 이름만으로 센다. */}
@@ -484,7 +481,15 @@ export default function ReagentList() {
         {/* 결과 목록 */}
         {displayResults.length === 0
           ? <ListState loading={loading}>
-              {results.length > 0 ? '조건에 맞는 시약이 없습니다. 필터를 조정해 보세요.' : '조건에 맞는 시약이 없습니다.'}
+              {batch && batch.matchedIds.length === 0 ? (
+                <div data-testid="batch-empty">
+                  <div style={{ fontSize: 14, color: C.text, marginBottom: 12 }}>일괄검색 결과가 없습니다.</div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                    {batch.unmatched.length > 0 && <button onClick={() => setUnmatchedOpen(true)} style={{ background: C.white, color: C.text, border: `1px solid ${C.border}`, padding: '8px 14px', minHeight: 40, borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>미확인 {batch.unmatched.length}개 보기</button>}
+                    <button onClick={handleBatchClear} style={{ background: C.blue, color: '#fff', border: 'none', padding: '8px 14px', minHeight: 40, borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>일괄검색 해제</button>
+                  </div>
+                </div>
+              ) : results.length > 0 ? '조건에 맞는 시약이 없습니다. 필터를 조정해 보세요.' : '조건에 맞는 시약이 없습니다.'}
             </ListState>
           : isMobile ? (
             // 모바일 — PC의 minWidth:900px 표는 휴대폰에서 계속 가로 스크롤이 생겨 카드형 목록으로 대체
@@ -503,14 +508,8 @@ export default function ReagentList() {
           )}
       </div>
 
-      {showBulkLookupModal && (
-        <BulkLookupModal
-          locations={locations}
-          bulkLookupText={bulkLookupText} setBulkLookupText={setBulkLookupText}
-          bulkLookupResults={bulkLookupResults} bulkLookupLoading={bulkLookupLoading} zippingMsds={zippingMsds}
-          onRun={runBulkLookup} onAddMatchesToPicked={addBulkLookupMatchesToPicked} onDownloadMsds={downloadMsdsZip}
-          onClose={() => setShowBulkLookupModal(false)}
-        />
+      {showBatchModal && (
+        <BulkLookupModal initialText={batch?.text || ''} onApply={handleBatchApply} onClose={() => setShowBatchModal(false)} />
       )}
 
       {showRegisterModal && (

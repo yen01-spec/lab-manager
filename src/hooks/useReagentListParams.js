@@ -4,7 +4,7 @@ import { FIRE_CLASSES } from '../lib/hazardCategory'
 
 // 시약 목록의 검색/필터 상태를 URL 쿼리에 둔다 — 상세 페이지에서 뒤로가기를 하면
 // 같은 URL로 돌아오므로 검색어·필터가 그대로 복원되고, 링크 공유/새로고침도 같은 결과를 보여준다.
-//   q=검색어  room=방  loc=세부위치id  hz=유해분류(반복)  fire=위험물유별(반복)  special=1  casmm=1
+//   q=검색어  room=방  loc=세부위치id  hz=유해분류(반복)  fire=위험물유별(반복)  special=1  casmm=1  bs=1(일괄검색 적용 중 표시 — 입력 내용은 sessionStorage)
 // preset(special|hazard|fire)은 자료 탭 딥링크용 1회성 입력 — 아래 effect가 실제 필터 파라미터로 바꿔치기한다.
 // 필터 변경은 replace로 기록해 히스토리를 쌓지 않는다(뒤로가기 한 번 = 목록을 떠나기 전 화면).
 const VALID_PRESETS = ['special', 'hazard', 'fire']
@@ -36,6 +36,7 @@ export function useReagentListParams() {
   )
   const specialOnly = searchParams.get('special') === '1'
   const casMismatchOnly = searchParams.get('casmm') === '1'
+  const batchFlag = searchParams.get('bs') === '1'
   const rawPreset = searchParams.get('preset')
   const preset = VALID_PRESETS.includes(rawPreset) ? rawPreset : null
 
@@ -74,6 +75,7 @@ export function useReagentListParams() {
     const next = typeof v === 'function' ? v(p.get('special') === '1') : v
     next ? p.set('special', '1') : p.delete('special')
   }), [update])
+  const setBatchFlag = useCallback((v) => update(p => { v ? p.set('bs', '1') : p.delete('bs') }), [update])
   const setCasMismatchOnly = useCallback((v) => update(p => {
     const next = typeof v === 'function' ? v(p.get('casmm') === '1') : v
     next ? p.set('casmm', '1') : p.delete('casmm')
@@ -81,8 +83,8 @@ export function useReagentListParams() {
 
   return {
     search, roomFilter, detailFilter, hazardClassFilter, fireClassFilter, specialOnly, casMismatchOnly,
-    hazardPresetPending,
+    hazardPresetPending, batchFlag,
     setSearch, setRoomFilter, setDetailFilter, setHazardClassFilter, setFireClassFilter,
-    setSpecialOnly, setCasMismatchOnly,
+    setSpecialOnly, setCasMismatchOnly, setBatchFlag,
   }
 }

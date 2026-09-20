@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { reagentOrFilter } from '../lib/reagentSearch'
+import { reagentOrFilter, searchTermVariants } from '../lib/reagentSearch'
 import { supabase } from '../supabase'
 import { fetchAllPages } from '../lib/fetchAllPages'
 import { getHazardCategory } from '../lib/hazardCategory'
@@ -159,27 +159,36 @@ export function useReagentSearch({ search = '', roomFilter = '', detailFilter = 
     // 넘었음. 그게 페이지 진입마다 체감되는 지연의 큰 원인이라 필요한 것만 좁힘.
     // 목록/필터/행에서 실제로 쓰는 컬럼만. (raw 'hazard' 텍스트는 목록에서 안 쓰고
     // 유해분류는 hazard_classifications만 사용 — payload를 줄이려 select에서 뺐다.)
-    let query = supabase.from('reagents')
-      .select('id, name, name_ko, cas_no, company, purity, volume, unit, category, ghs_pictograms, hazard_classifications, reagent_type, pending_confirm, msds_url, last_confirmed_at, cas_verification_status, cas_verification_note, sort_letter, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no, expiry_date, cat_no, pending_confirm)', { count: 'exact' })
-      .neq('status', 'archived')
-    // 국문명(name_ko)·영문명(name)·CAS 통합 검색 — "에탄올" / "Ethanol" / "64-17-5" 모두 매칭
-    if (search.trim()) {
-      query = query.or(reagentOrFilter(search))   // 자동추천과 같은 검색 규칙(lib/reagentSearch)
-    }
+    const SELECT = 'id, name, name_ko, cas_no, company, purity, volume, unit, category, ghs_pictograms, hazard_classifications, reagent_type, pending_confirm, msds_url, last_confirmed_at, cas_verification_status, cas_verification_note, sort_letter, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no, expiry_date, cat_no, pending_confirm)'
     // detailFilter(특정 위치 하나) > roomFilter(그 방에 속한 모든 위치) > 전체(필터 없음) 순.
     const activeLocationIds = detailFilter
       ? [detailFilter]
       : roomFilter ? locations.filter(l => l.room === roomFilter).map(l => l.id) : null
+    let matchIds = null
     if (activeLocationIds) {
       // 마스터(reagents.location_id)가 아니라 실제 보유중인(active) Lot의 위치를 기준으로 찾음
       const { data: matchLots } = await supabase.from('reagent_lots')
         .select('reagent_id').in('location_id', activeLocationIds).eq('status', 'active')
-      const matchIds = [...new Set((matchLots || []).map(l => l.reagent_id))]
+      matchIds = [...new Set((matchLots || []).map(l => l.reagent_id))]
       if (fetchRequestRef.current !== myRequestId) return
       if (matchIds.length === 0) { setResults([]); setLoading(false); return [] }
-      query = query.in('id', matchIds)
     }
-    const { data, count } = await query.range(0, 4999)
+    const runQuery = (term) => {
+      let q = supabase.from('reagents').select(SELECT, { count: 'exact' }).neq('status', 'archived')
+      // 국문명(name_ko)·영문명(name)·CAS 통합 검색 — "에탄올" / "Ethanol" / "64-17-5" 모두 매칭
+      if (term) q = q.or(reagentOrFilter(term))   // 자동추천과 같은 검색 규칙(lib/reagentSearch)
+      if (matchIds) q = q.in('id', matchIds)
+      return q.range(0, 4999)
+    }
+    let { data, count } = await runQuery(search.trim())
+    // 원문으로 아무것도 못 찾았고 "이름(약어)" 꼴이면, 자동추천/일괄검색과 같은 괄호 대체 검색어로 한 번씩 더 찾는다(원문 결과는 넓히지 않음).
+    if (data && data.length === 0 && search.trim()) {
+      for (const v of searchTermVariants(search).slice(1)) {
+        if (fetchRequestRef.current !== myRequestId) return
+        const r = await runQuery(v)
+        if (r.data && r.data.length > 0) { data = r.data; count = r.count; break }
+      }
+    }
     if (fetchRequestRef.current !== myRequestId) return // 늦게 도착한 응답이 최신 필터 결과를 덮어쓰지 않도록 함
     if (count > 4999) {
       alert(`⚠️ 시약이 ${count}개로 많아 일부만 표시됩니다. 관리자에게 문의하세요.`)

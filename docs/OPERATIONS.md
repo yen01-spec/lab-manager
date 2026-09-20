@@ -108,6 +108,13 @@ ref 상수는 `scripts/supabase-refs.mjs` 한 곳에만 있다.
 - 데이터: 시약 인덱스(id/이름/국문명/CAS/제조사/분류/순도/용량)를 앱 전체에서 1회만 로드해 메모리에서 검색(키 입력마다 서버 조회 없음, 5분 TTL, 등록 시 invalidate). 재고실사는 `items`(이번 실사 배정 Lot)로 범위를 제한 — 추천이 권한 범위를 넓히지 않는다.
 - 자유 입력 유지: 구매요청서 물품명(free text)·시약 등록 새 이름·BulkLookup(여러 줄 붙여넣기)·공지/안전 제목 검색은 시약 선택이 아니므로 강제하지 않음. 테스트: scripts/ui/test-reagent-search-input.mjs.
 
+
+## 시약 UI 일관성 · 일괄검색 필터 (2026-09-24, frontend 전용)
+- **시약 일괄정리**(`BulkEditTab`): "시약을 찾는 경험"은 시약목록과 같은 컴포넌트를 쓴다 — `ReagentSearchBar`(검색창+검색 버튼), `LocationFilter`(실험실 탭/세부위치, 선택 즉시 적용 — 예전 "필터 적용" 버튼은 select 값을 다시 조회에 반영하던 역할뿐이라 제거), `ResultSummary/ListState`, `AlphabetIndex`/`AlphabetSheet`(A–Z, `lib/reagentLetters` 정렬·그룹 기준 = 시약목록과 동일: sort_letter 우선 → 영문명 순). 일괄정리 전용은 체크박스·선택된 Lot 수·위치 이동/폐기뿐. 병 행은 "병 i/N · Lot No. · 위치 · 개봉/미개봉 · 잔량"을 항상 보이고 병 identity 는 `reagent_lots.id`(tooltip/짧은 ID). 필터를 바꿔도 선택은 유지되며 현재 목록 밖 선택 수를 안내한다.
+- **제조사 로고 팝업**(`CompanyPicker`): body 포털 + `lib/popoverPlacement`(자동추천과 공용) viewport 충돌 처리, 로고 버튼 44px. 예전엔 입력칸 안쪽 absolute(300px)라 모달의 overflow 영역/화면 오른쪽에서 잘렸다.
+- **시약 일괄검색 = 시약목록에 거는 다중 검색 필터**: 별도 결과표 없음. `📋 시약 일괄 검색` 모달(입력 전용) → [조회] → 공통 검색 규칙(`lib/reagentMatch.js`, 영문명/국문명/CAS·하이픈 없는 CAS)으로 메모리의 시약 인덱스에 대조 → 시약 id 집합을 다른 필터와 AND 로 적용. 여러 줄 = OR, 시약 id 로 중복 제거, 한 줄이 여러 시약에 걸리면 모두 표시(후보 선택 없음). 원문이 아무것도 못 찾을 때만 "이름(약어)"의 괄호 대체 검색어(앞 본문 → 괄호 안 3자 이상)를 시도 — 자동추천·목록 Enter 검색도 같은 fallback. 입력 줄마다 DB 를 조회하지 않는다(1,000줄 상한, 2,000 시약×1,000줄 ≈ 0.2s). 상태: URL 은 `bs=1` 표시만, 입력·결과는 sessionStorage(상세→뒤로/새로고침 유지, 새 세션 X). 요약 줄: 입력 N · 일치 시약 M · Lot 표시 · 미확인 U(=공통 규칙으로 못 찾음, "연구실에 없음"이 아님).
+- 과거 0/35 원인: 옛 일괄검색은 `name`(영문명) 컬럼만 `ilike`로 비교(국문명·CAS 미사용, 공통 normalize 미사용)했고 괄호는 공백으로 바꾼 뒤 클라이언트에서 원문 `includes` 로 다시 걸렀다 → 국문/CAS/괄호 입력은 항상 "없음".
+- 테스트: `node scripts/test-reagent-match.mjs`(29), UI `scripts/ui/test-bulk-edit-ux.mjs`, `test-company-picker.mjs`, `test-batch-search.mjs`.
 ## 묶음 행 가드 / 사용중·여분 판정 / 백업·복원 (2026-09-23, staging 전용)
 - **묶음 행 가드**: reagent_lots 1행 = 병 1개가 전제. `sealed_count > 1` 행은 병 단위 작업(폐기·위치 이동 신청/승인, 일괄 이동·폐기, 개별 이동, 사용완료·분실 표시)을 서버가 fail-closed 로 거부한다: "여러 병이 하나의 Lot 행에 묶여 있어 병 단위 작업을 할 수 없습니다. 병별 Lot 행으로 분리 후 처리해주세요." 수량 수정(admin_lot_update)은 분리 경로라 막지 않는다. production 실측 sealed_count > 1 = 0건(재검증 2026-09-20). 화면에서도 선택 불가로 표시한다.
 - **사용중/여분**(DB 저장 없음, 재배치 작업표에서 계산): 같은 시약 활성 병 중 잔량 최소 = 사용중(미개봉=100%, 후보 중 개봉 병 우선), 나머지 = 여분. 그래도 동률이면 "현장 확인 필요" — 입고일·병 ID 는 판정에 쓰지 않는다(표시/정렬 전용). 관리자가 병별 역할을 직접 지정 가능. 현장 확인 필요가 있으면 집계는 "잠정값"으로 UI/Excel 에 표시.
