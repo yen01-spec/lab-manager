@@ -19,7 +19,7 @@ for (const vp of [{ w: 1440, h: 900, m: false }, { w: 390, h: 844, m: true }]) {
     return { tintedCount: tinted.length, sample: tinted.slice(0, 4).map(e => e.innerText.replace(/\s+/g, ' ').slice(0, 30)) }
   })
   console.log(vp.w, 'banner:', banner && banner.slice(0, 80), JSON.stringify(info))
-  await page.screenshot({ path: `overlay-${vp.w}.png` })
+  await page.screenshot({ path: join(tmpdir(), `overlay-${vp.w}.png`) })
   await ctx.close()
 }
 await b.close()
