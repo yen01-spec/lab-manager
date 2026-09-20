@@ -1,7 +1,7 @@
 import Notices from './pages/Notices'
 import Safety from './pages/Safety'
 import Resources from './pages/Resources'
-import { Routes, Route, Navigate, useOutletContext } from 'react-router-dom'
+import { Routes, Route, Navigate, Link, useOutletContext } from 'react-router-dom'
 import Layout from './components/Layout'
 import AdminAuthBanner from './components/admin/AdminAuthBanner'
 import Home from './pages/Home'
@@ -34,6 +34,18 @@ function RequireAdmin({ children }) {
   return children
 }
 
+// 없는 주소(오래된 북마크 등)는 빈 화면 대신 안내 + 홈 링크
+function NotFound() {
+  return (
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: '64px 16px', textAlign: 'center' }}>
+      <div style={{ fontSize: 40, marginBottom: 8 }}>🔍</div>
+      <h1 style={{ fontSize: 18, color: '#1A2230', marginBottom: 8 }}>페이지를 찾을 수 없습니다</h1>
+      <p style={{ fontSize: 13.5, color: '#5F6B7A', marginBottom: 20 }}>주소가 바뀌었거나 삭제된 페이지일 수 있어요.</p>
+      <Link to="/" style={{ display: 'inline-block', padding: '11px 20px', borderRadius: 8, background: '#16233E', color: '#fff', textDecoration: 'none', fontWeight: 700, fontSize: 14 }}>홈으로</Link>
+    </div>
+  )
+}
+
 function App() {
   return (
     <Routes>
@@ -55,6 +67,7 @@ function App() {
         <Route path="notices/:id" element={<NoticeDetail />} />
 <Route path="safety/:id" element={<NoticeDetail />} />
         <Route path="safety" element={<Safety />} />
+        <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
   )

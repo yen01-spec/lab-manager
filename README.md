@@ -1,16 +1,19 @@
-# React + Vite
+# lab-manager-v2
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+강원대 화학교육 연구실 시약관리 시스템 (React 19 + Vite + Supabase).
 
-Currently, two official plugins are available:
+- 운영 구조·권한 모델·워크플로우: [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
+- 관리자 계정 이후 production 적용 순서·학교 이전 체크리스트: [`docs/PRODUCTION_GATE_RUNBOOK.md`](docs/PRODUCTION_GATE_RUNBOOK.md)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 개발
+```bash
+npm install
+npm run dev          # .env.local 의 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY 사용 (git 에 넣지 않음)
+npm run lint && npm run build
+```
+UI 테스트(가짜 Supabase, 실제 연결 없음): `node scripts/ui/serve-mock.mjs` 후 `node scripts/ui/test-*.mjs`.
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 원칙 (요약)
+- production(`ylvebibsevesazntalos`)은 기본 READ ONLY. 변경은 staging(`vvafhcqypvejvsuksooi`) 검증 → guard → dry-run → 승인된 Gate 에서만.
+- guard 는 파이프에 넣지 말고 단독 실행: `node scripts/guard-staging-target.mjs`.
+- 비밀값(service_role, DB 비밀번호, 관리자 비밀번호)은 저장소·CLI 인자에 두지 않는다.
