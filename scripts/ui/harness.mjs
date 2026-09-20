@@ -82,6 +82,11 @@ export async function installMock(context, reagents, stats = { requests: [], rea
         const rows = reagents.flatMap(r => r.reagent_lots.filter(l => ids.has(l.location_id) && l.status === 'active').map(() => ({ reagent_id: r.id })))
         return json(rows)
       }
+      const inId = (p.get('id') || '').match(/^in\.\((.*)\)$/)
+      if (inId) {
+        const ids = new Set(inId[1].split(','))
+        return json(reagents.flatMap(r => r.reagent_lots.filter(l => ids.has(l.id)).map(l => ({ ...l, reagent_id: r.id, reagents: { id: r.id, name: r.name, cas_no: r.cas_no, company: r.company, category: r.category, hazard: null, volume: r.volume, unit: r.unit, purity: r.purity }, locations: { room: '5호관 101', detail: null } }))))
+      }
       const inR = (p.get('reagent_id') || '').match(/^in\.\((.*)\)$/)
       if (inR) {
         const ids = new Set(inR[1].split(','))
