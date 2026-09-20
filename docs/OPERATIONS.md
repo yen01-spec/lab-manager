@@ -115,6 +115,22 @@ ref 상수는 `scripts/supabase-refs.mjs` 한 곳에만 있다.
 - **시약 일괄검색 = 시약목록에 거는 다중 검색 필터**: 별도 결과표 없음. `📋 시약 일괄 검색` 모달(입력 전용) → [조회] → 공통 검색 규칙(`lib/reagentMatch.js`, 영문명/국문명/CAS·하이픈 없는 CAS)으로 메모리의 시약 인덱스에 대조 → 시약 id 집합을 다른 필터와 AND 로 적용. 여러 줄 = OR, 시약 id 로 중복 제거, 한 줄이 여러 시약에 걸리면 모두 표시(후보 선택 없음). 원문이 아무것도 못 찾을 때만 "이름(약어)"의 괄호 대체 검색어(앞 본문 → 괄호 안 3자 이상)를 시도 — 자동추천·목록 Enter 검색도 같은 fallback. 입력 줄마다 DB 를 조회하지 않는다(1,000줄 상한, 2,000 시약×1,000줄 ≈ 0.2s). 상태: URL 은 `bs=1` 표시만, 입력·결과는 sessionStorage(상세→뒤로/새로고침 유지, 새 세션 X). 요약 줄: 입력 N · 일치 시약 M · Lot 표시 · 미확인 U(=공통 규칙으로 못 찾음, "연구실에 없음"이 아님).
 - 과거 0/35 원인: 옛 일괄검색은 `name`(영문명) 컬럼만 `ilike`로 비교(국문명·CAS 미사용, 공통 normalize 미사용)했고 괄호는 공백으로 바꾼 뒤 클라이언트에서 원문 `includes` 로 다시 걸렀다 → 국문/CAS/괄호 입력은 항상 "없음".
 - 테스트: `node scripts/test-reagent-match.mjs`(29), UI `scripts/ui/test-bulk-edit-ux.mjs`, `test-company-picker.mjs`, `test-batch-search.mjs`.
+
+## 시약 상세/목록 UX 통합 (2026-09-24, frontend 전용)
+- **Breadcrumb**(`design.jsx` `Breadcrumb`/`PageBanner`): 실제 라우트 계층만 표시. 항상 "홈"(/)으로 시작하므로 페이지는 `breadcrumb`에 '홈'을 넣지 않는다(옛 "홈 › 홈"·없는 "시약 관리" 단계 제거). 항목 = 문자열(링크 없음) | `{ label, to, onClick }`; 마지막 = 현재 페이지(`aria-current="page"`). `<nav aria-label="현재 위치">`.
+- **상세 ← 시약 목록**: `PageBanner back` — 제목 위에 항상 보이는 버튼(접근성 이름 "시약 목록으로 돌아가기") + breadcrumb 의 "시약 목록" 링크가 같은 `goToList`를 쓴다: 목록에서 들어왔으면(`location.state.from==='list'`) `navigate(-1)` → 검색·필터·일괄검색·스크롤 복원, 직접 URL 이면 `/reagents/list`.
+- **상세 action**: 자주 쓰는 것은 밖에 — `📦 새 Lot 추가`(예전 "재고 등록": 실제로는 현재 시약에 새 reagent_lots 행을 추가), `📍 위치 변경(신청)`, `✏️ 정보 수정(신청)`, (실사 중) 정보 맞음. `⋯ 더보기`(role=menu, 키보드/Esc, 화면 안 fixed 위치)에는 폐기(처리/신청)·시약 종류 삭제(관리자)만. 정보 수정은 편집 모드에서 **취소 / 저장(관리자) · 수정 신청(학생)** — 바꾼 항목만 전송(관리자: 1회 update, 학생: 항목별 `reagent_change_request_submit`). 권한/RPC 의미는 그대로.
+- **기본정보 vs Lot 분리**: 「시약 기본정보」(reagent 단위, 모든 병 공통)와 「보유 Lot / 병」(병 1개 = reagent_lots 1행, `병 i/N`, 병별 위치 변경/폐기 버튼, 병 ID tooltip).
+  | 구분 | 항목 |
+  |---|---|
+  | reagent 편집 가능(관리자 직접 / 학생 신청) | 국문명, CAS, 제조사, 순도, 성상, 용량(숫자)+단위(별도), 유해정보 |
+  | reagent 읽기 전용(화면에서 미노출) | 영문명(정렬·묶음 기준), manager, msds_url(관리자 파일 업로드), notes |
+  | Lot 편집 가능(관리자만, RPC) | 미개봉 병 수·잔량(admin_lot_update: sealed_count/current_stock만), 상태(사용완료/분실: admin_lot_set_status) |
+  | Lot 요청 전용(학생 신청 → 관리자 승인, 관리자는 직접) | 위치 변경, 폐기 |
+  | 읽기 전용/계산 | Lot No.·Cat No.·입고/개봉/유효기간(생성 후 변경 RPC 없음), 최종확인일/등록자, GHS·유해분류·위험물유별·특별관리물질(자동/계산), CAS 검증, 재고 부족 |
+- **목록 grouping / badge 의미**: 목록의 한 행 = reagent master 1건(reagents.id). 이름(trim·소문자)이 같은 master 가 같은 A–Z 구간에 여러 개면 그룹 헤더로 묶는다(제조사·순도·CAS 가 달라도 병합은 안 함, DB 병합 없음). 예전 "N개 제품" = 그 그룹의 reagent master 수, 예전 "N병" = 그 master 의 보유중(active) Lot 행 수(단, master 의 전체 Lot 행이 2개 이상일 때만 표시). 지금은 `보유 N병 · N개 위치`(중립 회색, 병 수는 lib/lotSummary: 묶음 행은 미개봉 병 수만큼), `제조사 N곳`(중립), `재고 부족`(경고 빨강: 미개봉 0 + 개봉 병 잔량 ≤ 20% 인 병이 있음), `검토대기`(파랑), `미확인 보고`(노랑). 펼치기는 배지가 아니라 별도 `▸` 버튼(aria-expanded).
+- 관리자 정보 수정 버그 수정: CAS 저장 시 존재하지 않는 `cas_no_source` 컬럼을 보내 실패했다 → 실제 컬럼 `cas_source`. 용량은 numeric 컬럼인데 "500 mL" 통째로 저장하려던 것 → 용량/단위 분리.
+- 테스트: `scripts/ui/test-reagent-ux-consolidation.mjs`(breadcrumb, 상세 뒤로/직접 URL, action 구조, 정보 수정, badge, 7개 viewport).
 ## 묶음 행 가드 / 사용중·여분 판정 / 백업·복원 (2026-09-23, staging 전용)
 - **묶음 행 가드**: reagent_lots 1행 = 병 1개가 전제. `sealed_count > 1` 행은 병 단위 작업(폐기·위치 이동 신청/승인, 일괄 이동·폐기, 개별 이동, 사용완료·분실 표시)을 서버가 fail-closed 로 거부한다: "여러 병이 하나의 Lot 행에 묶여 있어 병 단위 작업을 할 수 없습니다. 병별 Lot 행으로 분리 후 처리해주세요." 수량 수정(admin_lot_update)은 분리 경로라 막지 않는다. production 실측 sealed_count > 1 = 0건(재검증 2026-09-20). 화면에서도 선택 불가로 표시한다.
 - **사용중/여분**(DB 저장 없음, 재배치 작업표에서 계산): 같은 시약 활성 병 중 잔량 최소 = 사용중(미개봉=100%, 후보 중 개봉 병 우선), 나머지 = 여분. 그래도 동률이면 "현장 확인 필요" — 입고일·병 ID 는 판정에 쓰지 않는다(표시/정렬 전용). 관리자가 병별 역할을 직접 지정 가능. 현장 확인 필요가 있으면 집계는 "잠정값"으로 UI/Excel 에 표시.

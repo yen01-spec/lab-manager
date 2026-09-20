@@ -87,7 +87,7 @@ for (const [w, h, mobile] of [[1440, 900, false], [320, 568, true], [360, 800, t
   await page.getByRole('button', { name: /위치 변경 신청/ }).first().waitFor({ timeout: 15000 })
   ok(`${tag} student header button is "위치 변경 신청" (not an immediate-change wording)`, await page.getByRole('button', { name: '📍 위치 변경 신청' }).count() === 1)
   await page.getByRole('button', { name: /더보기/ }).click()
-  ok(`${tag} more-menu has 시약정보 수정 신청 + 폐기 신청`, (await page.getByRole('button', { name: /시약정보 수정 신청/ }).count()) === 1 && (await page.getByRole('button', { name: /^🗑️ 폐기 신청$/ }).count()) === 1)
+  ok(`${tag} 정보 수정 신청 is a top-level action (not hidden in ⋯더보기); more-menu holds 폐기 신청 only`, (await page.getByRole('button', { name: '✏️ 정보 수정 신청' }).count()) === 1 && (await page.getByRole('menuitem', { name: /^🗑️ 폐기 신청$/ }).count()) === 1 && (await page.getByRole('menuitem', { name: /정보 수정/ }).count()) === 0)
   await page.getByRole('button', { name: /더보기/ }).click()
 
   // ── 위치 변경 신청 ──
@@ -111,7 +111,7 @@ for (const [w, h, mobile] of [[1440, 900, false], [320, 568, true], [360, 800, t
 
   // ── 폐기 신청 ──
   await page.getByRole('button', { name: /더보기/ }).click()
-  await page.getByRole('button', { name: /^🗑️ 폐기 신청$/ }).click()
+  await page.getByRole('menuitem', { name: /^🗑️ 폐기 신청$/ }).click()
   const d2 = page.getByRole('dialog')
   const d2t = await d2.innerText()
   ok(`${tag} disposal modal title/copy (병 1개 단위, 수량 입력 없음)`, d2t.includes('폐기 신청') && d2t.includes('이 병만 폐기 완료') && !d2t.includes('수량'), d2t.slice(0, 200))
@@ -129,12 +129,11 @@ for (const [w, h, mobile] of [[1440, 900, false], [320, 568, true], [360, 800, t
   ok(`${tag} disposal pending visible`, (await page.getByText('폐기 신청 완료 · 관리자 검토 대기').count()) >= 1)
 
   // ── 시약정보 수정 신청 ──
-  await page.getByRole('button', { name: /더보기/ }).click()
-  await page.getByRole('button', { name: /시약정보 수정 신청$/ }).click()
-  ok(`${tag} edit-mode banner says 신청`, (await page.getByText('시약정보 수정 신청 모드').count()) === 1)
-  await page.getByText('제조사', { exact: true }).locator('xpath=following-sibling::div').first().click()
-  const inp = page.locator('input:not([type=checkbox])').last()
-  await inp.fill('NEW-COMPANY'); await inp.blur()
+  await page.getByRole('button', { name: '✏️ 정보 수정 신청' }).click()
+  ok(`${tag} edit-mode strip says 신청 + has 취소 / 수정 신청 (no 수정완료 entry)`, (await page.getByText('시약 기본정보 수정 신청 중').count()) === 1 && (await page.getByRole('button', { name: '취소', exact: true }).count()) >= 1 && (await page.getByRole('button', { name: /^수정 신청/ }).count()) === 1 && (await page.getByText('수정완료').count()) === 0)
+  const inp = page.locator('label:has-text("제조사") + div input').first()
+  await inp.fill('NEW-COMPANY')
+  await page.getByRole('button', { name: /^수정 신청/ }).click()
   await page.getByText('시약정보 수정 신청이 완료되었습니다.').first().waitFor({ timeout: 8000 }).catch(() => {})
   ok(`${tag} info-change success message + submit RPC`, (await page.getByText('시약정보 수정 신청이 완료되었습니다.').count()) >= 1 && rpcCalls.some(c => c.name === 'reagent_change_request_submit' && c.body.p_field_name === 'company' && c.body.p_session_token === TOKEN))
   await page.waitForTimeout(600)

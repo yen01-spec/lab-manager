@@ -226,7 +226,7 @@ export default function PurchaseRequest() {
 
   return (
     <div>
-      <PageBanner title="구매요청서 작성" sub="Purchase Request" breadcrumb={['홈', '구매요청서']}
+      <PageBanner title="구매요청서 작성" sub="Purchase Request" breadcrumb={['구매요청서']}
         extra={<button onClick={() => navigate('/purchase-request/list')} style={{ ...btnGhost, padding: '9px 16px' }}>📋 요청 목록 보기</button>} />
       <div style={{ padding: '20px 40px' }} ref={printRef}>
 

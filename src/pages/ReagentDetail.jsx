@@ -34,9 +34,24 @@ function getGhsPictograms(codes) {
 }
 
 const FIELD_LABELS = {
-  name: '시약명', cas_no: 'CAS 번호', company: '제조사', category: '성상', volume: '용량', unit: '단위', hazard: '유해정보',
+  name: '시약명', name_ko: '국문 시약명', purity: '순도', cas_no: 'CAS 번호', company: '제조사', category: '성상', volume: '용량', unit: '단위', hazard: '유해정보',
   manager: '담당자', msds_url: 'MSDS URL', notes: '비고',
 }
+
+// 시약 기본정보(reagent 단위) 중 화면에서 고칠 수 있는 항목 — 서버 review RPC 허용 목록(name,name_ko,cas_no,company,purity,volume,unit,category,manager,msds_url,notes,hazard)의 부분집합.
+// 영문 시약명(name: 정렬·묶음의 기준)은 화면에서 고치지 않는다. 용량(numeric)과 단위(text)는 별개 컬럼이라 따로 입력한다.
+const MASTER_ROWS = [
+  { key: 'name_ko', label: '국문 시약명', keys: ['name_ko'] },
+  { key: 'cas_no', label: 'CAS 번호', keys: ['cas_no'], source: 'cas_source' },
+  { key: 'company', label: '제조사', keys: ['company'], source: 'company_source' },
+  { key: 'purity', label: '순도', keys: ['purity'] },
+  { key: 'category', label: '성상', keys: ['category'], source: 'category_source' },
+  { key: 'volume', label: '용량 · 단위', keys: ['volume', 'unit'], source: 'volume_source' },
+  { key: 'hazard', label: '유해정보', keys: ['hazard'], source: 'hazard_source' },
+]
+const MASTER_KEYS = MASTER_ROWS.flatMap(r => r.keys)
+// 항목별 "입력 출처" 컬럼(cas_no 의 출처 컬럼은 cas_source 다 — 예전 화면은 cas_no_source 라는 없는 컬럼을 써서 관리자 CAS 저장이 조용히 실패했다)
+const SOURCE_COL = { cas_no: 'cas_source', company: 'company_source', category: 'category_source', volume: 'volume_source', hazard: 'hazard_source' }
 
 function InfoRow({ label, value, sourceBadge }) {
   return (
@@ -84,8 +99,7 @@ export default function ReagentDetail() {
   const [activeInventorySession, setActiveInventorySession] = useState(null)
 
   const [editMode, setEditMode] = useState(false)
-  const [editingField, setEditingField] = useState(null)
-  const [editingValue, setEditingValue] = useState('')
+  const [draft, setDraft] = useState({})   // 정보 수정 중 바꾼 값(항목별) — 저장/신청 전까지 화면에만 있다
   const [inlineEdit, setInlineEdit] = useState(null)
 
   const [showDisposalModal, setShowDisposalModal] = useState(false)
@@ -97,10 +111,11 @@ export default function ReagentDetail() {
   const [locations, setLocations] = useState([])
   const [history, setHistory] = useState([])
   const [specialLogs, setSpecialLogs] = useState([])
-  // 상단 버튼이 6개까지 늘어나던 걸 정리 — 자주 쓰는 재고등록/위치이동(+실사 중이면
-  // 정보맞음)만 항상 보이고, 나머지(폐기신청/정보수정/시약삭제)는 "⋯더보기" 안으로.
+  // 자주 쓰는 새 Lot 추가/위치 변경/정보 수정(+실사 중이면 정보맞음)은 항상 보이고, 폐기/시약 삭제만 "⋯더보기" 안.
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
   const moreMenuRef = useRef(null)
+  const moreBtnRef = useRef(null)
+  const [morePos, setMorePos] = useState(null)   // ⋯더보기 메뉴의 화면 안 위치(좁은 화면에서 왼쪽/오른쪽으로 잘리지 않게 fixed + 충돌 계산)
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -109,6 +124,34 @@ export default function ReagentDetail() {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  useEffect(() => {
+    if (!moreMenuOpen) return
+    const place = () => {
+      if (!moreBtnRef.current) return
+      const r = moreBtnRef.current.getBoundingClientRect(), vw = window.innerWidth
+      const width = Math.min(200, vw - 16)
+      setMorePos({ width, left: Math.min(Math.max(r.right - width, 8), vw - width - 8), top: r.bottom + 4 })
+    }
+    place()
+    window.addEventListener('resize', place); window.addEventListener('scroll', place, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); setMorePos(null) }
+  }, [moreMenuOpen])
+  const morePlaced = !!morePos
+  useEffect(() => {
+    if (moreMenuOpen && morePlaced) moreMenuRef.current?.querySelector('[role="menuitem"]:not([disabled])')?.focus()
+  }, [moreMenuOpen, morePlaced])
+  function onMoreKeyDown(e) {
+    if (!moreMenuOpen) return
+    if (e.key === 'Escape') { e.stopPropagation(); setMoreMenuOpen(false); moreBtnRef.current?.focus(); return }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const items = [...moreMenuRef.current.querySelectorAll('[role="menuitem"]:not([disabled])')]
+      if (!items.length) return
+      e.preventDefault()
+      const i = items.indexOf(document.activeElement)
+      items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus()
+    }
+  }
 
   useEffect(() => { fetchAll() }, [id])
   useEffect(() => () => clearTimeout(noticeTimerRef.current), [])
@@ -301,25 +344,56 @@ export default function ReagentDetail() {
     setHistory(rows)
   }
 
-  async function saveField(field, value, sourceField) {
+  // 목록에서 들어왔으면 navigate(-1)로 검색·필터·일괄검색·스크롤이 복원된 그 목록 화면으로, 링크로 바로 들어왔으면
+  // (뒤로 갈 목록 기록이 없음) 기본 목록으로. 화면의 "← 시약 목록"·breadcrumb·브라우저/모바일 뒤로가기가 모두 같은 화면으로 돌아간다.
+  function goToList() { if (routeLocation.state?.from === 'list') navigate(-1); else navigate('/reagents/list') }
+
+  const norm = (v) => String(v ?? '').trim()
+  const cur = (k) => (reagent && reagent[k] != null ? String(reagent[k]) : '')
+  const val = (k) => (draft[k] !== undefined ? draft[k] : cur(k))
+  const setDraftField = (k, v) => setDraft(d => ({ ...d, [k]: v }))
+  function startEdit() {
+    setDraft({}); setEditMode(true)
+    setTimeout(() => document.getElementById('reagent-master-card')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 0)
+  }
+  function cancelEdit() { setDraft({}); setEditMode(false) }
+
+  // 시약 기본정보(reagent-level) 저장/신청 — 바꾼 항목만. 관리자: 직접 저장, 일반 사용자: 항목별 신청(서버 RPC, 승인 전엔 기존 값 그대로).
+  async function saveEditImpl() {
+    const keys = MASTER_KEYS.filter(k => draft[k] !== undefined && norm(draft[k]) !== norm(cur(k)) && (isAdmin || !pendingChanges.some(p => p.field_name === k)))
+    if (keys.length === 0) { showNotice('바꾼 항목이 없어요.'); return }
+    if (keys.includes('volume')) {
+      const v = norm(draft.volume)
+      if (v !== '' && !(Number.isFinite(Number(v)) && Number(v) >= 0)) { alert('용량은 0 이상의 숫자로 입력해주세요.'); return }
+    }
     if (isAdmin) {
-      const updateData = { [field]: value }
-      if (sourceField) updateData[sourceField] = 'manual'
-      await supabaseAdmin.from('reagents').update(updateData).eq('id', id)
-      setReagent(prev => ({ ...prev, [field]: value, ...(sourceField ? { [sourceField]: 'manual' } : {}) }))
+      const update = {}
+      for (const k of keys) {
+        const t = norm(draft[k])
+        update[k] = t === '' ? null : (k === 'volume' ? Number(t) : t)
+        if (SOURCE_COL[k]) update[SOURCE_COL[k]] = 'manual'
+      }
+      const { error } = await supabaseAdmin.from('reagents').update(update).eq('id', id)
+      if (error) { alert(error.message || '저장 중 오류가 발생했어요'); return }
+      setReagent(prev => ({ ...prev, ...update }))
+      showNotice('시약 기본정보를 저장했어요.')
     } else {
       if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
-      // Phase S-RLS3 Batch 1 — requested_by/requested_by_student_id는 더 이상 client가
-      // 보내지 않는다. 서버가 session_token으로 직접 신원을 조회해서 기록한다.
-      const { error } = await supabase.rpc('reagent_change_request_submit', {
-        p_session_token: getSessionToken(), p_reagent_id: id, p_field_name: field,
-        p_old_value: String(reagent[field] ?? ''), p_new_value: String(value),
-      })
-      if (error) { alert(error.message || '시약정보 수정 신청 중 오류가 발생했어요'); fetchPendingRequests(); setEditingField(null); return }
-      showNotice(SUBMIT_SUCCESS.change)
+      let okN = 0
+      const errs = []
+      for (const k of keys) {
+        // requested_by 등 신원은 client 가 보내지 않는다 — 서버가 session_token 으로 확정한다.
+        const { error } = await supabase.rpc('reagent_change_request_submit', {
+          p_session_token: getSessionToken(), p_reagent_id: id, p_field_name: k, p_old_value: cur(k), p_new_value: norm(draft[k]),
+        })
+        if (error) errs.push(`${FIELD_LABELS[k] || k}: ${error.message || '신청 중 오류가 발생했어요'}`); else okN++
+      }
+      if (errs.length) alert(errs.join('\n'))
+      if (okN) showNotice(SUBMIT_SUCCESS.change)
       fetchPendingRequests()
+      if (okN === 0) return
     }
-    setEditingField(null)
+    setEditMode(false); setDraft({})
   }
 
   async function archiveReagent() {
@@ -471,6 +545,7 @@ export default function ReagentDetail() {
     fetchAll()
   }
 
+  const [saveEdit, savingEdit] = useBusyAction(saveEditImpl)
   const [submitAddLot] = useBusyAction(submitAddLotImpl)
   const [submitMove] = useBusyAction(submitMoveImpl)
   const [submitDisposal] = useBusyAction(submitDisposalImpl)
@@ -493,15 +568,8 @@ export default function ReagentDetail() {
   const cardStyle = { background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 1px 3px rgba(16,24,40,.06)', overflow: 'hidden' }
   const cardHeadStyle = { padding: '14px 20px', borderBottom: `1px solid ${C.border}`, fontSize: '13.5px', fontWeight: '700', color: C.navy }
 
-  const fieldRows = [
-    ['name_ko', '국문 시약명', reagent.name_ko, null],
-    ['cas_no', 'CAS 번호', reagent.cas_no, reagent.cas_source],
-    ['company', '제조사', reagent.company, reagent.company_source],
-    ['category', '성상', reagent.category, reagent.category_source],
-    ['volume', '용량', reagent.volume ? `${reagent.volume} ${reagent.unit || ''}` : '', reagent.volume_source],
-    ['hazard', '유해정보', reagent.hazard, reagent.hazard_source],
-  ]
   const activeLots = lots.filter(l => l.status === 'active')
+  const changedKeys = MASTER_KEYS.filter(k => draft[k] !== undefined && norm(draft[k]) !== norm(cur(k)))
   const LOT_STATUS_LABEL = { active: '보유중', used_up: '사용완료', disposed: '폐기', missing: '분실' }
   const LOT_STATUS_COLOR = { active: '#00875A', used_up: C.muted, disposed: C.danger, missing: '#B7791F' }
 
@@ -513,12 +581,14 @@ export default function ReagentDetail() {
   const requestableForMove = (isAdmin ? singleBottleLots : singleBottleLots.filter(l => !pendingMoveByLot.has(l.id)))
   const requestableForDisposal = (isAdmin ? singleBottleLots : singleBottleLots.filter(l => !pendingDisposalByLot.has(l.id)))
 
-  function openDisposalModal() {
-    setDisposalForm({ lot_id: requestableForDisposal.length === 1 ? requestableForDisposal[0].id : '', reason: '' })
+  function openDisposalModal(lotId) {
+    const pre = typeof lotId === 'string' ? lotId : (requestableForDisposal.length === 1 ? requestableForDisposal[0].id : '')
+    setDisposalForm({ lot_id: pre, reason: '' })
     setShowDisposalModal(true)
   }
-  function openMoveModal() {
-    setMoveForm({ lot_id: requestableForMove.length === 1 ? requestableForMove[0].id : '', to_location_id: '', notes: '' })
+  function openMoveModal(lotId) {
+    const pre = typeof lotId === 'string' ? lotId : (requestableForMove.length === 1 ? requestableForMove[0].id : '')
+    setMoveForm({ lot_id: pre, to_location_id: '', notes: '' })
     setShowMoveModal(true)
   }
 
@@ -527,48 +597,42 @@ export default function ReagentDetail() {
       <PageBanner
         title={reagent.name}
         sub={reagent.volume ? `${reagent.volume}${reagent.unit || ''}` : undefined}
-        breadcrumb={['시약', reagent.name]}
+        breadcrumb={[{ label: '시약 목록', to: '/reagents/list', onClick: goToList }, reagent.name]}
+        back={{ label: '시약 목록', ariaLabel: '시약 목록으로 돌아가기', onClick: goToList }}
         extra={
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* 목록에서 들어왔으면 navigate(-1)로 검색·필터·스크롤이 복원된 그 목록 화면으로, 링크로 바로
-                들어왔으면(뒤로 갈 목록 기록이 없음) 기본 목록으로. 브라우저/모바일 뒤로가기도 같은 화면으로 돌아간다. */}
-            <button onClick={() => (routeLocation.state?.from === 'list' ? navigate(-1) : navigate('/reagents/list'))}
-              style={{ padding: '9px 14px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.white, fontSize: '13px', color: C.navy, fontWeight: '600', cursor: 'pointer' }}>← 목록으로</button>
-            <button onClick={() => setShowAddLotModal(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: '1px dashed #C9DAF5', background: '#F9FBFF', fontSize: '13px', color: '#1F4E96', fontWeight: '600', cursor: 'pointer' }}>📦 재고 등록</button>
+            {/* 자주 쓰는 작업은 밖으로 — 새 Lot 추가 / 위치 변경 / 정보 수정. 덜 자주 쓰거나 위험한 것(폐기·삭제)만 ⋯더보기 안. */}
+            <button onClick={() => setShowAddLotModal(true)} style={{ padding: '9px 16px', minHeight: 44, borderRadius: '8px', border: '1px dashed #C9DAF5', background: '#F9FBFF', fontSize: '13px', color: '#1F4E96', fontWeight: '600', cursor: 'pointer' }}>📦 새 Lot 추가</button>
             <button onClick={openMoveModal} disabled={requestableForMove.length === 0}
               title={activeLots.length > 0 && requestableForMove.length === 0 ? DUPLICATE_PENDING_MESSAGE.location : undefined}
-              style={{ padding: '9px 16px', borderRadius: '8px', border: `1px solid ${C.border}`, background: requestableForMove.length === 0 ? '#F7F7F7' : C.white, fontSize: '13px', color: '#586173', cursor: requestableForMove.length === 0 ? 'default' : 'pointer' }}>📍 {isAdmin ? '위치 변경' : (activeLots.length > 0 && requestableForMove.length === 0 ? '위치 변경 신청 완료' : '위치 변경 신청')}</button>
+              style={{ padding: '9px 16px', minHeight: 44, borderRadius: '8px', border: `1px solid ${C.border}`, background: requestableForMove.length === 0 ? '#F7F7F7' : C.white, fontSize: '13px', color: '#586173', cursor: requestableForMove.length === 0 ? 'default' : 'pointer' }}>📍 {isAdmin ? '위치 변경' : (activeLots.length > 0 && requestableForMove.length === 0 ? '위치 변경 신청 완료' : '위치 변경 신청')}</button>
+            <button onClick={startEdit} disabled={editMode}
+              style={{ padding: '9px 16px', minHeight: 44, borderRadius: '8px', border: `1px solid ${C.border}`, background: editMode ? '#F7F7F7' : C.white, fontSize: '13px', color: '#586173', cursor: editMode ? 'default' : 'pointer' }}>✏️ {isAdmin ? '정보 수정' : '정보 수정 신청'}</button>
             {activeInventorySession && (
-              <button onClick={() => { if (!student) { alert('로그인 후 이용해주세요'); return } confirmReagent() }} style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: C.blue, fontSize: '13px', color: '#fff', fontWeight: '600', cursor: 'pointer' }}>✓ 정보 맞음 · 확인만 하기</button>
+              <button onClick={() => { if (!student) { alert('로그인 후 이용해주세요'); return } confirmReagent() }} style={{ padding: '9px 18px', minHeight: 44, borderRadius: '8px', border: 'none', background: C.blue, fontSize: '13px', color: '#fff', fontWeight: '600', cursor: 'pointer' }}>✓ 정보 맞음 · 확인만 하기</button>
             )}
-            <div ref={moreMenuRef} style={{ position: 'relative' }}>
-              <button onClick={() => setMoreMenuOpen(v => !v)} style={{
-                padding: '9px 14px', borderRadius: '8px', border: `1px solid ${C.border}`,
+            <div ref={moreMenuRef} style={{ position: 'relative' }} onKeyDown={onMoreKeyDown}>
+              <button ref={moreBtnRef} aria-haspopup="menu" aria-expanded={moreMenuOpen} onClick={() => setMoreMenuOpen(v => !v)} style={{
+                padding: '9px 14px', minHeight: 44, borderRadius: '8px', border: `1px solid ${C.border}`,
                 background: moreMenuOpen ? C.bg : C.white, fontSize: '13px', color: '#586173', cursor: 'pointer', fontWeight: '600',
               }}>⋯ 더보기</button>
               {moreMenuOpen && (
-                <div style={{
-                  position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 200,
+                <div role="menu" aria-label="더보기" style={{
+                  position: 'fixed', top: morePos?.top ?? 0, left: morePos?.left ?? 0, width: morePos?.width, zIndex: 200, boxSizing: 'border-box', visibility: morePos ? 'visible' : 'hidden',
                   background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.15)', padding: '6px', minWidth: '170px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.15)', padding: '6px',
                   display: 'flex', flexDirection: 'column', gap: '2px',
                 }}>
-                  <button onClick={() => { setEditMode(v => !v); setMoreMenuOpen(false) }} style={{
-                    padding: '8px 12px', borderRadius: '6px', border: 'none', background: 'none',
-                    fontSize: '13px', color: '#586173', cursor: 'pointer', textAlign: 'left', fontWeight: '600',
-                  }} onMouseEnter={e => e.currentTarget.style.background = C.bg} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                    ✏️ {editMode ? (isAdmin ? '정보 수정 마치기' : '수정 신청 마치기') : isAdmin ? '시약정보 수정' : '시약정보 수정 신청'}
-                  </button>
-                  <button onClick={() => { openDisposalModal(); setMoreMenuOpen(false) }} disabled={requestableForDisposal.length === 0}
+                  <button role="menuitem" onClick={() => { openDisposalModal(); setMoreMenuOpen(false) }} disabled={requestableForDisposal.length === 0}
                     title={activeLots.length > 0 && requestableForDisposal.length === 0 ? DUPLICATE_PENDING_MESSAGE.disposal : undefined} style={{
-                    padding: '8px 12px', borderRadius: '6px', border: 'none', background: 'none',
+                    padding: '10px 12px', minHeight: 44, borderRadius: '6px', border: 'none', background: 'none',
                     fontSize: '13px', color: requestableForDisposal.length === 0 ? C.muted : '#C13B3F', cursor: requestableForDisposal.length === 0 ? 'default' : 'pointer', textAlign: 'left', fontWeight: '600',
                   }} onMouseEnter={e => { if (requestableForDisposal.length > 0) e.currentTarget.style.background = '#FDECEC' }} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                     🗑️ {isAdmin ? '폐기 처리' : (activeLots.length > 0 && requestableForDisposal.length === 0 ? '폐기 신청 완료' : '폐기 신청')}
                   </button>
                   {isAdmin && (
-                    <button onClick={() => { setMoreMenuOpen(false); archiveReagent() }} title="활성 재고가 없을 때만 삭제할 수 있어요" style={{
-                      padding: '8px 12px', borderRadius: '6px', border: 'none', background: 'none',
+                    <button role="menuitem" onClick={() => { setMoreMenuOpen(false); archiveReagent() }} title="활성 재고가 없을 때만 삭제할 수 있어요" style={{
+                      padding: '10px 12px', minHeight: 44, borderRadius: '6px', border: 'none', background: 'none',
                       fontSize: '13px', color: '#C13B3F', cursor: 'pointer', textAlign: 'left', fontWeight: '600',
                     }} onMouseEnter={e => e.currentTarget.style.background = '#FDECEC'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                       🗑 시약 종류 삭제
@@ -582,39 +646,55 @@ export default function ReagentDetail() {
       />
       <div style={{ padding: isMobile ? '16px' : '20px 32px' }}>
 
-      {editMode && !isAdmin && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#FBF0DF', border: '1px solid #F0DBAE', borderRadius: '10px', padding: '11px 16px', marginBottom: '18px', fontSize: '12.5px', color: '#8A5A16' }}>
-          ✏️ <b>시약정보 수정 신청 모드</b> — 값을 입력하고 포커스를 옮기면 <b>신청</b>이 접수돼요. 관리자가 승인해야 실제 정보가 바뀌고, 노란 배경 항목은 이미 신청이 접수되어 검토를 기다리는 중이에요.
-          {!student && <span> <b>제출하려면 로그인이 필요해요.</b></span>}
+      {editMode && (
+        <div role="region" aria-label="시약 기본정보 수정" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px', background: '#FBF0DF', border: '1px solid #F0DBAE', borderRadius: '10px', padding: '11px 16px', marginBottom: '18px', fontSize: '12.5px', color: '#8A5A16' }}>
+          <div style={{ flex: '1 1 260px', minWidth: 0, lineHeight: 1.6 }}>
+            ✏️ <b>{isAdmin ? '시약 기본정보 수정 중' : '시약 기본정보 수정 신청 중'}</b> — 아래 「시약 기본정보」를 고치세요. 이 정보는 <b>이 시약 종류의 모든 병에 공통</b>이에요(병별 위치·잔량은 「보유 Lot / 병」에서).
+            {isAdmin
+              ? <> <b>[저장]</b>을 누르면 바로 반영돼요.</>
+              : <> <b>[수정 신청]</b>을 누르면 신청이 접수되고 관리자가 승인해야 실제 정보가 바뀌어요. 노란 배경 항목은 이미 신청이 접수되어 검토를 기다리는 중이에요.</>}
+            {!student && !isAdmin && <span> <b>제출하려면 로그인이 필요해요.</b></span>}
+          </div>
+          <button onClick={cancelEdit} disabled={savingEdit} style={{ ...btnGhost, minHeight: 44 }}>취소</button>
+          <button onClick={saveEdit} disabled={savingEdit} style={{ ...btnPrimary, minHeight: 44, opacity: savingEdit ? 0.6 : 1 }}>{savingEdit ? '처리 중...' : isAdmin ? '저장' : '수정 신청'}{changedKeys.length > 0 ? ` (${changedKeys.length}개 항목)` : ''}</button>
         </div>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1.4fr 1fr', gap: '20px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-          {/* 재고정보 — 학생이 상세페이지를 열었을 때 가장 먼저 궁금한 건 "어디 있는지,
-              몇 병 남았는지"라 기본정보(CAS·제조사 등)보다 위로 올림. */}
+          {/* 보유 Lot / 병 — 병 1개(reagent_lots 1행)마다 한 카드. 위치·잔량·폐기는 병 단위로 처리한다.
+              학생이 상세페이지를 열었을 때 가장 먼저 궁금한 건 "어디 있는지, 몇 병 남았는지"라 기본정보보다 위에 둔다. */}
           <div style={cardStyle}>
-            <div style={cardHeadStyle}>재고정보 {lots.length > 1 && <span style={{ fontWeight: 400, color: C.muted, fontSize: '12px' }}>· Lot {lots.length}개</span>}</div>
+            <div style={cardHeadStyle}>
+              보유 Lot / 병 {lots.length > 1 && <span style={{ fontWeight: 400, color: C.muted, fontSize: '12px' }}>· 총 {lots.length}개</span>}
+              <div style={{ fontWeight: 400, color: C.muted, fontSize: '11.5px', marginTop: 2 }}>병 1개마다 한 칸이에요. 위치·잔량·폐기는 병(Lot) 단위로 처리해요.{isAdmin ? ' 관리자는 미개봉 병 수·잔량 숫자를 눌러 바로 고칠 수 있어요.' : ''}</div>
+            </div>
             <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {lots.map(lot => {
+              {lots.map((lot, lotIdx) => {
                 const editingSealed = inlineEdit?.lotId === lot.id && inlineEdit?.field === 'sealed_count'
                 const editingStock = inlineEdit?.lotId === lot.id && inlineEdit?.field === 'current_stock'
                 const isLow = lot.status === 'active' && lot.sealed_count === 0 && lot.current_stock <= 20
                 const lotLoc = locations.find(l => l.id === lot.location_id)
                 const canEdit = isAdmin && lot.status === 'active'
+                const groupedRow = lot.sealed_count > 1
+                const moveOk = lot.status === 'active' && !groupedRow && (isAdmin || !pendingMoveByLot.has(lot.id))
+                const disposeOk = lot.status === 'active' && !groupedRow && (isAdmin || !pendingDisposalByLot.has(lot.id))
+                const lotBtn = { fontSize: '12px', borderRadius: '6px', padding: '6px 10px', minHeight: 32, cursor: 'pointer', background: C.white }
                 return (
-                  <div key={lot.id} style={{
+                  <div key={lot.id} data-lot-id={lot.id} style={{
                     paddingBottom: lots.length > 1 ? '12px' : 0, borderBottom: lots.length > 1 ? `1px solid ${C.borderRow}` : 'none',
                     opacity: lot.status === 'active' ? 1 : 0.6,
                     background: lot.pending_confirm ? '#F0F7FF' : 'transparent',
                     padding: lot.pending_confirm ? '8px' : 0, borderRadius: lot.pending_confirm ? '8px' : 0,
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                      <span style={{ fontSize: '12.5px', fontWeight: '700', color: C.navy }}>Lot {lot.lot_no || '(번호 없음)'}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 8px', marginBottom: '10px' }}>
+                      {lots.length > 1 && <span style={{ fontSize: '12px', fontWeight: '700', color: C.muted }}>병 {lotIdx + 1}/{lots.length}</span>}
+                      <span title={`병 ID: ${lot.id}`} style={{ fontSize: '12.5px', fontWeight: '700', color: C.navy }}>Lot {lot.lot_no || '(번호 없음)'}</span>
                       <span style={{ fontSize: '10.5px', fontWeight: '700', color: LOT_STATUS_COLOR[lot.status] || C.muted }}>
                         {LOT_STATUS_LABEL[lot.status] || lot.status}
                       </span>
+                      {lot.status === 'active' && <span style={{ fontSize: '10.5px', fontWeight: '700', color: lot.sealed_count > 0 ? '#0F6B44' : '#8A5A16' }}>{lot.sealed_count > 0 ? '미개봉' : '개봉'}</span>}
                       {lot.pending_confirm && (
                         <span title="실사 반영됨 · 최종 확정 대기 중" style={{ fontSize: '10px', fontWeight: '700', color: '#1565C0', background: '#E3F2FD', padding: '1px 6px', borderRadius: '8px' }}>검토대기</span>
                       )}
@@ -631,10 +711,18 @@ export default function ReagentDetail() {
                       {lot.needs_action && (
                         <span title={`2026-2 전수조사 "조치필요" 항목 — ${lot.action_note || '실물 확인이 필요합니다.'}`} style={{ fontSize: '10px', fontWeight: '700', color: '#C13B3F', background: '#FDECEC', padding: '1px 6px', borderRadius: '8px' }}>⚠️ 확인필요</span>
                       )}
-                      {isAdmin && lot.status === 'active' && (
-                        <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
-                          <button onClick={() => setLotStatus(lot, 'used_up')} style={{ fontSize: '10.5px', color: C.muted, background: 'none', border: `1px solid ${C.border}`, borderRadius: '5px', padding: '2px 7px', cursor: 'pointer' }}>사용완료로 표시</button>
-                          <button onClick={() => setLotStatus(lot, 'missing')} style={{ fontSize: '10.5px', color: '#B7791F', background: 'none', border: '1px solid #F0DBAE', borderRadius: '5px', padding: '2px 7px', cursor: 'pointer' }}>분실로 표시</button>
+                      {lot.status === 'active' && (
+                        <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          <button onClick={() => openMoveModal(lot.id)} disabled={!moveOk}
+                            title={groupedRow ? '묶음 행(미개봉 병 여러 개) — 병별 Lot 행으로 분리 필요' : (!moveOk ? DUPLICATE_PENDING_MESSAGE.location : undefined)}
+                            aria-label={`Lot ${lot.lot_no || '번호없음'} 이 병 위치 변경${isAdmin ? '' : ' 신청'}`}
+                            style={{ ...lotBtn, border: `1px solid ${C.border}`, color: moveOk ? '#586173' : C.muted, cursor: moveOk ? 'pointer' : 'default' }}>이 병 위치 변경{isAdmin ? '' : ' 신청'}</button>
+                          <button onClick={() => openDisposalModal(lot.id)} disabled={!disposeOk}
+                            title={groupedRow ? '묶음 행(미개봉 병 여러 개) — 병별 Lot 행으로 분리 필요' : (!disposeOk ? DUPLICATE_PENDING_MESSAGE.disposal : undefined)}
+                            aria-label={`Lot ${lot.lot_no || '번호없음'} 이 병 ${isAdmin ? '폐기 처리' : '폐기 신청'}`}
+                            style={{ ...lotBtn, border: '1px solid #F3D6D6', color: disposeOk ? '#C13B3F' : C.muted, cursor: disposeOk ? 'pointer' : 'default' }}>이 병 {isAdmin ? '폐기' : '폐기 신청'}</button>
+                          {isAdmin && <button onClick={() => setLotStatus(lot, 'used_up')} style={{ ...lotBtn, fontSize: '11px', color: C.muted, border: `1px solid ${C.border}` }}>사용완료로 표시</button>}
+                          {isAdmin && <button onClick={() => setLotStatus(lot, 'missing')} style={{ ...lotBtn, fontSize: '11px', color: '#B7791F', border: '1px solid #F0DBAE' }}>분실로 표시</button>}
                         </span>
                       )}
                     </div>
@@ -642,30 +730,31 @@ export default function ReagentDetail() {
                       <div>
                         <div style={{ fontSize: '11px', color: C.muted, marginBottom: '4px' }}>미개봉 병 수</div>
                         {editingSealed ? (
-                          <input autoFocus type="number" min="0" value={inlineEdit.value}
+                          <input autoFocus type="number" min="0" value={inlineEdit.value} aria-label="미개봉 병 수"
                             onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
                             onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(lot); if (e.key === 'Escape') setInlineEdit(null) }}
                             onBlur={() => saveInlineEdit(lot)}
                             style={{ width: '60px', padding: '4px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13.5px' }} />
                         ) : (
                           <div onClick={e => canEdit && startInlineEdit(lot.id, 'sealed_count', lot.sealed_count, e)}
-                            style={{ fontSize: '13.5px', color: C.text, cursor: canEdit ? 'text' : 'default' }}>{lot.sealed_count}병</div>
+                            style={{ fontSize: '13.5px', color: C.text, cursor: canEdit ? 'text' : 'default' }}>{lot.sealed_count}병{canEdit && <span aria-hidden="true" style={{ marginLeft: 4, color: C.muted, fontSize: 11 }}>✎</span>}</div>
                         )}
                       </div>
                       <div style={{ background: isLow ? '#FDECEC' : 'transparent', borderRadius: '8px', padding: isLow ? '8px 10px' : 0, margin: isLow ? '-8px -10px' : 0 }}>
-                        <div style={{ fontSize: '11px', color: isLow ? '#C13B3F' : C.muted, marginBottom: '4px', fontWeight: isLow ? '600' : '400' }}>개봉 병 잔량{isLow ? ' · 부족' : ''}</div>
+                        <div style={{ fontSize: '11px', color: isLow ? '#C13B3F' : C.muted, marginBottom: '4px', fontWeight: isLow ? '600' : '400' }}>개봉 병 잔량{isLow ? ' · 재고 부족' : ''}</div>
                         {editingStock ? (
-                          <input autoFocus type="number" min="0" max="100" value={inlineEdit.value}
+                          <input autoFocus type="number" min="0" max="100" value={inlineEdit.value} aria-label="개봉 병 잔량"
                             onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
                             onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(lot); if (e.key === 'Escape') setInlineEdit(null) }}
                             onBlur={() => saveInlineEdit(lot)}
                             style={{ width: '60px', padding: '4px 6px', borderRadius: '4px', border: `2px solid ${C.gold}`, fontSize: '13.5px' }} />
                         ) : (
                           <div onClick={e => canEdit && startInlineEdit(lot.id, 'current_stock', lot.current_stock, e)}
-                            style={{ fontSize: '13.5px', color: C.text, cursor: canEdit ? 'text' : 'default' }}>{lot.current_stock}%</div>
+                            style={{ fontSize: '13.5px', color: C.text, cursor: canEdit ? 'text' : 'default' }}>{lot.current_stock}%{canEdit && <span aria-hidden="true" style={{ marginLeft: 4, color: C.muted, fontSize: 11 }}>✎</span>}</div>
                         )}
                       </div>
                       <InfoRow label="위치" value={lotLoc ? `${lotLoc.room}${lotLoc.detail ? ' · ' + lotLoc.detail : ''}${lot.shelf_position ? ' · ' + lot.shelf_position : ''}` : ''} />
+                      <InfoRow label="제조사 (시약 기본정보)" value={reagent.company} />
                       <InfoRow label="Cat No." value={lot.cat_no} />
                       <InfoRow label="입고일" value={lot.received_date} />
                       <InfoRow label="개봉일" value={lot.opened_date} />
@@ -675,55 +764,67 @@ export default function ReagentDetail() {
                   </div>
                 )
               })}
-              {lots.length === 0 && <div style={{ color: C.muted, fontSize: '13px' }}>등록된 Lot이 없습니다. "📦 재고 등록"으로 추가하세요.</div>}
+              {lots.length === 0 && <div style={{ color: C.muted, fontSize: '13px' }}>등록된 Lot이 없습니다. "📦 새 Lot 추가"로 추가하세요.</div>}
             </div>
           </div>
 
-          {/* 기본정보 */}
-          <div style={cardStyle}>
-            <div style={{ ...cardHeadStyle, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              기본정보
-              {reagent?.pending_confirm && (
-                <span title="실사 반영됨 · 최종 확정 대기 중" style={{ fontSize: '10px', fontWeight: '700', color: '#1565C0', background: '#E3F2FD', padding: '1px 6px', borderRadius: '8px' }}>검토대기</span>
-              )}
+          {/* 시약 기본정보 — 시약 종류(reagents 1행) 단위. 모든 병에 공통이며, 수정은 정보 수정(신청)으로 한다. */}
+          <div id="reagent-master-card" style={cardStyle}>
+            <div style={cardHeadStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                시약 기본정보
+                {reagent?.pending_confirm && (
+                  <span title="실사 반영됨 · 최종 확정 대기 중" style={{ fontSize: '10px', fontWeight: '700', color: '#1565C0', background: '#E3F2FD', padding: '1px 6px', borderRadius: '8px' }}>검토대기</span>
+                )}
+              </div>
+              <div style={{ fontWeight: 400, color: C.muted, fontSize: '11.5px', marginTop: 2 }}>이 시약 종류의 모든 병에 공통으로 적용되는 정보예요.</div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '14px 20px', padding: '18px 20px' }}>
-              {fieldRows.map(([field, label, value, source]) => {
-                const pending = pendingChanges.find(p => p.field_name === field)
-                const isEditing = editMode && editingField === field
+              <div>
+                <div style={{ fontSize: '11px', color: C.muted, marginBottom: '4px' }}>영문 시약명{editMode ? ' (변경 불가)' : ''}</div>
+                <div style={{ fontSize: '13.5px', color: C.text, overflowWrap: 'anywhere' }}>{reagent.name}</div>
+              </div>
+              {MASTER_ROWS.map(row => {
+                const keys = row.keys
+                const pending = keys.map(k => pendingChanges.find(p => p.field_name === k)).find(Boolean)
+                const locked = !isAdmin && !!pending
+                const isEditing = editMode
+                const sourceVal = row.source ? reagent[row.source] : null
+                const viewValue = row.key === 'volume' ? (reagent.volume ? `${reagent.volume} ${reagent.unit || ''}` : '') : cur(row.key)
+                const inputId = `master-${row.key}`
                 return (
-                  <div key={field} style={{ background: pending ? '#FBF0DF' : 'transparent', borderRadius: '8px', padding: pending ? '8px 10px' : 0, margin: pending ? '-8px -10px' : 0 }}>
+                  <div key={row.key} style={{ background: pending ? '#FBF0DF' : 'transparent', borderRadius: '8px', padding: pending ? '8px 10px' : 0, margin: pending ? '-8px -10px' : 0 }}>
                     {pending && (
                       <div style={{ fontSize: '10.5px', color: '#8A5A16', marginBottom: '3px', fontWeight: '600' }}>
                         {isAdmin ? `${pending.requested_by} · ${requestStatusLabel('change', 'pending', 'admin')}` : requestStatusLabel('change', 'pending')}
                       </div>
                     )}
-                    <div style={{ fontSize: '11px', color: C.muted, marginBottom: '4px' }}>{label}</div>
-                    {isEditing && field === 'company' ? (
-                      <CompanyPicker value={editingValue} onChange={setEditingValue}
-                        onPick={v => saveField(field, v, source ? `${field}_source` : null)}
-                        onKeyDown={e => { if (e.key === 'Enter') saveField(field, editingValue, source ? `${field}_source` : null) }}
-                        onBlur={() => saveField(field, editingValue, source ? `${field}_source` : null)}
-                        style={{ ...inputStyle, padding: '4px 8px', fontSize: '13px' }} />
-                    ) : isEditing ? (
-                      <input autoFocus value={editingValue} onChange={e => setEditingValue(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') saveField(field, editingValue, source ? `${field}_source` : null) }}
-                        onBlur={() => saveField(field, editingValue, source ? `${field}_source` : null)}
-                        style={{ ...inputStyle, padding: '4px 8px', fontSize: '13px' }} />
+                    <label htmlFor={inputId} style={{ display: 'block', fontSize: '11px', color: C.muted, marginBottom: '4px' }}>{row.label}</label>
+                    {isEditing ? (
+                      row.key === 'company' ? (
+                        <CompanyPicker value={val('company')} onChange={v => setDraftField('company', v)} disabled={locked}
+                          style={{ ...inputStyle, padding: '6px 8px', fontSize: '13px', background: locked ? C.bg : C.white }} />
+                      ) : row.key === 'volume' ? (
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <input id={inputId} type="number" min="0" step="any" inputMode="decimal" value={val('volume')} disabled={locked} placeholder="용량" aria-label="용량(숫자)"
+                            onChange={e => setDraftField('volume', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '13px', flex: 1, minWidth: 0 }} />
+                          <input value={val('unit')} disabled={locked} placeholder="단위(mL, g …)" aria-label="단위"
+                            onChange={e => setDraftField('unit', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '13px', flex: 1, minWidth: 0 }} />
+                        </div>
+                      ) : (
+                        <input id={inputId} value={val(row.key)} disabled={locked} onChange={e => setDraftField(row.key, e.target.value)}
+                          style={{ ...inputStyle, padding: '6px 8px', fontSize: '13px', background: locked ? C.bg : C.white }} />
+                      )
                     ) : (
-                      <div style={{ fontSize: '13.5px', color: C.text, cursor: editMode ? 'text' : 'default' }}
-                        onClick={() => {
-                          if (!editMode) return
-                          if (pending && !isAdmin) { showNotice(DUPLICATE_PENDING_MESSAGE.change); return }
-                          setEditingField(field); setEditingValue(value || '')
-                        }}>
-                        {value || '-'}
-                        {source === 'auto_ghs' && (
+                      <div style={{ fontSize: '13.5px', color: C.text, overflowWrap: 'anywhere' }}>
+                        {viewValue || '-'}
+                        {sourceVal === 'auto_ghs' && (
                           <span title="국가유해물질정보 자동조회로 채워졌어요" style={{ marginLeft: '6px', fontSize: '9.5px', color: C.muted, background: '#F3F4F6', padding: '1px 6px', borderRadius: '8px' }}>🔎 MSDS 자동조회</span>
                         )}
                         {pending && <span style={{ marginLeft: '6px', fontSize: '11px', color: '#8A5A16' }}>→ {pending.new_value}</span>}
                       </div>
                     )}
+                    {isEditing && locked && <div style={{ fontSize: '11px', color: '#8A5A16', marginTop: 3 }}>{DUPLICATE_PENDING_MESSAGE.change}</div>}
                   </div>
                 )
               })}
@@ -1037,12 +1138,13 @@ export default function ReagentDetail() {
         </div>
       )}
 
-      {/* 재고 등록(새 Lot 추가) 모달 */}
+      {/* 새 Lot 추가 모달 */}
       {showAddLotModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,42,94,0.55)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onClick={() => setShowAddLotModal(false)}>
+        <div role="dialog" aria-modal="true" aria-label="새 Lot 추가" style={{ position: 'fixed', inset: 0, background: 'rgba(26,42,94,0.55)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onClick={() => setShowAddLotModal(false)}>
           <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '24px', width: '420px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ margin: '0 0 4px', color: C.navy }}>📦 재고 등록</h3>
-            <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{reagent.name} — 새로 구매한 Lot을 추가해요. 시약명·CAS 등은 다시 입력할 필요 없어요.</p>
+            <h3 style={{ margin: '0 0 4px', color: C.navy }}>📦 새 Lot 추가</h3>
+            <p style={{ margin: '0 0 6px', color: C.muted, fontSize: '13px', overflowWrap: 'anywhere' }}>{reagent.name}</p>
+            <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '12.5px', lineHeight: 1.5 }}>현재 시약에 새로 구매한 병/Lot을 추가합니다. 새 시약 종류를 등록하는 것이 아니에요(시약명·CAS 등은 다시 입력할 필요 없어요).</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <LotNoInput
                 value={{ lotNo: addLotForm.lot_no, noLotReason: addLotForm.noLotReason }}
@@ -1073,7 +1175,7 @@ export default function ReagentDetail() {
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
               <button onClick={() => setShowAddLotModal(false)} style={{ ...btnGhost, flex: 1 }}>취소</button>
-              <button onClick={submitAddLot} style={{ ...btnPrimary, flex: 1 }}>등록하기</button>
+              <button onClick={submitAddLot} style={{ ...btnPrimary, flex: 1 }}>Lot 추가하기</button>
             </div>
           </div>
         </div>

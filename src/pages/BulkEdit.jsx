@@ -16,7 +16,7 @@ export default function BulkEdit() {
 
   return (
     <div>
-      <PageBanner title="시약 일괄 정리" sub="Bulk Edit" breadcrumb={['홈', '시약 일괄정리']} />
+      <PageBanner title="시약 일괄 정리" sub="Bulk Edit" breadcrumb={['시약 일괄정리']} />
       <div style={{ padding: '8px 16px' }}>
         <BulkEditTab locations={locations} student={student} isAdmin={isAdmin} />
       </div>

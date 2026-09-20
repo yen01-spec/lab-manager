@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 import { fetchAllPages } from '../lib/fetchAllPages'
 import { getHazardCategory } from '../lib/hazardCategory'
 import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
+import { summarizeLots } from '../lib/lotSummary'
 
 // 국가유해물질정보(KECO) GHS 조회 API의 공식 픽토그램 코드(pctgrmCd) → 표시용 매핑.
 // ReagentDetail.jsx의 GHS_PICTOGRAM_MAP과 동일 — 목록 화면 전용 훅이라 별도 파일에 둠.
@@ -85,6 +86,7 @@ function enrichReagent(r) {
   const allLots = r.reagent_lots || []
   const activeLots = allLots.filter(l => l.status === 'active')
   const totalSealed = activeLots.reduce((s, l) => s + l.sealed_count, 0)
+  const lotSummary = summarizeLots(activeLots)
   const avgStock = activeLots.length > 0
     ? Math.round(activeLots.reduce((s, l) => s + l.current_stock, 0) / activeLots.length) : 0
   const isLow = activeLots.some(l => l.sealed_count === 0 && l.current_stock <= 20)
@@ -95,6 +97,7 @@ function enrichReagent(r) {
     ...r,
     _activeLots: activeLots,
     _totalSealed: totalSealed,
+    _bottleCount: lotSummary.bottles,
     _avgStock: avgStock,
     _isLow: isLow,
     _hasPendingConfirm: hasPendingConfirm,

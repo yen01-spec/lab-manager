@@ -406,7 +406,7 @@ export default function ReagentList() {
 
   return (
     <div>
-      <PageBanner title="시약 목록" sub="Reagent List" breadcrumb={['홈', '시약 관리', '시약 목록']} />
+      <PageBanner title="시약 목록" sub="Reagent List" breadcrumb={['시약 목록']} />
       <div style={{ padding: '8px 16px' }}>
 
         <ReagentToolbar

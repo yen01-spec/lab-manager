@@ -180,6 +180,10 @@ const overflowX = page => page.evaluate(() => document.documentElement.scrollWid
   const wb = new ExcelJS.Workbook(); await wb.xlsx.load(readFileSync(await dl.path()))
   const names = new Set(); wb.worksheets[0].eachRow(row => { const v = row.getCell(1).value; if (v) names.add(String(v)) })
   ok('export (Excel) uses the current filtered result: only the batch-matched reagents, not the whole list', ['Acetone', 'Bromothymol blue', 'Acetic acid'].every(n => names.has(n)) && ![...names].some(n => n === 'Thymol blue' || n === 'Benzene') && names.size < 15, [...names].slice(0, 12))
+  // PDF(인쇄)·학교등록 내보내기는 "선택 목록"(체크한 시약)을 대상으로 한다 — 헤더 체크박스는 현재(=일괄검색 필터된) 목록만 담는다.
+  const nShown = await resultCount(page)
+  await page.locator('input[aria-label="현재 목록 전체를 선택 목록에 담기"]').check(); await page.waitForTimeout(300)
+  ok('select-all in a batch result picks ONLY the filtered reagents (feeds 선택 목록 → PDF / 학교등록 exports)', (await page.getByText(new RegExp(`${nShown}개 선택됨`)).count()) === 1 && nShown < 20, nShown)
   await ctx.close()
 }
 

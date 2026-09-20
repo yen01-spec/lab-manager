@@ -45,7 +45,7 @@ export default function ReagentLocations() {
       <PageBanner
         title="시약장 위치"
         sub="Storage Location"
-        breadcrumb={['홈', '시약 관리', '시약장 위치']}
+        breadcrumb={['시약장 위치']}
       />
       <div style={{ padding: '28px 40px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>

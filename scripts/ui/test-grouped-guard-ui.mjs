@@ -23,7 +23,7 @@ await page.goto(BASE + '/reagents/r-0002', { waitUntil: 'domcontentloaded' })
 await page.getByRole('button', { name: /위치 변경 신청/ }).first().waitFor({ timeout: 15000 })
 ok('detail (grouped lot): 위치 변경 신청 button is disabled', await page.getByRole('button', { name: /위치 변경 신청/ }).first().isDisabled())
 await page.getByRole('button', { name: /더보기/ }).click()
-ok('detail (grouped lot): 폐기 신청 menu item is disabled', await page.getByRole('button', { name: /^🗑️ 폐기 신청/ }).isDisabled())
+ok('detail (grouped lot): 폐기 신청 menu item is disabled', await page.getByRole('menuitem', { name: /^🗑️ 폐기 신청/ }).isDisabled())
 await page.keyboard.press('Escape')
 
 await page.goto(BASE + '/reagents/r-0001', { waitUntil: 'domcontentloaded' })

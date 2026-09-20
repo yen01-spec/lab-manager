@@ -11,6 +11,7 @@ export default function LotRow({ lot, locations, visibleCols }) {
       <td style={{ ...tdStyle, borderRight: `1px solid ${C.borderRow}` }}></td>
       <td style={{ ...tdStyle, fontSize: '12.5px', color: C.muted, whiteSpace: 'nowrap', paddingLeft: '30px', borderRight: `1px solid ${C.borderRow}` }}>
         ↳ Lot {lot.lot_no || '(번호 없음)'}
+        <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: lot.sealed_count > 0 ? '#0F6B44' : '#8A5A16' }}>{lot.status === 'active' ? (lot.sealed_count > 0 ? '미개봉' : '개봉') : ''}</span>
       </td>
       <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>
       {visibleCols.casNo && <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', borderRight: `1px solid ${C.borderRow}` }}>-</td>}
@@ -22,7 +23,7 @@ export default function LotRow({ lot, locations, visibleCols }) {
             <div style={{ width: '36px', height: '6px', borderRadius: '3px', background: '#F0F2F6', overflow: 'hidden', flexShrink: 0 }}>
               <div style={{ width: `${lot.current_stock}%`, height: '100%', background: (lot.sealed_count === 0 && lot.current_stock <= 20) ? '#E5484D' : '#1E9E6A' }} />
             </div>
-            <span>{lot.sealed_count}병 / {lot.current_stock}%</span>
+            <span>미개봉 {lot.sealed_count}병 / 잔량 {lot.current_stock}%</span>
           </div>
         </td>
       )}

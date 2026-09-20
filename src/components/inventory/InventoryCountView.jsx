@@ -541,7 +541,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     if (newEntryMode) {
       return (
         <div>
-          <PageBanner title="신규 시약 등록" sub={mobileSub} breadcrumb={['홈', '재고 실사', '신규 등록']} />
+          <PageBanner title="신규 시약 등록" sub={mobileSub} breadcrumb={['재고 실사', '신규 등록']} />
           <div style={{ padding: '16px 16px 100px' }}>
             <button onClick={cancelNewEntry} style={{ ...btnGhost, padding: '8px 14px', fontSize: '13px', marginBottom: '14px' }}>← 취소하고 목록으로</button>
             {newEntryForm.reagent_id ? (
@@ -655,7 +655,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
 
       return (
         <div>
-          <PageBanner title="실사 입력" sub={mobileSub} breadcrumb={['홈', '재고 실사', '실사 입력']} />
+          <PageBanner title="실사 입력" sub={mobileSub} breadcrumb={['재고 실사', '실사 입력']} />
           <div style={{ padding: '16px 16px 100px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <button onClick={() => { setCompareLot(null); setCompareCandidates([]) }} style={{ ...btnGhost, padding: '8px 14px', fontSize: '13px' }}>← 목록으로</button>
@@ -760,7 +760,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     const mobileVisible = mobileCapped ? filteredLots.slice(0, capStart + RENDER_CAP) : filteredLots
     return (
       <div>
-        <PageBanner title="실사 입력" sub={mobileSub} breadcrumb={['홈', '재고 실사', '실사 입력']} />
+        <PageBanner title="실사 입력" sub={mobileSub} breadcrumb={['재고 실사', '실사 입력']} />
         <div style={{ padding: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <button onClick={onBack} style={{ ...btnGhost, padding: '8px 14px', fontSize: '13px' }}>← 재고실사로</button>
@@ -850,7 +850,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
 
   return (
     <div>
-      <PageBanner title="실사 입력" sub={`${session.year}년 재고 실사 · ${myName}`} breadcrumb={['홈', '재고 실사', '실사 입력']} />
+      <PageBanner title="실사 입력" sub={`${session.year}년 재고 실사 · ${myName}`} breadcrumb={['재고 실사', '실사 입력']} />
 
       <div style={{ padding: '20px 40px' }}>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '10px' }}>

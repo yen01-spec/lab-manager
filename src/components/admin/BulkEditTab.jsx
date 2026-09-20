@@ -246,7 +246,7 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
     : pend?.type === 'grouped'
       ? <span style={{ color: '#C13B3F', fontWeight: '700' }}>묶음 행(미개봉 {lot.sealed_count}병) — 병별 Lot 행으로 분리 필요</span>
       : <span style={{ display: 'inline-block', padding: '1px 8px', borderRadius: 10, fontSize: 11.5, fontWeight: 700,
-        background: lot.sealed_count > 0 ? C.successTint : C.warningTint, color: lot.sealed_count > 0 ? C.successDark : C.warningDark }}>{lotStateLabel(lot)}</span>)
+        background: lot.sealed_count > 0 ? C.successTint : C.warningTint, color: lot.sealed_count > 0 ? '#0F6B44' : '#8A5A16' }}>{lotStateLabel(lot)}</span>)
   const bottleLabel = (lot, i, n) => (
     <span title={`병 ID: ${lot.id}`} style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap' }}>
       {n > 1 ? <>↳ 병 {i + 1}/{n} </> : null}

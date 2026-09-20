@@ -1,4 +1,6 @@
 import { C } from '../../design'
+import { Badge, LOW_STOCK_TITLE } from './StatusBadges'
+import { bottleSummaryText } from '../../lib/lotSummary'
 
 // 모바일 시약목록 카드 — PC의 minWidth:900px 표는 휴대폰으로 시약장을 돌아다니며
 // 검색할 때 가로 스크롤이 계속 생겨서 불편함. 대신 핵심 정보(시약명·CAS·회사·위치·
@@ -31,16 +33,16 @@ export default function MobileReagentCard({ r, locations, isPicked, onTogglePick
           <span style={{ fontWeight: '700', color: C.navy, fontSize: '15px', ...ucStyle(uc?.fields.name) }}>{r.name}</span>
           {r.purity && <span style={{ fontSize: '11.5px', color: C.muted }}>({r.purity})</span>}
           {r.reagent_type === 'self_made' && <span style={{ fontSize: '9.5px', background: '#EAF1FB', color: '#1F4E96', padding: '1px 7px', borderRadius: '999px', fontWeight: '700' }}>직접제조</span>}
-          {isLow && <span style={{ fontSize: '10px', background: '#FFEBEE', color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
-          {uc?.missing && <span style={{ fontSize: '10px', background: '#FFF3CD', color: '#8A5A16', padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>미확인 보고</span>}
-          {hasPendingConfirm && <span style={{ fontSize: '10px', background: '#E3F2FD', color: '#1565C0', padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>검토대기</span>}
+          {isLow && <Badge kind="warning" title={LOW_STOCK_TITLE} style={{ marginLeft: 0 }}>재고 부족</Badge>}
+          {uc?.missing && <Badge kind="notice" style={{ marginLeft: 0 }}>미확인 보고</Badge>}
+          {hasPendingConfirm && <Badge kind="pending" style={{ marginLeft: 0 }}>검토대기</Badge>}
         </div>
         <div style={{ fontSize: '12.5px', color: C.muted, marginBottom: '6px' }}>
           {r.cas_no || '-'}{r.company ? ` · ${r.company}` : ''}
         </div>
         <div style={{ display: 'flex', gap: '14px', fontSize: '13px', color: C.text }}>
           <span style={ucStyle(uc?.location)}>📍 {locText}</span>
-          <span style={ucStyle(uc?.stock)}>{activeLots.length > 0 ? `${r._totalSealed}병 · 잔량 ${r._avgStock}%` : '보유 0병'}</span>
+          <span style={ucStyle(uc?.stock)}>{activeLots.length > 0 ? `${bottleSummaryText({ bottles: r._bottleCount, locations: r._activeLocIds.length })} · 잔량 ${r._avgStock}%` : '보유 0병'}</span>
         </div>
       </div>
       <span style={{ color: C.muted, fontSize: '18px', flexShrink: 0 }}>›</span>

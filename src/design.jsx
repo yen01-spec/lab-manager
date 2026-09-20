@@ -3,6 +3,8 @@
 //  핸드오프 기준: Navy #16233E + Blue #2F6BDB
 // ═══════════════════════════════════════════════════════
 
+import { Link } from 'react-router-dom'
+
 // ── 컬러 토큰 ───────────────────────────────────────────
 export const C = {
   // Brand
@@ -179,32 +181,55 @@ export function Icon({ name, size = 20, color, style = {} }) {
 }
 
 // ── 페이지 배너 ──────────────────────────────────────────
-export function PageBanner({ title, sub, breadcrumb = [], extra }) {
+// ── Breadcrumb ───────────────────────────────────────────
+// 실제 라우트 계층만 보여주는 클릭 가능한 경로. 항상 "홈"(/)으로 시작하므로 items 에 '홈'을 넣지 않는다(넣어도 무시).
+// item: '문자열'(링크 없음) | { label, to, onClick } — to 가 있으면 Link, onClick 이 있으면 클릭을 가로채 그 동작을 실행
+//   (시약 상세의 "시약 목록"은 목록 화면의 검색·필터·스크롤을 복원하려고 navigate(-1) 을 쓴다).
+// 마지막 항목 = 현재 페이지(aria-current="page", 링크 아님). items 가 비면 "홈" 자체가 현재 페이지.
+export function Breadcrumb({ items = [] }) {
+  const list = items.filter(Boolean).map(b => (typeof b === 'string' ? { label: b } : b)).filter((b, i) => !(i === 0 && b.label === '홈'))
+  const linkStyle = { color: C.muted, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', minHeight: '28px', padding: '0 2px' }
+  return (
+    <nav aria-label="현재 위치" style={{ paddingTop: '10px', marginBottom: '6px' }}>
+      <ol style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px 6px', margin: 0, padding: 0, listStyle: 'none', fontSize: '12px', color: C.muted }}>
+        <li style={{ display: 'flex', alignItems: 'center' }}>
+          {list.length === 0
+            ? <span aria-current="page" style={{ ...linkStyle, color: C.textSub }}><span aria-hidden="true" style={{ display: 'inline-flex' }}><Icon name="home" size={15} color={C.muted} /></span>홈</span>
+            : <Link to="/" style={linkStyle}><span aria-hidden="true" style={{ display: 'inline-flex' }}><Icon name="home" size={15} color={C.muted} /></span>홈</Link>}
+        </li>
+        {list.map((b, i) => {
+          const last = i === list.length - 1
+          return (
+            <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+              <span aria-hidden="true">›</span>
+              {last ? <span aria-current="page" style={{ color: C.textSub, overflowWrap: 'anywhere' }}>{b.label}</span>
+                : b.to ? <Link to={b.to} onClick={b.onClick ? (e => { e.preventDefault(); b.onClick() }) : undefined} style={linkStyle}>{b.label}</Link>
+                  : <span style={{ overflowWrap: 'anywhere' }}>{b.label}</span>}
+            </li>
+          )
+        })}
+      </ol>
+    </nav>
+  )
+}
+
+// back: { label, onClick } — 제목 위에 항상 보이는 "← 상위 화면" 버튼(브라우저 뒤로가기를 몰라도 돌아갈 수 있게).
+export function PageBanner({ title, sub, breadcrumb = [], extra, back }) {
   return (
     <div style={{
       background: C.white,
       borderBottom: `1px solid ${C.border}`,
       padding: '0 clamp(16px, 4vw, 24px)',
     }}>
-      {/* breadcrumb */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-        fontSize: '12px',
-        color: C.muted,
-        paddingTop: '10px',
-        marginBottom: '6px',
-      }}>
-        <Icon name="home" size={15} color={C.muted} />
-        <span>홈</span>
-        {breadcrumb.map((b, i) => (
-          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span>›</span>
-            <span style={{ color: i === breadcrumb.length - 1 ? C.textSub : C.muted }}>{b}</span>
-          </span>
-        ))}
-      </div>
+      <Breadcrumb items={breadcrumb} />
+      {back && (
+        <div style={{ marginBottom: '8px' }}>
+          <button type="button" onClick={back.onClick} aria-label={back.ariaLabel || back.label} style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px', minHeight: '44px', padding: '8px 14px', borderRadius: '8px',
+            border: `1px solid ${C.border}`, background: C.white, color: C.navy, fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit',
+          }}>← {back.label}</button>
+        </div>
+      )}
       {/* title row */}
       <div style={{
         display: 'flex',

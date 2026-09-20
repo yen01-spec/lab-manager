@@ -45,7 +45,7 @@ export default function NoticeDetail() {
 
   return (
     <div>
-      <PageBanner title={title} sub={sub} breadcrumb={[title]} />
+      <PageBanner title={title} sub={sub} breadcrumb={[{ label: title, to: listPath }, notice.title || '상세']} />
 
       <div style={{ padding: '20px 24px', maxWidth: 960, margin: '0 auto' }}>
 

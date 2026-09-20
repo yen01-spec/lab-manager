@@ -68,7 +68,7 @@ export default function Admin() {
 
   return (
     <div>
-      <PageBanner title="관리자 메뉴" sub="Admin Panel" breadcrumb={['홈', '관리자']} />
+      <PageBanner title="관리자 메뉴" sub="Admin Panel" breadcrumb={['관리자']} />
       <div style={{ padding: '28px 40px', display: 'flex', gap: '24px' }}>
         <div style={{
           width: '190px', flexShrink: 0, background: '#fff', borderRadius: '10px',

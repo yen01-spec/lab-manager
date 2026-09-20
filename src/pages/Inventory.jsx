@@ -58,7 +58,7 @@ export default function Inventory() {
   // "지금 진행 중인 실사에 들어가서 입력을 이어간다"는 동작 하나만 노출한다.
   if (isMobile) return (
     <div>
-      <PageBanner title="재고 실사" sub="Inventory Count" breadcrumb={['홈', '재고 실사']} />
+      <PageBanner title="재고 실사" sub="Inventory Count" breadcrumb={['재고 실사']} />
       <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {!activeSession && (
           <Card title="📋 진행 중인 실사 없음">
@@ -111,7 +111,7 @@ export default function Inventory() {
 
   return (
     <div>
-      <PageBanner title="재고 실사" sub="Inventory Count" breadcrumb={['홈', '재고 실사']} />
+      <PageBanner title="재고 실사" sub="Inventory Count" breadcrumb={['재고 실사']} />
       <div style={{ padding: '28px 40px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
         {!activeSession && (

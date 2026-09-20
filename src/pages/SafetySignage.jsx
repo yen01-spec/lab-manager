@@ -31,7 +31,7 @@ export default function SafetySignage() {
 
   return (
     <div>
-      <PageBanner title="표지·대장 준비 도구" sub="Signage & Ledger Tools" breadcrumb={['홈', '자료', '표지·대장 준비 도구']} />
+      <PageBanner title="표지·대장 준비 도구" sub="Signage & Ledger Tools" breadcrumb={[{ label: '자료', to: '/resources' }, '표지·대장 준비 도구']} />
       <div style={{ padding: '8px 16px 40px' }}>
         <div style={{
           margin: '8px 0 16px', padding: '10px 14px', background: C.bg, border: `1px solid ${C.border}`,

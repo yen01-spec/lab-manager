@@ -1,6 +1,8 @@
 import { Fragment, memo } from 'react'
 import { C, tdStyle } from '../../design'
 import LotRow from './LotRow'
+import { Badge, LOW_STOCK_TITLE } from './StatusBadges'
+import { bottleSummaryText } from '../../lib/lotSummary'
 
 // 행 하나를 memo로 감싸서, 서로 무관한 상태 변화(다른 행 선택/펼치기, 컬럼 표시
 // 전환 등)가 일어나도 실제로 이 행에 영향을 주는 props가 안 바뀌면 리렌더를 건너뛴다.
@@ -60,31 +62,25 @@ const ReagentRow = memo(function ReagentRow({
         </td>
         <td style={{ ...tdStyle, fontWeight: '600', color: C.navy, minWidth: '160px', maxWidth: '300px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}`, ...ucBg(uc?.fields.name) }}>
           {canExpand && (
-            <span onClick={e => { e.stopPropagation(); onToggleExpand(r.id) }}
-              style={{ marginRight: '5px', color: C.blue, fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
+            <button type="button" aria-expanded={isExpanded} aria-label={`${r.name} 병(Lot) 목록 ${isExpanded ? '접기' : '펼치기'}`}
+              onClick={e => { e.stopPropagation(); onToggleExpand(r.id) }}
+              style={{ marginRight: '3px', color: C.blue, fontSize: '12px', fontWeight: '700', cursor: 'pointer', background: 'none', border: 'none', padding: '4px 5px', minWidth: 24 }}>
               {isExpanded ? '▾' : '▸'}
-            </span>
+            </button>
           )}
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: '230px', verticalAlign: 'middle' }} title={r.name}>{r.name}</span>
           {canExpand && (
-            <span onClick={e => { e.stopPropagation(); onToggleExpand(r.id) }}
-              style={{ marginLeft: '6px', fontSize: '10.5px', background: '#EEF2FB', color: C.navy,
-                padding: '2px 8px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer' }}>
-              {activeLots.length}병{multiLocation ? ' · 위치별 보기' : ''}
-            </span>
+            <Badge kind="neutral" title="보유 중인 병 수와 그 병들이 놓인 위치 수예요. 펼치면 병(Lot)별 위치·잔량을 볼 수 있어요.">
+              {bottleSummaryText({ bottles: r._bottleCount, locations: r._activeLocIds.length })}
+            </Badge>
           )}
-          {r.reagent_type === 'self_made' && <span style={{ marginLeft: '6px', fontSize: '9.5px', background: '#EAF1FB',
-            color: '#1F4E96', padding: '1px 7px', borderRadius: '999px', fontWeight: '700' }}>직접제조</span>}
-          {isLow && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#FFEBEE',
-            color: C.danger, padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>부족</span>}
-          {uc?.missing && <span title="실사에서 미확인(분실)으로 보고됨 — 미확정" style={{ marginLeft: '6px', fontSize: '10px', background: '#FFF3CD', color: '#8A5A16', padding: '1px 6px', borderRadius: '8px', fontWeight: '700' }}>미확인 보고</span>}
+          {r.reagent_type === 'self_made' && <Badge kind="info">직접제조</Badge>}
+          {isLow && <Badge kind="warning" title={LOW_STOCK_TITLE}>재고 부족</Badge>}
+          {uc?.missing && <Badge kind="notice" title="실사에서 미확인(분실)으로 보고됨 — 미확정">미확인 보고</Badge>}
           {hasPendingConfirm && (
-            <span
-              onClick={isAdmin ? e => { e.stopPropagation(); onConfirmPending(r) } : undefined}
+            <Badge kind="pending" onClick={isAdmin ? e => { e.stopPropagation(); onConfirmPending(r) } : undefined}
               title={isAdmin ? '클릭하여 최종 확인 처리' : '아직 관리자 최종 확인 전이에요'}
-              style={{ marginLeft: '6px', fontSize: '10px', background: '#E3F2FD',
-                color: '#1565C0', padding: '1px 6px', borderRadius: '8px', fontWeight: '700',
-                cursor: isAdmin ? 'pointer' : 'default' }}>검토대기{isAdmin ? ' ✓' : ''}</span>
+              style={{ cursor: isAdmin ? 'pointer' : 'default' }}>검토대기{isAdmin ? ' ✓' : ''}</Badge>
           )}
         </td>
         <td style={{ ...tdStyle, color: C.muted, fontSize: '12px', whiteSpace: 'nowrap', borderRight: `1px solid ${C.borderRow}`, ...ucBg(uc?.fields.purity) }}>{r.purity || '-'}</td>
@@ -118,7 +114,7 @@ const ReagentRow = memo(function ReagentRow({
                   title={isAdmin && onlyLot ? '클릭하여 수정' : !onlyLot ? '상세페이지에서 Lot별로 수정하세요' : ''}
                   style={{ cursor: isAdmin && onlyLot ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
                     border: isAdmin && onlyLot ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
-                  {totalSealed}병
+                  미개봉 {totalSealed}병
                 </span>
               )}
               <span style={{ color: C.muted, fontSize: '11px' }}>/</span>
@@ -133,7 +129,7 @@ const ReagentRow = memo(function ReagentRow({
                   title={isAdmin && onlyLot ? '클릭하여 수정' : !onlyLot ? '상세페이지에서 Lot별로 수정하세요' : ''}
                   style={{ cursor: isAdmin && onlyLot ? 'text' : 'default', padding: '2px 6px', borderRadius: '4px', fontSize: '13px',
                     border: isAdmin && onlyLot ? `1px dashed ${C.border}` : 'none', minWidth: '32px', display: 'inline-block', textAlign: 'center' }}>
-                  {avgStock}%
+                  잔량 {avgStock}%
                 </span>
               )}
             </div>
@@ -205,7 +201,7 @@ const ReagentRow = memo(function ReagentRow({
             {activeLots.length === 0
               ? <span style={{ color: C.muted, fontWeight: '600', fontSize: '12px' }}>보유없음</span>
               : isLow
-                ? <span style={{ color: C.danger, fontWeight: '700', fontSize: '12px' }}>⚠ 부족</span>
+                ? <span style={{ color: C.danger, fontWeight: '700', fontSize: '12px' }}>⚠ 재고 부족</span>
                 : <span style={{ color: '#00875A', fontWeight: '600', fontSize: '12px' }}>✓ 정상</span>}
           </td>
         )}
