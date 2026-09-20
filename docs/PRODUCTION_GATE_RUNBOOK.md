@@ -10,8 +10,8 @@
 ## B. 적용 전 점검 (READ ONLY)
 1. `node scripts/guard-production-target.mjs` (단독 실행, exit 0)
 2. 백업: 재고 Excel 백업 + `scripts/production-inventory-backup.mjs`.
-3. `supabase db push --linked --dry-run` → 대기 중 마이그레이션(10개)이 정확히 아래 목록인지 확인(순서 중요):
-   `20260916090000_harden_student_auth` → `20260916100000_student_session_tokens` → `20260916110000_secure_request_submissions` → `20260920090000_secure_admin_reviews` → `20260920100000_least_privilege_acl` → `20260920110000_retire_student_admin_pin` → `20260920120000_inventory_workflow` → `20260920130000_reagent_domain_rpcs` → `20260922090000_request_unification` → `20260923090000_bottle_unit_requests`
+3. `supabase db push --linked --dry-run` → 대기 중 마이그레이션(11개)이 정확히 아래 목록인지 확인(순서 중요):
+   `20260916090000_harden_student_auth` → `20260916100000_student_session_tokens` → `20260916110000_secure_request_submissions` → `20260920090000_secure_admin_reviews` → `20260920100000_least_privilege_acl` → `20260920110000_retire_student_admin_pin` → `20260920120000_inventory_workflow` → `20260920130000_reagent_domain_rpcs` → `20260922090000_request_unification` → `20260923090000_bottle_unit_requests` → `20260924090000_backup_restore`
 4. `scripts/production-preflight-*.sql`, `scripts/production-check-*.sql` 재실행(읽기 전용)으로 컬럼/제약이 예상과 같은지 확인. 특히 `reagent_lots` 에 `KNU-YYYYMMDD-NNN` 형식 중복이 없는지(유일 인덱스 생성 전제 — 2026-09-20 확인 시 0건).
 
 ## C. 적용
@@ -37,3 +37,7 @@
 - [ ] 개인 계정 제거(Organization 멤버·`admin_users`·GitHub/Vercel 연동 점검)
 - [ ] Vercel 환경변수(`VITE_SUPABASE_URL/ANON_KEY`)·FCM 키·GHS API 키 재발급 및 교체
 - [ ] baseline migration 작성(최종 schema 확정 후) — `docs/OPERATIONS.md` §11
+
+## G. 백업/복원 (별도 Gate — 이번 적용 범위 아님)
+- `20260924090000_backup_restore` 는 백업 RPC(`admin_backup_export`)와 복원 RPC 를 만든다. **복원 실행은 `app_settings.restore_enabled = 'true'` 가 수동으로 설정된 환경에서만** 통과하며 이 migration 은 그 값을 만들지 않는다 → production 은 적용 후에도 복원이 계속 비활성. (dry-run 검증은 쓰기 0)
+- production 에 적용하기 전에 staging 리허설(`scripts/staging/test-backup-restore.mjs`)과 `scripts/schema-diff.mjs` 로 스키마 동등성을 다시 확인한다.

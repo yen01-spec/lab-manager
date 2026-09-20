@@ -179,6 +179,8 @@ await test('admin_lot_update / set_status / move: authorization, validation, ser
   denied(await adminC.rpc('admin_lot_update', { p_lot_id: LX, p_fields: { current_stock: 101 } }), 'range')
   denied(await adminC.rpc('admin_lot_update', { p_lot_id: LX, p_fields: { status: 'disposed' } }), 'forbidden field')
   denied(await adminC.rpc('admin_lot_update', { p_lot_id: '00000000-0000-0000-0000-000000000000', p_fields: { current_stock: 1 } }), 'unknown lot')
+  ok(denied(await adminC.rpc('admin_lot_move', { p_lot_id: LX, p_to_location_id: LOC2, p_notes: null }), 'grouped row (sealed 3) refused').includes('병 단위 작업을 할 수 없습니다'), '묶음 행 이동은 안내 문구와 함께 거부')
+  must(await adminC.rpc('admin_lot_update', { p_lot_id: LX, p_fields: { sealed_count: 1 } }), 'split grouped row to a single bottle')
   must(await adminC.rpc('admin_lot_move', { p_lot_id: LX, p_to_location_id: LOC2, p_notes: '이동 테스트' }), 'move')
   eq(must(await service.from('reagent_lots').select('location_id').eq('id', LX).single(), 'l').location_id, LOC2, '이동')
   const h = must(await service.from('location_history').select('*').eq('lot_id', LX), 'h')
@@ -189,7 +191,7 @@ await test('admin_lot_update / set_status / move: authorization, validation, ser
   lot = must(await service.from('reagent_lots').select('status,sealed_count,current_stock').eq('id', LX).single(), 'lot2')
   eq([lot.status, lot.sealed_count, lot.current_stock], ['missing', 0, 0], '분실 처리')
   denied(await adminC.rpc('admin_lot_set_status', { p_lot_id: LX, p_status: 'disposed' }), 'status not allowed here')
-  sl = must(await service.from('stock_logs').select('id').eq('lot_id', LX), 'sl2'); eq(sl.length, 2, '이력 2건')
+  sl = must(await service.from('stock_logs').select('id').eq('lot_id', LX), 'sl2'); eq(sl.length, 3, '이력 3건(재고조정 + 묶음 행 분리 + 분실 처리)')
 })
 await test('audit tables (stock_logs/location_history) have NO client write path — anon/user/admin JWT all denied', async () => {
   for (const [who, c] of [['anon', anon], ['user', userC], ['admin', adminC]]) {
@@ -198,7 +200,7 @@ await test('audit tables (stock_logs/location_history) have NO client write path
     eq((await c.from('stock_logs').update({ user_name: 'forged' }).eq('lot_id', LX).select('id')).data?.length ?? 0, 0, `${who} UPDATE stock_logs`)
     eq((await c.from('stock_logs').delete().eq('lot_id', LX).select('id')).data?.length ?? 0, 0, `${who} DELETE stock_logs`)
   }
-  ok(must(await anon.from('stock_logs').select('id').eq('lot_id', LX), 'read').length === 2, 'SELECT 유지')
+  ok(must(await anon.from('stock_logs').select('id').eq('lot_id', LX), 'read').length === 3, 'SELECT 유지')
 })
 await test('reagents / reagent_lots direct writes: anon & non-admin denied; admin JWT may insert/update but not delete', async () => {
   for (const [who, c] of [['anon', anon], ['user', userC]]) {

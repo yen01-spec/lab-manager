@@ -12,8 +12,26 @@
 --   4) location_request_review: lot_id 필수(reagent 단위 fallback 제거), 승인 직전 재검증 — 병 존재/reagent 일치/active/
 --      현재 위치가 요청 시점 위치와 같은지(stale 이면 명확한 오류) / 이미 목적지가 아닌지. location_history 는 그 병 1건.
 --   5) admin_dispose_lots 는 disposal_requests.quantity 를 더 이상 채우지 않는다(과거 행의 컬럼은 이력으로 유지).
+--   6) 묶음 행(sealed_count > 1) 가드: 제출/승인/일괄 이동·폐기/개별 이동/사용완료·분실 표시 모두 fail-closed(_assert_single_bottle).
 -- 종류 간 교차 pending 제한은 만들지 않는다 — 나중 승인은 그 시점의 병 상태로 서버가 다시 검증해 실패/통과한다.
 -- ════════════════════════════════════════════════════════════════════════
+
+-- ── 0) 묶음 행 가드 — 병 단위 작업의 전제(reagent_lots 1행 = 병 1개)가 깨진 행(sealed_count > 1)은 fail-closed ──
+-- 여러 병이 한 행에 묶여 있으면 "이 병 1개"를 특정할 수 없으므로 임의로 한 병으로 간주하지 않고 작업을 거부한다.
+create or replace function public._assert_single_bottle(p_sealed_count int, p_lot_no text)
+returns void
+language plpgsql
+immutable
+set search_path = public
+as $$
+begin
+  if p_sealed_count is not null and p_sealed_count > 1 then
+    raise exception '여러 병이 하나의 Lot 행에 묶여 있어 병 단위 작업을 할 수 없습니다. 병별 Lot 행으로 분리 후 처리해주세요. (Lot %, 미개봉 %병)', coalesce(p_lot_no, '번호없음'), p_sealed_count
+      using errcode = '22023';
+  end if;
+end;
+$$;
+revoke all on function public._assert_single_bottle(int, text) from public, anon, authenticated;
 
 -- ── 1) 학생 제출 RPC ─────────────────────────────────────────────────────────
 drop function if exists public.disposal_request_submit(text, uuid, uuid, text, text, text, text);
@@ -44,6 +62,7 @@ begin
   if v_lot.status <> 'active' then
     raise exception '이미 폐기·사용완료·분실 처리된 병이라 폐기 신청할 수 없습니다.';
   end if;
+  perform public._assert_single_bottle(v_lot.sealed_count, v_lot.lot_no);
   if exists (select 1 from public.disposal_requests where lot_id = p_lot_id and status = 'pending') then
     raise exception '이 병은 이미 폐기 신청이 접수되어 관리자 검토 대기 중입니다.' using errcode = '23505';
   end if;
@@ -94,6 +113,7 @@ begin
   select * into v_lot from public.reagent_lots where id = p_lot_id;
   if not found then raise exception '존재하지 않는 병(Lot)입니다.'; end if;
   if v_lot.status <> 'active' then raise exception '이미 폐기·사용완료·분실 처리된 병이라 위치 변경 신청할 수 없습니다.'; end if;
+  perform public._assert_single_bottle(v_lot.sealed_count, v_lot.lot_no);
   if v_lot.location_id is not distinct from p_to_location_id then raise exception '현재 위치와 같습니다.'; end if;
   if exists (select 1 from public.location_requests where lot_id = p_lot_id and status = 'pending') then
     raise exception '이 병은 이미 위치 변경 신청이 접수되어 관리자 검토 대기 중입니다.' using errcode = '23505';
@@ -162,6 +182,7 @@ begin
     if v_lot.status <> 'active' then
       raise exception '이미 폐기·사용완료·분실 처리된 병이라 이동할 수 없습니다. 이 요청은 반려해주세요. (현재: %)', v_lot.status;
     end if;
+    perform public._assert_single_bottle(v_lot.sealed_count, v_lot.lot_no);
     if v_lot.location_id is not distinct from v_req.to_location_id then
       raise exception '이 병은 이미 요청한 위치에 있습니다. 이 요청은 반려해주세요.';
     end if;
@@ -244,9 +265,7 @@ begin
     if v_lot.status <> 'active' then
       raise exception '이미 폐기·사용완료·분실 처리된 병입니다. 이 요청은 반려해주세요. (현재: %)', v_lot.status;
     end if;
-    if v_lot.sealed_count > 1 then
-      raise exception '이 Lot 행에는 미개봉 병 %개가 함께 묶여 있어 병 1개 단위로 폐기할 수 없습니다. 재고를 병 단위로 정리한 뒤 처리해주세요.', v_lot.sealed_count;
-    end if;
+    perform public._assert_single_bottle(v_lot.sealed_count, v_lot.lot_no);
 
     update public.reagent_lots
        set sealed_count = 0, current_stock = 0, status = 'disposed', disposal_date = current_date, needs_review = false
@@ -288,11 +307,12 @@ begin
   if p_lot_ids is null or array_length(p_lot_ids, 1) is null then raise exception '폐기할 Lot이 없습니다.'; end if;
   if p_reason is null or length(trim(p_reason)) = 0 then raise exception '폐기 사유를 입력해주세요.'; end if;
   for v_lot in
-    select l.id, l.reagent_id, l.lot_no, r.name as reagent_name
+    select l.id, l.reagent_id, l.lot_no, l.sealed_count, r.name as reagent_name
       from public.reagent_lots l join public.reagents r on r.id = l.reagent_id
      where l.id = any (p_lot_ids) and l.status = 'active'
      order by l.id for update of l
   loop
+    perform public._assert_single_bottle(v_lot.sealed_count, v_lot.lot_no);
     insert into public.disposal_requests (reagent_id, lot_id, reagent_name, lot_no, quantity, reason,
                                           requested_by, status, disposed_at, approved_by, approved_at)
       values (v_lot.reagent_id, v_lot.id, v_lot.reagent_name, v_lot.lot_no, null, p_reason,
@@ -310,3 +330,98 @@ end;
 $$;
 revoke all on function public.admin_dispose_lots(uuid[], text) from public, anon;
 grant execute on function public.admin_dispose_lots(uuid[], text) to authenticated;
+
+-- 관리자 직접 이동(일괄): 묶음 행이 하나라도 있으면 전체 거부(부분 반영 없음).
+create or replace function public.admin_move_lots(p_lot_ids uuid[], p_to_location_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor text;
+  v_lot record;
+  v_to_name text;
+  v_n int := 0;
+begin
+  v_actor := public._admin_actor();
+  if p_lot_ids is null or array_length(p_lot_ids, 1) is null then raise exception '이동할 Lot이 없습니다.'; end if;
+  if not exists (select 1 from public.locations where id = p_to_location_id) then
+    raise exception '이동할 위치가 존재하지 않습니다.';
+  end if;
+  v_to_name := public._location_label(p_to_location_id, ' - ');
+  for v_lot in
+    select l.id, l.reagent_id, l.location_id, l.lot_no, l.sealed_count, r.name as reagent_name
+      from public.reagent_lots l join public.reagents r on r.id = l.reagent_id
+     where l.id = any (p_lot_ids) and l.status = 'active'
+     order by l.id for update of l
+  loop
+    perform public._assert_single_bottle(v_lot.sealed_count, v_lot.lot_no);
+    update public.reagent_lots set location_id = p_to_location_id where id = v_lot.id;
+    insert into public.location_history (reagent_id, lot_id, reagent_name, from_location_id, from_location_name,
+                                         to_location_id, to_location_name, moved_by)
+      values (v_lot.reagent_id, v_lot.id, v_lot.reagent_name, v_lot.location_id,
+              public._location_label(v_lot.location_id, ' · '), p_to_location_id, v_to_name, v_actor);
+    v_n := v_n + 1;
+  end loop;
+  if v_n = 0 then raise exception '이동할 수 있는 활성 Lot이 없습니다.'; end if;
+  insert into public.admin_logs (admin_name, action, target_type, description)
+    values (v_actor, '시약 일괄정리 - 위치이동', 'reagent', 'Lot ' || v_n || '개 → ' || v_to_name);
+  return jsonb_build_object('moved', v_n, 'to', v_to_name);
+end;
+$$;
+revoke all on function public.admin_move_lots(uuid[], uuid) from public, anon;
+grant execute on function public.admin_move_lots(uuid[], uuid) to authenticated;
+
+create or replace function public.admin_lot_move(p_lot_id uuid, p_to_location_id uuid, p_notes text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor text;
+  v_lot public.reagent_lots%rowtype;
+  v_name text;
+begin
+  v_actor := public._admin_actor();
+  select * into v_lot from public.reagent_lots where id = p_lot_id for update;
+  if not found then raise exception '존재하지 않는 Lot입니다.'; end if;
+  perform public._assert_single_bottle(v_lot.sealed_count, v_lot.lot_no);
+  if not exists (select 1 from public.locations where id = p_to_location_id) then raise exception '이동할 위치가 존재하지 않습니다.'; end if;
+  if v_lot.location_id is not distinct from p_to_location_id then raise exception '현재 위치와 같습니다.'; end if;
+  select name into v_name from public.reagents where id = v_lot.reagent_id;
+  update public.reagent_lots set location_id = p_to_location_id where id = p_lot_id;
+  insert into public.location_history (reagent_id, lot_id, reagent_name, from_location_id, from_location_name, to_location_id, to_location_name, moved_by, notes)
+    values (v_lot.reagent_id, p_lot_id, v_name, v_lot.location_id, public._location_label(v_lot.location_id, ' - '),
+            p_to_location_id, public._location_label(p_to_location_id, ' - '), v_actor, nullif(p_notes, ''));
+  return jsonb_build_object('lot_id', p_lot_id, 'to', public._location_label(p_to_location_id, ' - '));
+end;
+$$;
+revoke all on function public.admin_lot_move(uuid, uuid, text) from public, anon;
+grant execute on function public.admin_lot_move(uuid, uuid, text) to authenticated;
+
+-- 사용완료/분실 표시도 "이 병 1개"를 전제로 하므로 묶음 행은 거부한다. (수량 수정 admin_lot_update 는 묶음 행을 고치는 경로라 막지 않는다.)
+create or replace function public.admin_lot_set_status(p_lot_id uuid, p_status text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor text;
+  v_lot public.reagent_lots%rowtype;
+begin
+  v_actor := public._admin_actor();
+  if p_status not in ('used_up', 'missing') then raise exception '변경할 수 없는 상태입니다.'; end if;
+  select * into v_lot from public.reagent_lots where id = p_lot_id for update;
+  if not found then raise exception '존재하지 않는 Lot입니다.'; end if;
+  perform public._assert_single_bottle(v_lot.sealed_count, v_lot.lot_no);
+  update public.reagent_lots set status = p_status, sealed_count = 0, current_stock = 0, needs_review = false where id = p_lot_id;
+  insert into public.stock_logs (target_type, lot_id, user_name, before_sealed, after_sealed, before_stock, after_stock)
+    values ('reagent', p_lot_id, v_actor, v_lot.sealed_count, 0, v_lot.current_stock, 0);
+  return jsonb_build_object('lot_id', p_lot_id, 'status', p_status);
+end;
+$$;
+revoke all on function public.admin_lot_set_status(uuid, text) from public, anon;
+grant execute on function public.admin_lot_set_status(uuid, text) to authenticated;

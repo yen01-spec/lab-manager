@@ -186,14 +186,16 @@ await test('③ reopen (review undo) is trivial because nothing was applied; rev
 
 await test('④ atomicity: failure mid-way rolls EVERYTHING back (bad staged value)', async () => {
   const c = await countOf(LC)
-  // LC는 이번 세션 범위 밖 — 범위 안 Lot(LB)의 staged 값을 일부러 깨뜨려 롤백 확인
-  const b = await countOf(LB)
+  // LC는 이번 세션 범위 밖. 같은 시약(R1)의 count 중 finalize 가 "먼저" 처리하는 행(id 가 가장 작은 행)의 staged 값을 일부러 깨뜨려 롤백 확인
+  // (시약정보는 시약당 1회만 반영되므로, 처리 순서는 테이블 저장 방식이 아니라 id 순서로 명시적으로 고정한다)
+  const r1Counts = must(await service.from('inventory_counts').select('id, staged_reagent_fields').eq('session_id', sid).eq('reagent_id', R1).order('id'), 'r1 counts')
+  const b = r1Counts[0]; const originalStaged = b.staged_reagent_fields
   must(await service.from('inventory_counts').update({ staged_reagent_fields: { volume: 'not-a-number' } }).eq('id', b.id), 'poison')
   denied(await adminC.rpc('inventory_session_finalize', { p_session_id: sid }), 'poisoned finalize')
   eq(await ledger(), before, '롤백 후 장부 불변')
   eq(await logsN(), { stock: 0, hist: 0, chg: 0 }, '롤백 후 이력 없음')
   eq((await service.from('inventory_sessions').select('status').eq('id', sid).single()).data.status, 'reviewed', '세션은 reviewed 유지')
-  must(await service.from('inventory_counts').update({ staged_reagent_fields: null }).eq('id', b.id), 'unpoison')
+  must(await service.from('inventory_counts').update({ staged_reagent_fields: originalStaged }).eq('id', b.id), 'unpoison')
   void c
 })
 

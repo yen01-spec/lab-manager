@@ -3,7 +3,7 @@ import { supabase } from '../../supabase'
 import { C, Card, btnExcel, btnGhost, inputStyle, labelStyle, thStyle, tdStyle } from '../../design'
 import { fetchAllPages } from '../../lib/fetchAllPages'
 import {
-  buildRelocationRows, classifyBottles, groupByLocation, locationName, ROLE_SPARE,
+  buildRelocationRows, classifyBottles, groupByLocation, locationName, ROLE_SPARE, ROLE_IN_USE, ROLE_CHECK,
 } from '../../lib/relocationPlan'
 
 // ══════════════════════════════════════════════
@@ -28,6 +28,7 @@ export default function RelocationTab() {
   const [spareTarget, setSpareTarget] = useState(draft.spareTarget || '')
   const [inUseTarget, setInUseTarget] = useState(draft.inUseTarget || '')
   const [overrides, setOverrides] = useState(draft.overrides && typeof draft.overrides === 'object' ? draft.overrides : {})
+  const [roleOverrides, setRoleOverrides] = useState(draft.roleOverrides && typeof draft.roleOverrides === 'object' ? draft.roleOverrides : {})
   const [previewLoc, setPreviewLoc] = useState('')
   const [exporting, setExporting] = useState(false)
   const [notice, setNotice] = useState(null)
@@ -52,16 +53,17 @@ export default function RelocationTab() {
   }, [])
 
   useEffect(() => {
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ selected: [...selected], spareTarget, inUseTarget, overrides })) } catch { /* 초안 저장 실패는 무시 */ }
-  }, [selected, spareTarget, inUseTarget, overrides])
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ selected: [...selected], spareTarget, inUseTarget, overrides, roleOverrides })) } catch { /* 초안 저장 실패는 무시 */ }
+  }, [selected, spareTarget, inUseTarget, overrides, roleOverrides])
 
-  const roles = useMemo(() => classifyBottles(lots), [lots])
+  const roles = useMemo(() => classifyBottles(lots, roleOverrides), [lots, roleOverrides])
   const counts = useMemo(() => {
     const m = new Map()
     for (const l of lots) {
-      const c = m.get(l.location_id) || { total: 0, spare: 0 }
+      const c = m.get(l.location_id) || { total: 0, spare: 0, check: 0 }
       c.total++
       if (roles.get(l.id)?.role === ROLE_SPARE) c.spare++
+      if (roles.get(l.id)?.role === ROLE_CHECK) c.check++
       m.set(l.location_id, c)
     }
     return m
@@ -69,7 +71,7 @@ export default function RelocationTab() {
 
   const validIds = useMemo(() => new Set(locations.map(l => l.id)), [locations])
   const selectedIds = useMemo(() => [...selected].filter(id => validIds.has(id)), [selected, validIds])
-  const plan = useMemo(() => ({ spareTarget: spareTarget || null, inUseTarget: inUseTarget || null, overrides }), [spareTarget, inUseTarget, overrides])
+  const plan = useMemo(() => ({ spareTarget: spareTarget || null, inUseTarget: inUseTarget || null, overrides, roleOverrides }), [spareTarget, inUseTarget, overrides, roleOverrides])
   const rows = useMemo(() => buildRelocationRows({ lots, locations, selectedLocationIds: selectedIds, plan }), [lots, locations, selectedIds, plan])
   const groups = useMemo(() => groupByLocation(rows, locations, selectedIds), [rows, locations, selectedIds])
   const shown = groups.find(g => g.locationId === previewLoc) || groups[0]
@@ -77,6 +79,15 @@ export default function RelocationTab() {
 
   const usableLocations = useMemo(() => locations.filter(l => (counts.get(l.id)?.total || 0) > 0), [locations, counts])
   const toggle = (id) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+
+  function setRowRole(row, value) {
+    setRoleOverrides(prev => {
+      const next = { ...prev }
+      if (value === ROLE_IN_USE || value === ROLE_SPARE) next[row.lotId] = value
+      else delete next[row.lotId]
+      return next
+    })
+  }
 
   function setRowTarget(row, value) {
     setOverrides(prev => {
@@ -97,6 +108,7 @@ export default function RelocationTab() {
       await downloadRelocationXlsx(groups, {
         spareTargetName: nameOf(spareTarget), inUseTargetName: nameOf(inUseTarget),
         overrideCount: Object.keys(overrides).filter(id => rows.some(r => r.lotId === id)).length,
+        roleOverrideCount: Object.keys(roleOverrides).filter(id => rows.some(r => r.lotId === id)).length,
         generatedAt: new Date().toLocaleString('ko-KR'),
       })
       setNotice({ kind: 'ok', text: `Excel 을 만들었습니다. (${groups.length}개 위치 · ${totalBottles}병) DB 의 실제 위치는 바뀌지 않았습니다.` })
@@ -124,7 +136,7 @@ export default function RelocationTab() {
       <Card title="🗄️ 시약장 재배치 작업표" sub="현재 위치 → 바뀔 위치 · 현장 인쇄용 Excel">
         <div style={{ background: '#FBF0DF', color: '#8A5A16', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, lineHeight: 1.55, marginBottom: 14 }}>
           이 화면은 <b>계획만</b> 만들고 Excel 로 내보냅니다. 내보내기·계획 수정은 <b>DB 의 실제 위치를 바꾸지 않습니다</b>. 병을 실제로 옮긴 뒤 관리자가 확인해 별도로 반영합니다.
-          병 1개 = 1행이며, 사용중/여분은 같은 시약의 활성 병 중 <b>잔량이 가장 적은 병 = 사용중</b>(미개봉은 100%로 계산), 나머지 = 여분으로 계산합니다.
+          병 1개 = 1행이며, 사용중/여분은 같은 시약의 활성 병 중 <b>잔량이 가장 적은 병 = 사용중</b>(미개봉은 100%로 계산, 후보 중 개봉 병 우선), 나머지 = 여분으로 계산합니다. 그래도 동률이면 <b>현장 확인 필요</b>로 두며(입고일·병 ID 로 판정하지 않음), 아래 미리보기에서 병별 역할을 직접 지정할 수 있습니다.
         </div>
 
         <div style={{ ...labelStyle, marginBottom: 6 }}>1. 현재 위치 선택 (병이 있는 위치만 표시)</div>
@@ -139,7 +151,7 @@ export default function RelocationTab() {
               <label key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px', fontSize: 12.5, cursor: 'pointer', background: selected.has(l.id) ? '#EEF2FB' : '#fff', minWidth: 0 }}>
                 <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggle(l.id)} />
                 <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{locationName(l)}</span>
-                <span style={{ color: C.muted, whiteSpace: 'nowrap' }}>{c.total}병 · 여분 {c.spare}</span>
+                <span style={{ color: C.muted, whiteSpace: 'nowrap' }}>{c.total}병 · 여분 {c.spare}{c.check ? ` · 확인 ${c.check}` : ''}</span>
               </label>
             )
           })}
@@ -172,7 +184,8 @@ export default function RelocationTab() {
             ))}
           </div>
           <div data-testid="reloc-summary" style={{ background: C.bg, borderRadius: 8, padding: '8px 12px', fontSize: 12.5, marginBottom: 10, lineHeight: 1.6 }}>
-            <div><b>총 {shown.summary.total}병</b> (시약 {shown.summary.kinds}종) · 사용중 {shown.summary.inUse} / 여분 {shown.summary.spare} · 이동 예정 {shown.summary.moves}{shown.summary.ties ? ` · 동률 확인 ${shown.summary.ties}` : ''}</div>
+            <div><b>총 {shown.summary.total}병</b> (시약 {shown.summary.kinds}종) · 사용중 {shown.summary.inUse} / 여분 {shown.summary.spare} / 확인 필요 {shown.summary.check}{shown.summary.provisional ? ' (잠정)' : ''} · 이동 예정 {shown.summary.moves}</div>
+            {shown.summary.provisional && <div role="note" data-testid="reloc-provisional" style={{ color: '#9C2B2B', fontWeight: 700 }}>△ 현장 확인 필요 {shown.summary.check}병이 있어 사용중/여분 집계는 <u>잠정값</u>입니다. 현장에서 확인한 뒤 병별 역할을 지정하면 확정됩니다.</div>}
             <div>알파벳별: {shown.summary.letterLine || '-'}</div>
           </div>
           <div style={{ overflowX: 'auto' }}>
@@ -187,7 +200,15 @@ export default function RelocationTab() {
                     <td style={{ ...tdStyle, fontSize: 12 }}>{r.lotNo || '-'}</td>
                     <td style={{ ...tdStyle, fontSize: 11.5, color: C.muted, fontFamily: 'monospace' }}>{r.shortId}</td>
                     <td style={{ ...tdStyle, fontSize: 12 }}>{r.opened ? `개봉 ${r.remain}%` : '미개봉'}</td>
-                    <td style={{ ...tdStyle, fontSize: 12, fontWeight: r.role === ROLE_SPARE ? 400 : 700 }}>{r.role === ROLE_SPARE ? '○ 여분' : '● 사용중'}{r.tie ? ' (동률)' : ''}</td>
+                    <td style={{ ...tdStyle, fontSize: 12 }}>
+                      <div style={{ fontWeight: r.role === ROLE_SPARE ? 400 : 700, color: r.role === ROLE_CHECK ? '#9C2B2B' : undefined, whiteSpace: 'nowrap' }}>{r.role === ROLE_SPARE ? '○ 여분' : r.role === ROLE_CHECK ? '△ 확인 필요' : '● 사용중'}{r.manualRole ? ' (지정)' : ''}</div>
+                      {r.role === ROLE_CHECK && <div style={{ fontSize: 10.5, color: '#9C2B2B' }}>{r.roleReason === 'grouped' ? '묶음 행 — 분리 필요' : '동률'}</div>}
+                      <select aria-label={`병 역할 지정 ${r.reagentName} ${r.shortId}`} value={r.manualRole ? r.role : ''} onChange={e => setRowRole(r, e.target.value)} disabled={r.roleReason === 'grouped'} style={{ ...inputStyle, padding: '2px 4px', fontSize: 11, marginTop: 3, minWidth: 96 }}>
+                        <option value="">자동</option>
+                        <option value={ROLE_IN_USE}>사용중 지정</option>
+                        <option value={ROLE_SPARE}>여분 지정</option>
+                      </select>
+                    </td>
                     <td style={{ ...tdStyle, fontSize: 12 }}>{r.currentLocation}</td>
                     <td style={tdStyle}>
                       <select aria-label={`바뀔 위치 ${r.reagentName} ${r.shortId}`} value={r.plannedLocationId || ''} onChange={e => setRowTarget(r, e.target.value)} style={{ ...inputStyle, padding: '4px 6px', fontSize: 12, minWidth: 170 }}>

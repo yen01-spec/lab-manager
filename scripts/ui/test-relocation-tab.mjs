@@ -27,6 +27,7 @@ const LOTS = [
   mk(6, 'r3', 'Calcium chloride', 'C', { current_stock: 90, location_id: 'loc-a2' }),
   mk(7, 'r4', 'Tris(hydroxymethyl)aminomethane hydrochloride extra-pure grade reagent solution 0.5 mol/L in ultrapure water for molecular biology', 'T', { current_stock: 70 }),
   mk(8, 'r5', 'Ethanol', 'E', { current_stock: 10, location_id: 'loc-sp' }),
+  mk(9, 'r6', 'Toluene', 'T', { current_stock: 40 }), mk(10, 'r6', 'Toluene', 'T', { current_stock: 40 }),   // 동률 → 현장 확인 필요
 ]
 
 async function open(browser, w, h, { seedDraft } = {}) {
@@ -55,25 +56,34 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true }
   await page.getByRole('button', { name: /시약장 재배치 작업표/ }).first().click()
   await page.getByText('현재 위치 선택').waitFor({ timeout: 15000 })
   const t0 = await page.locator('main').innerText()
-  ok('tab: locations with bottles are listed with bottle counts; empty cabinet hidden', (await page.getByRole('checkbox').count()) === 3 && t0.includes('A-1 시약장') && t0.includes('5층 여분의 시약장') && t0.includes('5병'))
+  ok('tab: locations with bottles are listed with bottle counts; empty cabinet hidden', (await page.getByRole('checkbox').count()) === 3 && t0.includes('A-1 시약장') && t0.includes('5층 여분의 시약장') && t0.includes('7병'))
   ok('tab: export disabled until a location is chosen', await page.getByRole('button', { name: /작업표 Excel 내보내기/ }).isDisabled())
 
   await page.getByRole('checkbox').nth(0).check()   // 303호 A-1
   await page.getByRole('checkbox').nth(1).check()   // 303호 A-2
   await page.getByText('3. 미리보기').waitFor()
   const sum = await page.getByTestId('reloc-summary').innerText()
-  ok('preview: A-1 shows 5병 (Acetone×3 + Benzene 60% + Tris) with alphabet line A 3 / B 1 / T 1', sum.includes('총 5병') && sum.includes('A 3 / B 1 / T 1'), sum)
-  ok('preview: 사용중/여분 computed over ALL bottles of each reagent (A-1: Acetone 30% in use → spare 2; Benzene 60% spare since 20% in A-2)', /사용중 2 \/ 여분 3/.test(sum), sum)
+  ok('preview: A-1 shows 7병 (Acetone×3 + Benzene 60% + Tris + Toluene×2) with alphabet line A 3 / B 1 / T 3', sum.includes('총 7병') && sum.includes('A 3 / B 1 / T 3'), sum)
+  ok('preview: 사용중/여분 over ALL bottles of each reagent; Toluene tie → 확인 필요 2 and the counts are marked 잠정', sum.includes('사용중 2 / 여분 3 / 확인 필요 2 (잠정)') && (await page.getByTestId('reloc-provisional').count()) === 1, sum)
   const rows1 = await page.getByTestId('reloc-row').count()
-  ok('preview: one row per bottle (same lot_no bottles are separate rows)', rows1 === 5, rows1)
+  ok('preview: one row per bottle (same lot_no bottles are separate rows)', rows1 === 7, rows1)
 
   // 기본 규칙: 여분 병 → 5층 여분의 시약장
   await page.getByLabel('여분 병의 바뀔 위치').selectOption({ label: '5층 여분의 시약장' })
   const sum2 = await page.getByTestId('reloc-summary').innerText()
-  ok('plan: spare target → 이동 예정 3 (in-use stays 변경 없음)', sum2.includes('이동 예정 3'), sum2)
+  ok('plan: spare target → 이동 예정 3 (in-use and 확인 필요 stay 변경 없음)', sum2.includes('이동 예정 3'), sum2)
+  // 현장 확인: 동률 병 하나를 사용중으로 지정 → 다른 동률 병은 여분으로 확정, 잠정 표시 해제
+  const tolRows = page.getByTestId('reloc-row').filter({ hasText: 'Toluene' })
+  const tolTxt = await tolRows.first().innerText()
+  ok('tie rows show △ 확인 필요 + 동률 and get no automatic planned location', tolTxt.includes('△ 확인 필요') && tolTxt.includes('동률') && (await tolRows.first().getByLabel(/^바뀔 위치/).inputValue()) === '')
+  await tolRows.first().getByLabel(/^병 역할 지정/).selectOption({ label: '사용중 지정' })
+  const sum3 = await page.getByTestId('reloc-summary').innerText()
+  ok('role override: 사용중 지정 resolves the tie (사용중 3 / 여분 4 / 확인 필요 0) and the 잠정 notice disappears', sum3.includes('사용중 3 / 여분 4 / 확인 필요 0') && !sum3.includes('잠정') && (await page.getByTestId('reloc-provisional').count()) === 0, sum3)
+  await tolRows.first().getByLabel(/^병 역할 지정/).selectOption({ label: '자동' })
+  ok('role override: 자동 restores the tie (잠정 again)', (await page.getByTestId('reloc-provisional').count()) === 1)
   // 개별 병 수정: 사용중 병 하나를 A-2 로
   const firstInUse = page.getByTestId('reloc-row').filter({ hasText: '● 사용중' }).first()
-  await firstInUse.locator('select').selectOption({ label: '303호 - A-2 시약장' })
+  await firstInUse.getByLabel(/^바뀔 위치/).selectOption({ label: '303호 - A-2 시약장' })
   ok('plan: per-bottle override raises 이동 예정 to 4', (await page.getByTestId('reloc-summary').innerText()).includes('이동 예정 4'))
 
   // Excel 내보내기
@@ -83,8 +93,8 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true }
   ok('export: file name + sheets = 요약 + 2 locations', /시약장_재배치_작업표_\d{8}\.xlsx$/.test(dl.suggestedFilename()) && wb.worksheets.length === 3 && wb.worksheets[0].name === '요약', { f: dl.suggestedFilename(), s: wb.worksheets.map(w => w.name) })
   const a1 = wb.worksheets.find(w => w.name.includes('A-1'))
   const nums = []; a1.eachRow((row, n) => { if (n > 5 && typeof row.getCell(1).value === 'number') nums.push(row.getCell(1).value) })
-  ok('export: A-1 sheet bottle rows == preview rows (5) and No. runs 1..5', nums.length === 5 && nums.every((v, i) => v === i + 1), nums)
-  ok('export: alphabet summary in file == preview summary', String(a1.getCell('A2').value).includes('A 3 / B 1 / T 1'))
+  ok('export: A-1 sheet bottle rows == preview rows (7) and No. runs 1..7', nums.length === 7 && nums.every((v, i) => v === i + 1), nums)
+  ok('export: alphabet summary + 잠정 marker in file == preview', String(a1.getCell('A2').value).includes('A 3 / B 1 / T 3') && String(a1.getCell('A3').value).includes('(잠정)'))
   ok('export: 현재 위치 / 바뀔 위치 both present with planned arrow', (() => { let arrow = false; a1.eachRow((row, n) => { if (n > 5 && String(row.getCell(13).value).startsWith('→ ')) arrow = true }); return arrow })())
   await page.waitForTimeout(400)
   ok('export: DB write count is 0 (only GET requests)', writes.length === 0, writes)

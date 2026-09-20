@@ -57,11 +57,15 @@ const PAYLOAD = {
   location_history: () => ({ reagent_name: 'acl' }),
   notices: () => ({ title: 'acl', type: 'notice' }),
   purchase_request_logs: () => ({}),
-  stock_logs: () => ({ target_type: 'reagent', user_name: 'acl' }),
+  // production 구조와 같은 테이블(NOT NULL/FK 포함)이라 시드에도 실제 컬럼이 필요하다. stock_logs.lot_id 는 소프트 참조(FK 없음)이지만 NOT NULL.
+  stock_logs: () => ({ target_type: 'reagent', lot_id: '00000000-0000-4000-8000-0000000ac100', user_name: 'acl' }),
+  special_material_logs: () => ({ substance_name: 'acl', handling_date: '2026-01-01', handler_name: 'acl' }),
+  stock_history: () => ({ action: 'acl', quantity: 1 }),
+  reagent_import_history: () => ({ source: '수정이력', occurred_at: new Date().toISOString() }),
   inventory_sessions: () => ({ year: 2026, start_date: '2026-01-01', created_by: 'acl' }),
 }
 const payload = (t) => (PAYLOAD[t] ? PAYLOAD[t]() : { v: 'acl-' + randomBytes(3).toString('hex') })
-const patch = (t) => (['reagents'].includes(t) ? { name: 'ACL-UPDATED' } : t === 'locations' ? { room: 'ACL-ROOM2' } : t === 'admin_logs' ? { description: 'u' } : t === 'notices' ? { title: 'u' } : t === 'location_history' ? { reagent_name: 'u' } : t === 'purchase_request_logs' ? { status: 'approved' } : t === 'inventory_sessions' ? { label: 'u' } : t === 'stock_logs' ? { notes: 'u' } : { v: 'updated' })
+const patch = (t) => (['reagents'].includes(t) ? { name: 'ACL-UPDATED' } : t === 'locations' ? { room: 'ACL-ROOM2' } : t === 'admin_logs' ? { description: 'u' } : t === 'notices' ? { title: 'u' } : t === 'location_history' ? { reagent_name: 'u' } : t === 'purchase_request_logs' ? { status: 'approved' } : t === 'inventory_sessions' ? { label: 'u' } : t === 'stock_logs' ? { notes: 'u' } : ['special_material_logs', 'stock_history'].includes(t) ? { notes: 'u' } : t === 'reagent_import_history' ? { note: 'u' } : { v: 'updated' })
 
 const seeded = {}
 async function seed(t) { return must(await service.from(t).insert(payload(t)).select('id').single(), `seed ${t}`).id }

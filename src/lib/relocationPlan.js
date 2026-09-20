@@ -19,19 +19,13 @@ export const isSealed = (lot) => Number(lot.sealed_count) > 0
 export const remainOf = (lot) => (isSealed(lot) ? 100 : Number(lot.current_stock) || 0)
 
 // 사용중 병 = 같은 시약 활성 병 중 잔량이 가장 적은 병, 나머지 = 여분.
-// 동률 처리(업무 규칙에 없음 → 결정론적 임시 규칙): 개봉 병 우선 → 입고일 빠른 순(비어 있으면 뒤) → reagent_lots.id.
-// 동률(잔량과 개봉 여부가 같음)에 의존한 병은 tie=true 로 표시해 현장 확인을 유도한다.
-function compareForUse(a, b) {
-  const r = remainOf(a) - remainOf(b)
-  if (r) return r
-  const s = Number(isSealed(a)) - Number(isSealed(b))
-  if (s) return s
-  const da = a.received_date || '9999-12-31', db = b.received_date || '9999-12-31'
-  if (da !== db) return da < db ? -1 : 1
-  return String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0
-}
+//  · 개봉 여부(실제 사용 흔적)는 자동판정 기준: 최소 잔량 후보 중 개봉 병이 있으면 개봉 병만 후보.
+//  · 그래도 후보가 둘 이상이면 자동 확정하지 않는다 → 역할 = "현장 확인 필요"(후보 전원). 입고일/병 ID 는 판정에 쓰지 않는다(표시/정렬 전용).
+//  · sealed_count > 1(여러 병이 한 행에 묶임)은 병 단위 판정 불가 → "현장 확인 필요"(reason 'grouped'), 순위 계산에서 제외.
+//  · roleOverrides[lotId] ∈ {사용중, 여분} 로 관리자가 병별 역할을 직접 지정할 수 있다(수동 지정이 우선).
+export const ROLE_CHECK = '현장 확인 필요'
 
-export function classifyBottles(lots) {
+export function classifyBottles(lots, roleOverrides = {}) {
   const byReagent = new Map()
   for (const l of lots) {
     if (l.status !== 'active') continue
@@ -40,11 +34,27 @@ export function classifyBottles(lots) {
   }
   const out = new Map()
   for (const list of byReagent.values()) {
-    const sorted = [...list].sort(compareForUse)
-    const best = sorted[0]
-    const tied = sorted.filter(l => remainOf(l) === remainOf(best) && isSealed(l) === isSealed(best))
-    const tieSet = new Set(tied.length > 1 ? tied.map(l => l.id) : [])
-    sorted.forEach((l, i) => out.set(l.id, { role: i === 0 ? ROLE_IN_USE : ROLE_SPARE, tie: tieSet.has(l.id), bottlesOfReagent: list.length }))
+    const put = (l, role, reason) => out.set(l.id, { role, reason, check: role === ROLE_CHECK, manual: false, bottlesOfReagent: list.length })
+    const grouped = list.filter(l => Number(l.sealed_count) > 1)
+    grouped.forEach(l => put(l, ROLE_CHECK, 'grouped'))
+    const rest = list.filter(l => !(Number(l.sealed_count) > 1))
+    if (rest.length === 1) put(rest[0], ROLE_IN_USE, 'single')
+    else if (rest.length > 1) {
+      const min = Math.min(...rest.map(remainOf))
+      const cands = rest.filter(l => remainOf(l) === min)
+      const opened = cands.filter(l => !isSealed(l))
+      const finalists = opened.length ? opened : cands
+      if (finalists.length === 1) rest.forEach(l => put(l, l === finalists[0] ? ROLE_IN_USE : ROLE_SPARE, 'auto'))
+      else rest.forEach(l => put(l, finalists.includes(l) ? ROLE_CHECK : ROLE_SPARE, finalists.includes(l) ? 'tie' : 'auto'))
+    }
+    // 수동 지정
+    let manualInUse = false
+    for (const l of list) {
+      const ov = roleOverrides[l.id]
+      if (ov === ROLE_IN_USE || ov === ROLE_SPARE) { out.set(l.id, { ...out.get(l.id), role: ov, reason: 'manual', check: false, manual: true }); if (ov === ROLE_IN_USE) manualInUse = true }
+    }
+    // 관리자가 사용중 병을 지정했다면 같은 시약의 동률 후보(미지정)는 여분으로 확정
+    if (manualInUse) for (const l of list) { const v = out.get(l.id); if (v.role === ROLE_CHECK && v.reason === 'tie') out.set(l.id, { ...v, role: ROLE_SPARE, reason: 'after-manual', check: false }) }
   }
   return out
 }
@@ -54,7 +64,7 @@ const cmpText = (a, b) => String(a || '').localeCompare(String(b || ''), 'en', {
 // plan: { spareTarget, inUseTarget, overrides } — 값은 locations.id. overrides[lotId] === '' 이면 "변경 없음" 강제.
 export function buildRelocationRows({ lots, locations, selectedLocationIds, plan = {} }) {
   const locById = new Map(locations.map(l => [l.id, l]))
-  const roles = classifyBottles(lots)
+  const roles = classifyBottles(lots, plan.roleOverrides || {})
   const selected = new Set(selectedLocationIds)
   const locOrder = new Map([...locations].sort((a, b) => cmpText(locationName(a), locationName(b))).map((l, i) => [l.id, i]))
   const rows = []
@@ -65,14 +75,14 @@ export function buildRelocationRows({ lots, locations, selectedLocationIds, plan
     const overrides = plan.overrides || {}
     const wanted = Object.prototype.hasOwnProperty.call(overrides, lot.id)
       ? overrides[lot.id]
-      : (info.role === ROLE_SPARE ? plan.spareTarget : plan.inUseTarget)
+      : (info.role === ROLE_SPARE ? plan.spareTarget : info.role === ROLE_IN_USE ? plan.inUseTarget : null)
     const plannedId = wanted && wanted !== lot.location_id && locById.has(wanted) ? wanted : null
     rows.push({
       lotId: lot.id, shortId: shortId(lot.id), reagentId: lot.reagent_id,
       letter: letterOf(rg), reagentName: rg.name || '', cas: rg.cas_no || '', company: rg.company || '',
       lotNo: lot.lot_no || '', spec: rg.volume ? `${rg.volume}${rg.unit || ''}` : '',
       opened: !isSealed(lot), remain: isSealed(lot) ? null : Number(lot.current_stock) || 0,
-      role: info.role, tie: info.tie, bottlesOfReagent: info.bottlesOfReagent,
+      role: info.role, check: info.check, manualRole: info.manual, roleReason: info.reason, bottlesOfReagent: info.bottlesOfReagent,
       currentLocationId: lot.location_id, currentLocation: locationName(locById.get(lot.location_id)),
       plannedLocationId: plannedId, plannedLocation: plannedId ? locationName(locById.get(plannedId)) : '',
     })
@@ -98,15 +108,14 @@ export function groupByLocation(rows, locations, selectedLocationIds) {
 
 export function summarize(rows) {
   const letters = Object.fromEntries(LETTER_ORDER.map(k => [k, 0]))
-  let inUse = 0, spare = 0, moves = 0, ties = 0
+  let inUse = 0, spare = 0, moves = 0, check = 0
   const kinds = new Set()
   for (const r of rows) {
     letters[r.letter]++
-    if (r.role === ROLE_SPARE) spare++; else inUse++
+    if (r.role === ROLE_SPARE) spare++; else if (r.role === ROLE_CHECK) check++; else inUse++
     if (r.plannedLocationId) moves++
-    if (r.tie) ties++
     kinds.add(r.reagentId)
   }
   const letterLine = LETTER_ORDER.filter(k => letters[k] > 0).map(k => `${k} ${letters[k]}`).join(' / ')
-  return { total: rows.length, kinds: kinds.size, letters, letterLine, inUse, spare, moves, ties }
+  return { total: rows.length, kinds: kinds.size, letters, letterLine, inUse, spare, check, moves, provisional: check > 0 }
 }

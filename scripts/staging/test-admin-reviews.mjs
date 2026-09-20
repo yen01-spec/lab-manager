@@ -54,7 +54,7 @@ async function reset() {
   must(await service.from('reagent_lots').insert([
     { id: L.A, reagent_id: RID, lot_no: 'REV-A', sealed_count: 1, current_stock: 50, location_id: LOC1, status: 'active' },
     { id: L.B, reagent_id: RID, lot_no: 'REV-B', sealed_count: 1, current_stock: 0, location_id: LOC1, status: 'active' },
-    { id: L.C, reagent_id: RID, lot_no: 'REV-C', sealed_count: 3, current_stock: 30, location_id: LOC1, status: 'active' },
+    { id: L.C, reagent_id: RID, lot_no: 'REV-C', sealed_count: 1, current_stock: 30, location_id: LOC1, status: 'active' },
     { id: L.D, reagent_id: RID, lot_no: 'REV-D', sealed_count: 1, current_stock: 10, location_id: LOC1, status: 'active' },
     { id: L.E, reagent_id: RID, lot_no: 'REV-E', sealed_count: 1, current_stock: 10, location_id: LOC1, status: 'active' },
   ]), 'lots insert')
@@ -114,9 +114,9 @@ await test('change: invalid/forbidden field rejected + full rollback (request st
   const r2 = await newChange('no_such_column', 'v')
   denied(await adminC.rpc('reagent_change_request_review', { p_request_id: r2.id, p_decision: 'approve' }), '없는 컬럼')
   eq((await req('reagent_change_requests', r2.id)).status, 'pending', '롤백 후 pending')
-  const r3 = await newChange('company', 'X', { reagent_id: '00000000-0000-0000-0000-000000000000' })
-  denied(await adminC.rpc('reagent_change_request_review', { p_request_id: r3.id, p_decision: 'approve' }), '없는 시약')
-  eq((await req('reagent_change_requests', r3.id)).status, 'pending', '롤백 후 pending')
+  // production 스키마에는 reagent_change_requests.reagent_id → reagents FK 가 있어 "없는 시약" 요청은 애초에 만들 수 없다
+  const dangling = await service.from('reagent_change_requests').insert({ reagent_id: '00000000-0000-0000-0000-000000000000', requested_by: 'REQ', field_name: 'company', new_value: 'X' })
+  ok(dangling.error && /foreign key/i.test(dangling.error.message), '없는 시약 참조 요청은 FK 로 차단: ' + dangling.error?.message)
 })
 await test('change: double approval — 2nd blocked; reprocess of rejected blocked', async () => {
   const r = await newChange('manager', 'M1')
@@ -172,14 +172,16 @@ await test('location: stale request (lot moved since request) fails with a clear
   eq([(await req('location_requests', r2.id)).status, (await lot(L.D)).location_id], ['pending', LOC1], '롤백: pending 유지 + 위치 불변')
   await service.from('location_requests').delete().in('id', [r.id, r2.id])
 })
-await test('location: nonexistent target => error + rollback', async () => {
-  const r = await newLoc(L.B, '00000000-0000-0000-0000-000000000000')
-  denied(await adminC.rpc('location_request_review', { p_request_id: r.id, p_decision: 'approve' }), 'bad target')
-  eq((await req('location_requests', r.id)).status, 'pending', 'pending 유지')
-  eq((await lot(L.B)).location_id, LOC1, 'Lot 불변')
-  const r2 = await newLoc('00000000-0000-0000-0000-0000000000ff', LOC2)
-  denied(await adminC.rpc('location_request_review', { p_request_id: r2.id, p_decision: 'approve' }), 'missing lot')
-  eq((await req('location_requests', r2.id)).status, 'pending', 'pending 유지')
+await test('location: dangling references are impossible under the production FKs (target location / lot); a referenced location cannot be deleted', async () => {
+  const badTarget = await service.from('location_requests').insert({ reagent_id: RID, lot_id: L.B, from_location_id: LOC1, to_location_id: '00000000-0000-0000-0000-000000000000', status: 'pending', requested_by: 'REQ' })
+  ok(badTarget.error && /foreign key/i.test(badTarget.error.message), '없는 목적지 위치: ' + badTarget.error?.message)
+  const badLot = await service.from('location_requests').insert({ reagent_id: RID, lot_id: '00000000-0000-0000-0000-0000000000ff', from_location_id: LOC1, to_location_id: LOC2, status: 'pending', requested_by: 'REQ' })
+  ok(badLot.error && /foreign key/i.test(badLot.error.message), '없는 병(Lot): ' + badLot.error?.message)
+  const r = await newLoc(L.B, LOC2)
+  const del = await service.from('locations').delete().eq('id', LOC2)
+  ok(del.error && /foreign key/i.test(del.error.message), '대기 중 요청이 참조하는 위치는 삭제 불가: ' + del.error?.message)
+  eq([(await req('location_requests', r.id)).status, (await lot(L.B)).location_id], ['pending', LOC1], 'pending 유지 / 병 불변')
+  await service.from('location_requests').delete().eq('id', r.id)
 })
 await test('location: reject + double review blocked', async () => {
   const r = await newLoc(L.B, LOC2)
@@ -210,9 +212,10 @@ await test('disposal: approve = IMMEDIATE real disposal (full lot), single step'
   denied(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'complete' }), '2차 complete 액션은 더 이상 없음')
 })
 await test('disposal: bottle rule — one request disposes exactly that lot row; grouped row (sealed>1) is refused', async () => {
-  const r = await newDisp(L.C, null)                      // C: sealed 3 (여러 병이 한 행에 묶인 비정상 행)
+  await service.from('reagent_lots').update({ sealed_count: 3 }).eq('id', L.C)   // C: sealed 3 (여러 병이 한 행에 묶인 비정상 행)
+  const r = await newDisp(L.C, null)
   const msg = denied(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'approve' }), 'grouped row')
-  ok(msg.includes('병 1개 단위'), msg)
+  ok(msg.includes('병 단위 작업을 할 수 없습니다'), msg)
   let l = await lot(L.C)
   eq([l.sealed_count, l.status], [3, 'active'], '묶음 행은 어떤 변경도 없음(롤백)')
   eq((await req('disposal_requests', r.id)).status, 'pending', 'pending 유지')
@@ -220,6 +223,7 @@ await test('disposal: bottle rule — one request disposes exactly that lot row;
   must(await adminC.rpc('disposal_request_review', { p_request_id: r2.id, p_action: 'approve' }), 'single')
   l = await lot(L.B); eq([l.sealed_count, l.current_stock, l.status], [0, 0, 'disposed'], '병 1개 폐기')
   eq((await lot(L.C)).status, 'active', '다른 병 불변')
+  await service.from('reagent_lots').update({ sealed_count: 1 }).eq('id', L.C)
   await service.from('reagent_lots').update({ status: 'active', sealed_count: 0, current_stock: 55 }).eq('id', L.D)
   const r3 = await newDisp(L.D, null)                     // D: 개봉병(stock 55)
   must(await adminC.rpc('disposal_request_review', { p_request_id: r3.id, p_action: 'approve' }), 'opened')
@@ -249,9 +253,8 @@ await test('disposal: already-disposed lot => error + rollback; legacy approved 
   const legacy = await newDisp(L.E, '전체', 'approved')
   must(await adminC.rpc('disposal_request_review', { p_request_id: legacy.id, p_action: 'approve' }), 'finish legacy')
   eq([(await req('disposal_requests', legacy.id)).status, (await lot(L.E)).status], ['disposed', 'disposed'], '잔재 마무리')
-  const miss = await newDisp('00000000-0000-0000-0000-0000000000ff', '전체')
-  denied(await adminC.rpc('disposal_request_review', { p_request_id: miss.id, p_action: 'approve' }), 'missing lot')
-  eq((await req('disposal_requests', miss.id)).status, 'pending', '롤백 후 pending')
+  const miss = await service.from('disposal_requests').insert({ reagent_id: RID, lot_id: '00000000-0000-0000-0000-0000000000ff', reagent_name: 'x', reason: 'x', requested_by: 'REQ', status: 'pending' })
+  ok(miss.error && /foreign key/i.test(miss.error.message), '없는 병(Lot)을 가리키는 폐기 요청은 FK 로 차단: ' + miss.error?.message)
 })
 await test('disposal: concurrent approve => exactly one success, one decrement', async () => {
   await service.from('reagent_lots').update({ status: 'active', sealed_count: 1, current_stock: 50 }).eq('id', L.A)

@@ -66,8 +66,10 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
     const m = new Map()
     for (const req of pendingMoves) if (req.lot_id) m.set(req.lot_id, { type: 'move', toLocationName: req.to_location_name })
     for (const req of pendingDisposals) if (req.lot_id) m.set(req.lot_id, { type: 'dispose' })
+    // 여러 병이 한 Lot 행에 묶인 행(sealed_count > 1)은 병 단위 작업 불가 — 선택 대상에서 제외(서버도 fail-closed)
+    for (const r of reagents) for (const l of r._activeLots) if (l.sealed_count > 1 && !m.has(l.id)) m.set(l.id, { type: 'grouped' })
     return m
-  }, [pendingMoves, pendingDisposals])
+  }, [pendingMoves, pendingDisposals, reagents])
 
   // 이미 대기중인 Lot은 다시 신청 못 하게 선택 대상에서 뺌
   const selectableLotIds = useMemo(
@@ -253,7 +255,9 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
                       <td style={{ ...tdStyle, fontSize: '12px', color: C.muted }}>
                         {pend?.type === 'dispose'
                           ? <span style={{ color: '#8A5A16', fontWeight: '700' }}>폐기 예정 <span style={{ fontSize: '10.5px', fontWeight: '400' }}>(승인대기)</span></span>
-                          : lotStockLabel(lot)}
+                          : pend?.type === 'grouped'
+                            ? <span style={{ color: '#C13B3F', fontWeight: '700' }}>묶음 행(미개봉 {lot.sealed_count}병) — 병별 Lot 행으로 분리 필요</span>
+                            : lotStockLabel(lot)}
                       </td>
                     </tr>
                   )

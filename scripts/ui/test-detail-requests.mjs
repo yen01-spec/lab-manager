@@ -15,7 +15,8 @@ const RID = 'r-0010'
 function makeReagents() {
   const rs = buildReagents(40)
   const i = rs.findIndex(r => r.id === RID)
-  rs[i] = { ...rs[i], name: 'Tris(hydroxymethyl)aminomethane hydrochloride extra-pure grade reagent solution 0.5 mol/L in ultrapure water for molecular biology' }
+  // 병 1개 = 1행 모델 — 이 시약의 병은 미개봉 0/1병(묶음 행 sealed_count > 1 은 병 단위 작업이 막힌다: test-grouped-guard-ui.mjs)
+  rs[i] = { ...rs[i], reagent_lots: rs[i].reagent_lots.map(l => ({ ...l, sealed_count: Math.min(l.sealed_count, 1) })), name: 'Tris(hydroxymethyl)aminomethane hydrochloride extra-pure grade reagent solution 0.5 mol/L in ultrapure water for molecular biology' }
   return rs
 }
 

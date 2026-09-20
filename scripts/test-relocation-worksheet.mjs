@@ -4,7 +4,7 @@ import ExcelJS from 'exceljs'
 import JSZip from 'jszip'
 import { mkdirSync } from 'node:fs'
 import {
-  classifyBottles, buildRelocationRows, groupByLocation, summarize, letterOf, LETTER_ORDER, ROLE_IN_USE, ROLE_SPARE,
+  ROLE_CHECK, classifyBottles, buildRelocationRows, groupByLocation, summarize, letterOf, LETTER_ORDER, ROLE_IN_USE, ROLE_SPARE,
 } from '../src/lib/relocationPlan.js'
 import { buildRelocationWorkbook, safeSheetName, rowHeightFor } from '../src/lib/relocationExcel.js'
 
@@ -25,7 +25,7 @@ const NAMES = [
   ['Chloroform', 'C'], ['Dichloromethane', 'D'], ['Ethanol', 'E'], ['Ethyl acetate', 'E'],
   ['4-Aminobenzoic acid', 'A'], ['Formaldehyde solution', 'F'], ['Hydrochloric acid', 'H'], ['Methanol', 'M'], ['Sodium hydroxide', 'S'],
   ['Tris(hydroxymethyl)aminomethane hydrochloride extra-pure grade reagent solution 0.5 mol/L in ultrapure water for molecular biology', 'T'],
-  ['Zinc oxide', 'Z'],
+  ['Zinc oxide', 'Z'], ['Xylene', 'X'], ['Grouped reagent', 'G'],
 ]
 let seq = 0
 const uid = () => `b0000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`
@@ -49,6 +49,8 @@ add(9, { current_stock: 25, location_id: LOC.B1 }); add(9, { current_stock: 25, 
 add(10, { current_stock: 55 }); add(11, { current_stock: 45, location_id: LOC.B1 }); add(12, { current_stock: 15 }); add(13, { current_stock: 65 })
 add(14, { current_stock: 35 }); add(15, { current_stock: 75 }); add(16, { current_stock: 85 })
 add(16, { status: 'disposed', current_stock: 0 })                                    // 폐기된 병은 제외
+add(17, { current_stock: 100 }); add(17, { sealed_count: 1, current_stock: 0 })   // 개봉 100% vs 미개봉(=100) → 개봉 우선으로 자동 확정
+add(18, { sealed_count: 3, current_stock: 0 }); add(18, { current_stock: 60 }) // 묶음 행(sealed 3) + 정상 병
 lots.push({ id: uid(), reagent_id: 'r-x', lot_no: null, sealed_count: 0, current_stock: 50, location_id: LOC.A1, status: 'active', received_date: null, reagents: { id: 'r-x', name: '(미지)Unknown', cas_no: '', company: '', volume: null, unit: null, sort_letter: null } })
 deepFreeze(lots); deepFreeze(locations)
 
@@ -64,12 +66,31 @@ ok('classify: sealed bottle (stock stored as 0) is treated as full, never as the
   const sealed = byReagent('r-0').find(x => x.sealed_count > 0); return roles.get(sealed.id).role === ROLE_SPARE
 })())
 ok('classify: single bottle is 사용중 (no spare)', roleList('r-2').length === 1 && roleList('r-2')[0] === ROLE_IN_USE)
-ok('classify: tie (40% vs 40%) → exactly one 사용중, both flagged tie for on-site check', (() => {
-  const l = byReagent('r-1'); return l.filter(x => roles.get(x.id).role === ROLE_IN_USE).length === 1 && l.every(x => roles.get(x.id).tie)
+const R = id => roles.get(id).role
+ok('classify: tie after open-preference (open 40% vs open 40%) → BOTH 현장 확인 필요, never auto-picked', (() => {
+  const l = byReagent('r-1'); return l.every(x => R(x.id) === ROLE_CHECK && roles.get(x.id).reason === 'tie')
 })())
-ok('classify: sealed-vs-sealed tie broken by earlier received_date (still flagged tie)', (() => {
-  const l = byReagent('r-4'); const inUse = l.find(x => roles.get(x.id).role === ROLE_IN_USE)
-  return inUse.received_date === '2025-01-01' && l.every(x => roles.get(x.id).tie)
+ok('classify: received_date / bottle id are NOT used as tie-breakers (sealed-vs-sealed with different received_date → both 확인 필요)', (() => {
+  const l = byReagent('r-4'); return l.some(x => x.received_date) && l.every(x => R(x.id) === ROLE_CHECK)
+})())
+ok('classify: open bottle wins over sealed at the same effective remain (open 100% → 사용중, sealed → 여분)', (() => {
+  const l = byReagent('r-17'); const open = l.find(x => x.sealed_count === 0); const sealed = l.find(x => x.sealed_count > 0)
+  return R(open.id) === ROLE_IN_USE && R(sealed.id) === ROLE_SPARE
+})())
+ok('classify: grouped row (sealed_count > 1) → 현장 확인 필요 (reason grouped), excluded from ranking; the normal bottle is 사용중', (() => {
+  const l = byReagent('r-18'); const g = l.find(x => x.sealed_count > 1); const n = l.find(x => x.sealed_count === 0)
+  return R(g.id) === ROLE_CHECK && roles.get(g.id).reason === 'grouped' && R(n.id) === ROLE_IN_USE
+})())
+ok('classify: manual role override wins; picking 사용중 among a tie resolves the other candidate to 여분', (() => {
+  const l = byReagent('r-1'); const m = classifyBottles(lots, { [l[0].id]: ROLE_IN_USE })
+  return m.get(l[0].id).role === ROLE_IN_USE && m.get(l[0].id).manual === true && m.get(l[1].id).role === ROLE_SPARE
+})())
+ok('classify: manual 여분 on one tied bottle leaves the other unresolved (no guessing)', (() => {
+  const l = byReagent('r-1'); const m = classifyBottles(lots, { [l[0].id]: ROLE_SPARE })
+  return m.get(l[0].id).role === ROLE_SPARE && m.get(l[1].id).role === ROLE_CHECK
+})())
+ok('classify: manual override cannot be applied to a bottle via roleOverrides with an invalid value', (() => {
+  const l = byReagent('r-1'); const m = classifyBottles(lots, { [l[0].id]: '아무거나' }); return m.get(l[0].id).role === ROLE_CHECK
 })())
 ok('classify: role decided over ALL bottles of the reagent, across locations (Benzene: 20% at A-2 is 사용중, sealed at spare cabinet is 여분)', (() => {
   const l = byReagent('r-3'); const a2 = l.find(x => x.location_id === LOC.A2); const sp = l.find(x => x.location_id === LOC.SP)
@@ -102,9 +123,10 @@ ok('group: 3 selected locations → 3 groups, only rows of that location', group
 ok('summary: per-location alphabet counts sum to that location\'s total bottles', groups.every(g => LETTER_ORDER.reduce((n, k) => n + g.summary.letters[k], 0) === g.summary.total && g.summary.total === g.rows.length))
 const all = summarize(rows)
 ok('summary: overall letter sum == total bottles == Σ location totals', LETTER_ORDER.reduce((n, k) => n + all.letters[k], 0) === all.total && all.total === groups.reduce((n, g) => n + g.summary.total, 0))
-ok('summary: 사용중 + 여분 == total; kinds counts reagents (not bottles)', all.inUse + all.spare === all.total && groups[0].summary.kinds <= groups[0].summary.total)
+ok('summary: 사용중 + 여분 + 확인 필요 == total; provisional flag on when 확인 필요 exists; kinds counts reagents (not bottles)', all.inUse + all.spare + all.check === all.total && all.check > 0 && all.provisional === true && groups[0].summary.kinds <= groups[0].summary.total)
 const ovr = buildRelocationRows({ lots, locations, selectedLocationIds: selected, plan: { spareTarget: LOC.SP, overrides: { [rows[0].lotId]: LOC.B1, [rows[1].lotId]: '' } } })
 ok('plan overrides: per-bottle target wins; "" forces 변경 없음', ovr.find(r => r.lotId === rows[0].lotId).plannedLocationId === (rows[0].currentLocationId === LOC.B1 ? null : LOC.B1) && ovr.find(r => r.lotId === rows[1].lotId).plannedLocationId === null)
+ok('rows: 확인 필요 bottles get NO automatic planned location (even with a spare target set)', rows.filter(r => r.role === ROLE_CHECK).length > 0 && rows.filter(r => r.role === ROLE_CHECK).every(r => r.plannedLocationId === null))
 ok('inputs are never mutated (deep-frozen inputs survived)', true)
 
 // ── 3. Excel 구조 ────────────────────────────────────────────────────────────
@@ -127,10 +149,17 @@ ok('excel: bottle rows (excluding letter bands) == bottles in that location; No.
   const nums = []; w.eachRow((row, n) => { if (n > 5 && typeof row.getCell(1).value === 'number') nums.push(row.getCell(1).value) })
   return nums.length === groups[i].rows.length && nums.every((v, k) => v === k + 1)
 }))
+ok('excel: provisional wording — 잠정 in the role line (only sheets with 확인 필요), 확인 필요 role cell + 메모 (동률 / 묶음 행)', (() => {
+  const prov = locSheets.filter(x => String(x.getCell('A3').value).includes('(잠정)'))
+  const notProv = locSheets.filter(x => !String(x.getCell('A3').value).includes('(잠정)'))
+  const memos = [], roleCells = []
+  for (const w of locSheets) w.eachRow((row, n) => { if (n > 5) { memos.push(String(row.getCell(15).value || '')); roleCells.push(String(row.getCell(11).value || '')) } })
+  return prov.length >= 1 && notProv.every((x, i) => /확인 필요 0병/.test(String(x.getCell('A3').value))) && roleCells.some(v => v.startsWith('△')) && memos.some(v => v.includes('동률·현장 확인')) && memos.some(v => v.includes('묶음 행'))
+})())
 ok('excel: alphabet summary line on top of every location sheet', locSheets.every((w, i) => String(w.getCell('A2').value).includes(groups[i].summary.letterLine)))
 ok('excel: 요약 sheet totals row + reconciliation OK', (() => {
   const s = rb.worksheets[0]; let total = null, verdict = ''
-  s.eachRow(row => { if (row.getCell(1).value === '합계') total = row.getCell(2).value; if (String(row.getCell(1).value || '').startsWith('검증')) verdict = row.getCell(1).value })
+  s.eachRow(row => { if (String(row.getCell(1).value).startsWith('합계')) total = row.getCell(2).value; if (String(row.getCell(1).value || '').startsWith('검증')) verdict = row.getCell(1).value })
   return total === all.total && verdict.endsWith('OK')
 })())
 ok('excel: long reagent name wraps (wrapText) and its row is taller than the default', (() => {

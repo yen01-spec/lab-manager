@@ -1,0 +1,2 @@
+// 복원(백업) 범위 테이블 — supabase/migrations/20260924090000_backup_restore.sql 의 _backup_tables() 와 같은 순서(FK 부모 → 자식).
+export const SCOPE = ['students', 'locations', 'reagents', 'reagent_lots', 'location_history', 'location_requests', 'disposal_requests', 'reagent_change_requests', 'stock_history', 'stock_logs', 'reagent_import_history', 'special_material_logs', 'inventory_sessions', 'inventory_assignments', 'inventory_counts', 'admin_logs']

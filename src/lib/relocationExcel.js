@@ -1,4 +1,4 @@
-import { LETTER_ORDER, ROLE_SPARE, summarize } from './relocationPlan.js'
+import { LETTER_ORDER, ROLE_SPARE, ROLE_CHECK, summarize } from './relocationPlan.js'
 
 // 시약장 재배치 작업표 Excel(현장 인쇄용). exceljs 는 관리자 화면에서 이 기능을 쓸 때만 동적으로 불러온다.
 // 구성: "요약" 시트 1개 + 현재 위치별 시트 1개씩(A4 가로, 표 제목/머리글 행 반복 인쇄, 쪽번호).
@@ -69,8 +69,8 @@ function addLocationSheet(wb, group, sheetName, generatedAt) {
   const s = group.summary
   titleRow(ws, 1, `현재 위치: ${group.locationName}   ·   총 ${s.total}병 (시약 ${s.kinds}종)`, { size: 15, bold: true, color: 'FFFFFFFF', bg: NAVY, height: 28 })
   titleRow(ws, 2, `알파벳별 병 수:  ${s.letterLine || '-'}`, { size: 11, bold: true, height: 22, bg: LIGHT })
-  titleRow(ws, 3, `병 역할:  ● 사용중 ${s.inUse}병  /  ○ 여분 ${s.spare}병      이동 예정(바뀔 위치가 현재와 다름): ${s.moves}병${s.ties ? `      동률 확인 필요: ${s.ties}병` : ''}`, { size: 11, height: 22, bg: LIGHT })
-  titleRow(ws, 4, `※ 이 표의 "바뀔 위치"는 계획입니다. 출력/내보내기는 DB 의 실제 위치를 바꾸지 않습니다. 이동 후 관리자가 확인해 별도로 반영합니다.   (작성 ${generatedAt})`, { size: 9, italic: true, color: 'FF333333', height: 18 })
+  titleRow(ws, 3, `병 역할${s.provisional ? '(잠정)' : ''}:  ● 사용중 ${s.inUse}병  /  ○ 여분 ${s.spare}병  /  △ 현장 확인 필요 ${s.check}병      이동 예정(바뀔 위치가 현재와 다름): ${s.moves}병`, { size: 11, height: 22, bg: LIGHT, bold: s.provisional })
+  titleRow(ws, 4, `※ "바뀔 위치"는 계획입니다. 출력/내보내기는 DB 의 실제 위치를 바꾸지 않습니다.${s.provisional ? '  ※ 현장 확인 필요 병이 있어 사용중/여분 집계는 잠정값입니다(확인 후 확정).' : ''}   (작성 ${generatedAt})`, { size: 9, italic: true, color: s.provisional ? 'FF9C2B2B' : 'FF333333', height: s.provisional ? 26 : 18 })
 
   const head = ws.getRow(HEADER_ROWS)
   COLS.forEach((c, i) => {
@@ -102,8 +102,9 @@ function addLocationSheet(wb, group, sheetName, generatedAt) {
     const values = {
       seq, letter: row.letter, reagentName: row.reagentName, cas: row.cas, company: row.company, lotNo: row.lotNo || '-',
       shortId: row.shortId, spec: row.spec || '-', open: row.opened ? '개봉' : '미개봉', remain: row.opened ? `${row.remain}%` : '-',
-      role: row.role === ROLE_SPARE ? '○ 여분' : '● 사용중', currentLocation: row.currentLocation,
-      plannedLocation: changed ? `→ ${row.plannedLocation}` : '변경 없음', done: '☐', memo: row.tie ? '동률·현장 확인' : '',
+      role: (row.role === ROLE_SPARE ? '○ 여분' : row.role === ROLE_CHECK ? '△ 확인 필요' : '● 사용중') + (row.manualRole ? ' (지정)' : ''), currentLocation: row.currentLocation,
+      plannedLocation: changed ? `→ ${row.plannedLocation}` : '변경 없음', done: '☐',
+      memo: row.role === ROLE_CHECK ? (row.roleReason === 'grouped' ? '묶음 행 — 병별 Lot 행으로 분리 필요' : '동률·현장 확인') : '',
     }
     const xr = ws.getRow(r)
     COLS.forEach((c, i) => {
@@ -118,6 +119,7 @@ function addLocationSheet(wb, group, sheetName, generatedAt) {
     xr.getCell(13).font = changed ? { size: 11, bold: true } : { size: 10, italic: true, color: { argb: 'FF777777' } }
     if (changed) xr.getCell(13).fill = fill(GRAY)
     if (row.role === ROLE_SPARE) xr.getCell(11).fill = fill('FFF2F2F2')
+    if (row.role === ROLE_CHECK) { xr.getCell(11).fill = fill(GRAY); xr.getCell(11).border = { top: medium, bottom: medium, left: medium, right: medium }; xr.getCell(15).font = { size: 10.5, bold: true } }
     xr.height = rowHeightFor([[values.reagentName, COLS[2].width], [values.company, COLS[4].width], [values.lotNo, COLS[5].width], [values.currentLocation, COLS[11].width], [values.plannedLocation, COLS[12].width], [values.memo, COLS[14].width]])
     r++
   }
@@ -128,8 +130,8 @@ function addSummarySheet(wb, groups, meta) {
   const ws = wb.addWorksheet('요약', {
     pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true },
   })
-  ws.columns = [{ width: 34 }, { width: 9 }, { width: 10 }, { width: 9 }, { width: 9 }, { width: 11 }, { width: 70 }]
-  ws.mergeCells('A1:G1')
+  ws.columns = [{ width: 34 }, { width: 9 }, { width: 10 }, { width: 9 }, { width: 9 }, { width: 11 }, { width: 11 }, { width: 66 }]
+  ws.mergeCells('A1:H1')
   ws.getCell('A1').value = '시약장 재배치 작업표 — 요약'
   ws.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } }
   ws.getCell('A1').fill = fill(NAVY)
@@ -137,21 +139,22 @@ function addSummarySheet(wb, groups, meta) {
   ws.getRow(1).height = 30
   const lines = [
     `작성: ${meta.generatedAt}`,
-    `여분 병의 바뀔 위치(계획): ${meta.spareTargetName || '변경 없음'}    /    사용중 병의 바뀔 위치(계획): ${meta.inUseTargetName || '변경 없음'}    /    개별 지정: ${meta.overrideCount}건`,
+    `여분 병의 바뀔 위치(계획): ${meta.spareTargetName || '변경 없음'}    /    사용중 병의 바뀔 위치(계획): ${meta.inUseTargetName || '변경 없음'}    /    위치 개별 지정: ${meta.overrideCount}건    /    역할 개별 지정: ${meta.roleOverrideCount || 0}건`,
     '※ 출력/내보내기는 DB 의 실제 위치를 바꾸지 않습니다. "바뀔 위치"는 계획값이며, 이동 후 관리자가 확인하여 별도로 반영합니다.',
     '※ 병 1개 = 1행(병 ID = 앱 내부 병 식별값). Lot No.는 제조사 배치 번호라 같은 번호의 병이 여러 개 있을 수 있습니다.',
-    '※ 병 역할: 같은 시약의 활성 병 중 잔량이 가장 적은 병 = 사용중, 나머지 = 여분. 미개봉 병은 100%로 계산. 동률은 개봉 병 → 입고일 빠른 순 → 병 ID 순으로 임시 결정하고 "동률·현장 확인"으로 표시.',
+    '※ 병 역할: 같은 시약의 활성 병 중 잔량이 가장 적은 병 = 사용중, 나머지 = 여분. 미개봉 병은 100%로 계산하고, 최소 잔량 후보 중 개봉 병을 우선합니다. 그래도 동률이면 "현장 확인 필요"(입고일/병 ID 로는 판정하지 않음). 묶음 행(미개봉 2병 이상)도 현장 확인 필요.',
+    meta.provisional ? '※ 현장 확인 필요 병이 있어 사용중/여분 집계는 잠정값입니다. 확인 후 관리자 화면에서 병별 역할을 지정하세요.' : '※ 현장 확인 필요 병이 없어 사용중/여분 집계가 확정값입니다.',
   ]
   lines.forEach((t, i) => {
-    ws.mergeCells(2 + i, 1, 2 + i, 7)
+    ws.mergeCells(2 + i, 1, 2 + i, 8)
     const c = ws.getCell(2 + i, 1)
     c.value = t
     c.font = { size: 10, italic: i >= 2 }
     c.alignment = { wrapText: true, vertical: 'middle', indent: 1 }
-    ws.getRow(2 + i).height = i >= 4 ? 30 : 18
+    ws.getRow(2 + i).height = i === 4 ? 30 : i === 5 ? 20 : 18
   })
-  const hr = 8
-  ;['현재 위치', '총 병', '시약 종류', '사용중', '여분', '이동 예정', '알파벳별 병 수'].forEach((h, i) => {
+  const hr = 9
+  ;['현재 위치', '총 병', '시약 종류', '사용중', '여분', '확인 필요', '이동 예정', '알파벳별 병 수'].forEach((h, i) => {
     const c = ws.getCell(hr, i + 1)
     c.value = h; c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = fill(NAVY); c.border = allThin
     c.alignment = { horizontal: 'center', vertical: 'middle' }
@@ -160,21 +163,21 @@ function addSummarySheet(wb, groups, meta) {
   let r = hr + 1
   groups.forEach(g => {
     const s = g.summary
-    ;[g.locationName, s.total, s.kinds, s.inUse, s.spare, s.moves, s.letterLine || '-'].forEach((v, i) => {
+    ;[g.locationName, s.total, s.kinds, s.inUse, s.spare, s.check, s.moves, s.letterLine || '-'].forEach((v, i) => {
       const c = ws.getCell(r, i + 1)
       c.value = v; c.border = allThin
-      c.alignment = { vertical: 'middle', wrapText: true, horizontal: i === 0 || i === 6 ? 'left' : 'center' }
+      c.alignment = { vertical: 'middle', wrapText: true, horizontal: i === 0 || i === 7 ? 'left' : 'center' }
     })
-    ws.getRow(r).height = rowHeightFor([[g.locationName, 34], [s.letterLine, 70]])
+    ws.getRow(r).height = rowHeightFor([[g.locationName, 34], [s.letterLine, 66]])
     r++
   })
   const all = summarize(groups.flatMap(g => g.rows))
-  ;['합계', all.total, '-', all.inUse, all.spare, all.moves, all.letterLine || '-'].forEach((v, i) => {
+  ;['합계' + (all.provisional ? ' (잠정)' : ''), all.total, '-', all.inUse, all.spare, all.check, all.moves, all.letterLine || '-'].forEach((v, i) => {
     const c = ws.getCell(r, i + 1)
     c.value = v; c.font = { bold: true }; c.fill = fill(LIGHT); c.border = { ...allThin, top: medium }
-    c.alignment = { vertical: 'middle', wrapText: true, horizontal: i === 0 || i === 6 ? 'left' : 'center' }
+    c.alignment = { vertical: 'middle', wrapText: true, horizontal: i === 0 || i === 7 ? 'left' : 'center' }
   })
-  ws.getRow(r).height = rowHeightFor([[all.letterLine, 70]])
+  ws.getRow(r).height = rowHeightFor([[all.letterLine, 66]])
   const sumLetters = LETTER_ORDER.reduce((n, k) => n + all.letters[k], 0)
   ws.getCell(r + 2, 1).value = `검증: 알파벳별 병 수 합계 ${sumLetters} = 총 병 ${all.total} → ${sumLetters === all.total ? 'OK' : '불일치!'}`
   ws.getCell(r + 2, 1).font = { size: 10, italic: true }
@@ -188,7 +191,7 @@ export async function buildRelocationWorkbook(groups, meta, ExcelJSLib) {
   wb.creator = '연구실 시약관리 시스템'
   wb.created = new Date()
   const generatedAt = meta.generatedAt || new Date().toLocaleString('ko-KR')
-  addSummarySheet(wb, groups, { ...meta, generatedAt })
+  addSummarySheet(wb, groups, { ...meta, generatedAt, provisional: groups.some(g => g.summary.provisional) })
   const used = new Set(['요약'])
   groups.forEach((g, i) => addLocationSheet(wb, g, safeSheetName(g.locationName, used, i + 1), generatedAt))
   return wb

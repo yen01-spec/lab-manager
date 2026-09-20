@@ -508,8 +508,10 @@ export default function ReagentDetail() {
   const pendingMoveByLot = new Map(pendingMoves.filter(m => m.lot_id).map(m => [m.lot_id, m]))
   const pendingDisposalByLot = new Map(pendingDisposals.filter(d => d.lot_id).map(d => [d.lot_id, d]))
   // 학생은 같은 Lot 에 같은 종류 신청이 이미 대기 중이면 다시 신청할 수 없다(서버도 막음). 관리자는 직접 처리하므로 해당 없음.
-  const requestableForMove = isAdmin ? activeLots : activeLots.filter(l => !pendingMoveByLot.has(l.id))
-  const requestableForDisposal = isAdmin ? activeLots : activeLots.filter(l => !pendingDisposalByLot.has(l.id))
+  // 여러 병이 한 Lot 행에 묶인 행(sealed_count > 1)은 병 단위 작업 대상에서 제외(서버도 fail-closed)
+  const singleBottleLots = activeLots.filter(l => !(l.sealed_count > 1))
+  const requestableForMove = (isAdmin ? singleBottleLots : singleBottleLots.filter(l => !pendingMoveByLot.has(l.id)))
+  const requestableForDisposal = (isAdmin ? singleBottleLots : singleBottleLots.filter(l => !pendingDisposalByLot.has(l.id)))
 
   function openDisposalModal() {
     setDisposalForm({ lot_id: requestableForDisposal.length === 1 ? requestableForDisposal[0].id : '', reason: '' })
@@ -971,7 +973,8 @@ export default function ReagentDetail() {
                     {activeLots.map(l => {
                       const loc = locations.find(x => x.id === l.location_id)
                       const pend = !isAdmin && pendingDisposalByLot.has(l.id)
-                      return <option key={l.id} value={l.id} disabled={pend}>Lot {l.lot_no || '번호없음'} · {loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '위치미정'} · {l.sealed_count}병/{l.current_stock}%{pend ? ' (폐기 신청 완료 · 검토 대기)' : ''}</option>
+                      const grouped = l.sealed_count > 1
+                      return <option key={l.id} value={l.id} disabled={pend || grouped}>Lot {l.lot_no || '번호없음'} · {loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '위치미정'} · {l.sealed_count}병/{l.current_stock}%{pend ? ' (폐기 신청 완료 · 검토 대기)' : ''}{grouped ? ' (묶음 행 — 병별 Lot 행으로 분리 필요)' : ''}</option>
                     })}
                   </select></div>
               )}
@@ -1008,7 +1011,8 @@ export default function ReagentDetail() {
                     {activeLots.map(l => {
                       const loc = locations.find(x => x.id === l.location_id)
                       const pend = !isAdmin && pendingMoveByLot.has(l.id)
-                      return <option key={l.id} value={l.id} disabled={pend}>Lot {l.lot_no || '번호없음'} · {loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '위치미정'}{pend ? ' (위치 변경 신청 완료 · 검토 대기)' : ''}</option>
+                      const grouped = l.sealed_count > 1
+                      return <option key={l.id} value={l.id} disabled={pend || grouped}>Lot {l.lot_no || '번호없음'} · {loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '위치미정'}{pend ? ' (위치 변경 신청 완료 · 검토 대기)' : ''}{grouped ? ' (묶음 행 — 병별 Lot 행으로 분리 필요)' : ''}</option>
                     })}
                   </select></div>
               )}

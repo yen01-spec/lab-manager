@@ -35,8 +35,8 @@ const ADMIN_EMAIL = `bottle-admin-${suffix}@example.test`, USER_EMAIL = `bottle-
 const LA = '74000000-0000-0000-0000-000000000001', LB = '74000000-0000-0000-0000-000000000002', LC = '74000000-0000-0000-0000-000000000003'
 const RB = '73000000-0000-0000-0000-000000000001'
 const BT = n => `75000000-0000-0000-0000-0000000000${n}`      // 병 ID
-const [A, B, C, D, E, F, G] = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7'].map(BT)
-const ALL = [A, B, C, D, E, F, G]
+const [A, B, C, D, E, F, G, H] = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8'].map(BT)
+const ALL = [A, B, C, D, E, F, G, H]
 let adminC, userC, adminId, userId, tokA
 
 async function wipe() {
@@ -60,6 +60,7 @@ async function seed() {
     { id: E, reagent_id: RB, lot_no: 'SAME-LOT-3', sealed_count: 0, current_stock: 40, location_id: LA, status: 'active' },
     { id: F, reagent_id: RB, lot_no: 'SAME-LOT-3', sealed_count: 0, current_stock: 45, location_id: LA, status: 'active' },
     { id: G, reagent_id: RB, lot_no: 'SAME-LOT-3', sealed_count: 0, current_stock: 10, location_id: LA, status: 'active' },
+    { id: H, reagent_id: RB, lot_no: 'GROUPED-LOT', sealed_count: 3, current_stock: 0, location_id: LA, status: 'active' },   // 묶음 행(비정상)
   ]), 'lots')
 }
 const lotRow = async id => must(await service.from('reagent_lots').select('id,lot_no,sealed_count,current_stock,status,location_id').eq('id', id).single(), 'lot')
@@ -245,8 +246,33 @@ await test('TRUST: grouped row (sealed_count > 1) cannot be disposed as "1 bottl
   await service.from('reagent_lots').update({ sealed_count: 3 }).eq('id', G)
   const rows = must(await service.from('disposal_requests').select('id').eq('lot_id', G).eq('status', 'pending'), 'g req')
   const msg = denied(await reviewDisp(rows[0].id, 'approve'), 'grouped')
-  ok(msg.includes('병 1개 단위'), msg)
+  ok(msg.includes('병 단위 작업을 할 수 없습니다'), msg)
   eq((await lotRow(G)).status, 'active', '불변')
+})
+await test('GUARD: grouped row (sealed_count > 1) is refused by EVERY bottle-unit operation (fail-closed, exact guidance, nothing changes)', async () => {
+  const GUIDE = '여러 병이 하나의 Lot 행에 묶여 있어 병 단위 작업을 할 수 없습니다. 병별 Lot 행으로 분리 후 처리해주세요.'
+  const before = await snap([H])
+  const logs = await logCount()
+  const chk = (r, what) => { const m = denied(r, what); ok(m.includes(GUIDE), what + ': ' + m); return m }
+  chk(await submitDisp(tokA, H), 'student dispose submit')
+  chk(await submitLoc(tokA, H, LB), 'student move submit')
+  chk(await adminC.rpc('admin_move_lots', { p_lot_ids: [H, E], p_to_location_id: LB }), 'admin_move_lots (mixed batch is rejected as a whole)')
+  chk(await adminC.rpc('admin_dispose_lots', { p_lot_ids: [H], p_reason: 'x' }), 'admin_dispose_lots')
+  chk(await adminC.rpc('admin_lot_move', { p_lot_id: H, p_to_location_id: LB, p_notes: null }), 'admin_lot_move')
+  chk(await adminC.rpc('admin_lot_set_status', { p_lot_id: H, p_status: 'used_up' }), 'admin_lot_set_status')
+  // 이미 pending 으로 들어와 있던 요청(과거에 만들어졌거나 우회 경로)도 승인 시점에 거부
+  const d = must(await service.from('disposal_requests').insert({ reagent_id: RB, lot_id: H, reagent_name: 'BT-Reagent', lot_no: 'GROUPED-LOT', reason: 'x', requested_by: 'X', status: 'pending' }).select().single(), 'seed d')
+  const l = must(await service.from('location_requests').insert({ reagent_id: RB, lot_id: H, reagent_name: 'BT-Reagent', from_location_id: LA, from_location_name: 'BT-1 - A', to_location_id: LB, to_location_name: 'BT-2', requested_by: 'X', status: 'pending' }).select().single(), 'seed l')
+  chk(await reviewDisp(d.id, 'approve'), 'disposal review approve')
+  chk(await reviewLoc(l.id, 'approve'), 'location review approve')
+  eq([await snap([H]), await logCount(), (await hist(H)).length], [before, logs, 0], 'H 불변 / 감사로그·이력 추가 없음')
+  eq([(await req('disposal_requests', d.id)).status, (await req('location_requests', l.id)).status], ['pending', 'pending'], '요청은 pending 유지(관리자가 반려 가능)')
+  must(await reviewDisp(d.id, 'reject', '묶음 행'), 'reject disposal is allowed'); must(await reviewLoc(l.id, 'reject', '묶음 행'), 'reject location is allowed')
+})
+await test('GUARD: the repair path stays open — admin_lot_update splits the row, after which bottle operations work', async () => {
+  must(await adminC.rpc('admin_lot_update', { p_lot_id: H, p_fields: { sealed_count: 1 } }), 'split to 1')
+  must(await adminC.rpc('admin_lot_move', { p_lot_id: H, p_to_location_id: LB, p_notes: null }), 'move after split')
+  eq((await lotRow(H)).location_id, LB, '이동됨')
 })
 await test('no legacy leftovers: old signatures gone; quantity never written', async () => {
   const r = await anon.rpc('disposal_request_submit', { p_session_token: tokA, p_reagent_id: RB, p_lot_id: C, p_reagent_name: 'x', p_lot_no: 'x', p_quantity: '전체', p_reason: 'x' })
