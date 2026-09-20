@@ -1,6 +1,13 @@
 -- STAGING TEST ONLY
 -- NEVER APPLY TO PRODUCTION
 -- NOT A PRODUCTION MIGRATION
+drop function if exists public.admin_dispose_lots(uuid[], text);
+drop function if exists public.admin_move_lots(uuid[], uuid);
+drop function if exists public.disposal_request_review(uuid, text, text);
+drop function if exists public.location_request_review(uuid, text, text);
+drop function if exists public.reagent_change_request_review(uuid, text, text);
+drop function if exists public._location_label(uuid, text);
+drop function if exists public._admin_actor();
 drop function if exists public.location_request_submit(text, uuid, uuid, text, uuid, text, uuid, text, text);
 drop function if exists public.reagent_change_request_submit(text, uuid, text, text, text);
 drop table if exists location_requests;

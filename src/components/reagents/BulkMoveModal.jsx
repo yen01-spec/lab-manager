@@ -5,7 +5,7 @@ import { C, inputStyle } from '../../design'
 // 부모(ReagentList)에 그대로 두고, 이 컴포넌트는 폼 UI만 담당한다.
 export default function BulkMoveModal({
   checkedCount, locations, bulkMoveLocation, setBulkMoveLocation,
-  bulkMovedBy, setBulkMovedBy, onClose, onSubmit, submitLabel = '이동하기',
+  onClose, onSubmit, submitLabel = '이동하기',
 }) {
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -25,10 +25,6 @@ export default function BulkMoveModal({
               <option value="">선택하세요</option>
               {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
             </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>이동자 이름 *</label>
-            <input value={bulkMovedBy} onChange={e => setBulkMovedBy(e.target.value)} placeholder="본인 이름" style={inputStyle} />
           </div>
         </div>
         {bulkMoveLocation && (

@@ -163,12 +163,13 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
   // 폐기 신청 — 실사 완료 처리 흐름과 무관하게 기존 disposal_requests 신청→승인 구조 그대로 재사용.
   // window.prompt() 대신 표를 벗어나지 않는 사유 칩 선택으로 한 번에 제출.
   async function requestDisposal(lot, reason) {
-    if (!myName.trim()) { alert('로그인 후 이용해주세요'); return }
-    await supabase.from('disposal_requests').insert({
-      reagent_id: lot.reagent_id, lot_id: lot.id, lot_no: lot.lot_no,
-      reagent_name: lot.reagents?.name, requested_by: myName, requested_by_student_id: student?.student_id ?? null,
-      reason, status: 'pending',
+    if (!student?.session_token) { alert('로그인 후 이용해주세요'); return }
+    // 신청자 신원은 서버가 session_token으로 확정한다(client 입력값 무시).
+    const { error } = await supabase.rpc('disposal_request_submit', {
+      p_session_token: student.session_token, p_reagent_id: lot.reagent_id, p_lot_id: lot.id,
+      p_reagent_name: lot.reagents?.name ?? null, p_lot_no: lot.lot_no ?? null, p_quantity: null, p_reason: reason,
     })
+    if (error) { alert(error.message || '폐기 신청 중 오류가 발생했어요'); return }
     setDisposalByLot(prev => ({ ...prev, [lot.id]: { reason } }))
   }
 

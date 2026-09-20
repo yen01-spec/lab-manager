@@ -3,7 +3,7 @@ import { C, inputStyle } from '../../design'
 // 다량 폐기처리 모달 — 시약 일괄정리에서 체크한 시약들의 활성 Lot을 한 번에 폐기 처리.
 // 관리자 전용 화면에서만 쓰여서(즉시 반영, 승인 대기 없음) BulkMoveModal과 같은 패턴.
 export default function BulkDisposalModal({
-  checkedCount, reason, setReason, disposedBy, setDisposedBy, onClose, onSubmit, isRequest = false,
+  checkedCount, reason, setReason, onClose, onSubmit, isRequest = false,
 }) {
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -22,10 +22,6 @@ export default function BulkDisposalModal({
           <div>
             <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>폐기 사유 *</label>
             <input value={reason} onChange={e => setReason(e.target.value)} placeholder="예: 유효기간 만료, 변질" style={inputStyle} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: C.muted, marginBottom: '6px', textTransform: 'uppercase' }}>처리자 이름 *</label>
-            <input value={disposedBy} onChange={e => setDisposedBy(e.target.value)} placeholder="본인 이름" style={inputStyle} />
           </div>
         </div>
         <div style={{ marginTop: '14px', padding: '10px 14px', background: '#FDECEC', border: '1px solid #F3D6D6', borderRadius: '8px', fontSize: '12.5px', color: '#C13B3F' }}>

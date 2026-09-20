@@ -105,9 +105,9 @@ export default function Admin() {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           {tab === 'dashboard' && <DashboardTab onGoTab={setTab} />}
-          {tab === 'req-change' && <ChangeRequestTab student={student} />}
-          {tab === 'req-disposal' && <DisposalTab onCountChange={fetchDisposalCount} student={student} />}
-          {tab === 'req-move' && <MoveTab locations={locations} />}
+          {tab === 'req-change' && <ChangeRequestTab />}
+          {tab === 'req-disposal' && <DisposalTab onCountChange={fetchDisposalCount} />}
+          {tab === 'req-move' && <MoveTab />}
           {tab === 'purchase' && <PurchaseTab onCountChange={fetchPendingCount} />}
           {tab === 'data-add' && <ReagentAddTab locations={locations} student={student} />}
           {tab === 'data-bulk-add' && <BulkAddTab locations={locations} student={student} />}

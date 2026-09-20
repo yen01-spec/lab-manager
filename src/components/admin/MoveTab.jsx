@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../supabase'
-import { C, Card, inputStyle, labelStyle, btnPrimary, thStyle, tdStyle } from '../../design'
+import { C, Card, btnPrimary, thStyle, tdStyle } from '../../design'
+import { reviewLocationRequest } from '../../lib/adminReview'
+import { useAdminSession } from '../../hooks/useAdminSession'
+import AdminAuthBanner from './AdminAuthBanner'
 
 // ══════════════════════════════════════════════
 //  위치 이동 요청 처리 — 승인/반려만.
 //  직접 위치를 옮기는 기능은 "시약 일괄정리"로 일원화됨(관리자 메뉴에서는 제거).
 // ══════════════════════════════════════════════
-export default function MoveTab({ locations }) {
+export default function MoveTab() {
   const [history, setHistory] = useState([])
   const [requests, setRequests] = useState([])
   const [reqFilter, setReqFilter] = useState('pending')
-  const [adminName, setAdminName] = useState('')
+  const session = useAdminSession()
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => { fetchHistory(); fetchRequests() }, [])
 
@@ -26,55 +30,16 @@ export default function MoveTab({ locations }) {
     if (data) setRequests(data)
   }
 
-  // Lot이 특정되지 않은 오래된 신청 처리용 — 해당 시약의 활성 Lot 전부를 새 위치로 이동
-  async function moveAllActiveLots(r, toLocationId, toLocName, movedByName, notesText) {
-    const activeLots = (r.reagent_lots || []).filter(l => l.status === 'active')
-    for (const lot of activeLots) {
-      const fromLoc = locations.find(l => l.id === lot.location_id)
-      const fromLocName = fromLoc ? `${fromLoc.room}${fromLoc.detail ? ' - ' + fromLoc.detail : ''}` : '미지정'
-      await supabase.from('reagent_lots').update({ location_id: toLocationId }).eq('id', lot.id)
-      await supabase.from('location_history').insert({
-        reagent_id: r.id, lot_id: lot.id, reagent_name: r.name,
-        from_location_id: lot.location_id, from_location_name: fromLocName,
-        to_location_id: toLocationId, to_location_name: toLocName,
-        moved_by: movedByName, notes: notesText,
-      })
-    }
-  }
-
-  async function approveRequest(req) {
-    if (!adminName.trim()) { alert('승인자 이름을 입력해주세요'); return }
-    if (!window.confirm(`"${req.reagent_name}" 위치 이동을 승인하시겠습니까?\n${req.from_location_name} → ${req.to_location_name}`)) return
-
-    if (req.lot_id) {
-      await supabase.from('reagent_lots').update({ location_id: req.to_location_id }).eq('id', req.lot_id)
-      await supabase.from('location_history').insert({
-        reagent_id: req.reagent_id, lot_id: req.lot_id, reagent_name: req.reagent_name,
-        from_location_id: req.from_location_id, from_location_name: req.from_location_name,
-        to_location_id: req.to_location_id, to_location_name: req.to_location_name,
-        moved_by: adminName, notes: `신청자: ${req.requested_by}`,
-      })
-    } else {
-      const { data: r } = await supabase.from('reagents').select('*, reagent_lots(*)').eq('id', req.reagent_id).single()
-      if (r) await moveAllActiveLots(r, req.to_location_id, req.to_location_name, adminName, `신청자: ${req.requested_by}`)
-    }
-    await supabase.from('location_requests').update({
-      status: 'approved', approved_by: adminName, approved_at: new Date().toISOString(),
-    }).eq('id', req.id)
-    await supabase.from('admin_logs').insert({
-      admin_name: adminName, action: '위치 이동 승인',
-      target_type: 'reagent',
-      description: `${req.reagent_name}: ${req.from_location_name} → ${req.to_location_name}`,
-    })
+  async function decide(req, decision, confirmMsg) {
+    if (busy) return
+    if (!window.confirm(confirmMsg)) return
+    setBusy(true)
+    try { await reviewLocationRequest(req.id, decision) } catch (e) { alert(e.message) }
+    setBusy(false)
     fetchRequests(); fetchHistory()
   }
-
-  async function rejectRequest(req) {
-    if (!adminName.trim()) { alert('처리자 이름을 입력해주세요'); return }
-    if (!window.confirm(`"${req.reagent_name}" 위치 이동 신청을 반려하시겠습니까?`)) return
-    await supabase.from('location_requests').update({ status: 'rejected' }).eq('id', req.id)
-    fetchRequests()
-  }
+  const approveRequest = req => decide(req, 'approve', `"${req.reagent_name}" 위치 이동을 승인하시겠습니까?\n${req.from_location_name} → ${req.to_location_name}`)
+  const rejectRequest = req => decide(req, 'reject', `"${req.reagent_name}" 위치 이동 신청을 반려하시겠습니까?`)
 
   const filteredReqs = reqFilter === 'all' ? requests : requests.filter(r => r.status === reqFilter)
   const reqCounts = { all: requests.length, pending: 0, approved: 0, rejected: 0 }
@@ -86,12 +51,7 @@ export default function MoveTab({ locations }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       <Card title="📬 위치 이동 신청 목록" sub="학생 신청 승인/반려">
-        <div style={{ marginBottom: '16px', padding: '12px 16px',
-          background: '#F0F4FF', borderRadius: '8px', border: '1px solid #C3D0F5' }}>
-          <label style={labelStyle}>처리자 이름 *</label>
-          <input value={adminName} onChange={e => setAdminName(e.target.value)}
-            placeholder="본인 이름" style={{ ...inputStyle, maxWidth: '240px' }} />
-        </div>
+        <AdminAuthBanner session={session} purpose="위치 이동 신청을 처리" />
         <div style={{ display: 'flex', gap: '6px', marginBottom: '16px' }}>
           {[['all', '전체'], ['pending', '대기중'], ['approved', '승인됨'], ['rejected', '반려']].map(([key, label]) => (
             <button key={key} onClick={() => setReqFilter(key)} style={{
@@ -120,9 +80,9 @@ export default function MoveTab({ locations }) {
               </div>
               {req.status === 'pending' && (
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => approveRequest(req)}
+                  <button disabled={!session.authed || busy} onClick={() => approveRequest(req)}
                     style={{ ...btnPrimary, background: '#38A169', padding: '5px 14px', fontSize: '12px' }}>✓ 승인</button>
-                  <button onClick={() => rejectRequest(req)}
+                  <button disabled={!session.authed || busy} onClick={() => rejectRequest(req)}
                     style={{ ...btnPrimary, background: C.danger, padding: '5px 14px', fontSize: '12px' }}>✗ 반려</button>
                 </div>
               )}

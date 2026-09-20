@@ -3,6 +3,9 @@ import { supabase } from '../../supabase'
 import { C, Card, inputStyle, btnGhost, thStyle, tdStyle } from '../../design'
 import BulkMoveModal from '../reagents/BulkMoveModal'
 import BulkDisposalModal from '../reagents/BulkDisposalModal'
+import { adminMoveLots, adminDisposeLots } from '../../lib/adminReview'
+import { useAdminSession } from '../../hooks/useAdminSession'
+import AdminAuthBanner from './AdminAuthBanner'
 
 // ══════════════════════════════════════════════
 //  시약 일괄정리 — src/pages/BulkEdit.jsx(/reagents/bulk-edit).
@@ -23,11 +26,10 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
   const [checkedLotIds, setCheckedLotIds] = useState(new Set())
   const [showMoveModal, setShowMoveModal] = useState(false)
   const [moveLocation, setMoveLocation] = useState('')
-  const [movedBy, setMovedBy] = useState(isAdmin ? '' : (student?.name || ''))
   const [showDisposalModal, setShowDisposalModal] = useState(false)
   const [disposalReason, setDisposalReason] = useState('')
-  const [disposedBy, setDisposedBy] = useState(isAdmin ? '' : (student?.name || ''))
   const [busy, setBusy] = useState(false)
+  const adminSession = useAdminSession()
 
   const rooms = [...new Set(locations.map(l => l.room))]
 
@@ -110,38 +112,28 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
 
   async function submitBulkMove() {
     if (!moveLocation) { alert('이동할 위치를 선택해주세요'); return }
-    if (!movedBy.trim()) { alert('이름을 입력해주세요'); return }
-    setBusy(true)
-    const toLoc = locations.find(l => l.id === moveLocation)
-    const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
-    for (const lotId of checkedLotIds) {
-      const info = lotInfoById.get(lotId)
-      if (!info) continue
-      const fromLocName = locationLabel(info.fromLocationId)
-      if (isAdmin) {
-        await supabase.from('reagent_lots').update({ location_id: moveLocation }).eq('id', lotId)
-        await supabase.from('location_history').insert({
-          reagent_id: info.reagentId, lot_id: lotId, reagent_name: info.reagentName,
-          from_location_id: info.fromLocationId, from_location_name: fromLocName,
-          to_location_id: moveLocation, to_location_name: toLocName, moved_by: movedBy,
-        })
-      } else {
-        // Phase S-RLS3 Batch 1 — requested_by는 서버가 session_token으로 조회한 이름을 쓴다
-        // (movedBy 입력란은 관리자 분기 전용 표시로 남기고, 이 경로에선 더 이상 안 보냄).
+    if (isAdmin) {
+      if (!adminSession.authed) { alert('관리자 로그인이 필요합니다. 화면 위쪽의 관리자 로그인을 먼저 해주세요.'); return }
+      setBusy(true)
+      try {
+        const out = await adminMoveLots([...checkedLotIds], moveLocation)
+        alert(`✅ Lot ${out.moved}개 이동 완료! → ${out.to}`)
+      } catch (e) { alert(e.message); setBusy(false); return }
+    } else {
+      if (!student?.session_token) { alert('제출하려면 로그인이 필요해요.'); return }
+      setBusy(true)
+      const toLoc = locations.find(l => l.id === moveLocation)
+      const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
+      for (const lotId of checkedLotIds) {
+        const info = lotInfoById.get(lotId)
+        if (!info) continue
+        // requested_by는 서버가 session_token으로 확정한다(client 입력 이름 무시).
         await supabase.rpc('location_request_submit', {
-          p_session_token: student?.session_token, p_reagent_id: info.reagentId, p_lot_id: lotId, p_reagent_name: info.reagentName,
-          p_from_location_id: info.fromLocationId, p_from_location_name: fromLocName,
+          p_session_token: student.session_token, p_reagent_id: info.reagentId, p_lot_id: lotId, p_reagent_name: info.reagentName,
+          p_from_location_id: info.fromLocationId, p_from_location_name: locationLabel(info.fromLocationId),
           p_to_location_id: moveLocation, p_to_location_name: toLocName, p_notes: null,
         })
       }
-    }
-    if (isAdmin) {
-      await supabase.from('admin_logs').insert({
-        admin_name: movedBy, action: '시약 일괄정리 - 위치이동', target_type: 'reagent',
-        description: `Lot ${checkedLotIds.size}개 → ${toLocName}`,
-      })
-      alert(`✅ Lot ${checkedLotIds.size}개 이동 완료! → ${toLocName}`)
-    } else {
       alert(`Lot ${checkedLotIds.size}개 위치이동 신청 완료! 관리자 승인 후 반영돼요.`)
     }
     setShowMoveModal(false); setMoveLocation(''); setBusy(false)
@@ -150,38 +142,26 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
 
   async function submitBulkDisposal() {
     if (!disposalReason.trim()) { alert('폐기 사유를 입력해주세요'); return }
-    if (!disposedBy.trim()) { alert('이름을 입력해주세요'); return }
-    if (isAdmin && !window.confirm(`Lot ${checkedLotIds.size}개를 폐기 처리합니다. 되돌릴 수 없어요. 계속할까요?`)) return
-    setBusy(true)
-    const today = new Date().toISOString().split('T')[0]
-    for (const lotId of checkedLotIds) {
-      const info = lotInfoById.get(lotId)
-      if (!info) continue
-      if (isAdmin) {
-        await supabase.from('disposal_requests').insert({
-          reagent_id: info.reagentId, lot_id: lotId, reagent_name: info.reagentName, lot_no: info.lotNo,
-          quantity: '전체', reason: disposalReason,
-          requested_by: disposedBy, status: 'disposed', disposed_at: new Date().toISOString(),
-          approved_by_student_id: student?.student_id ?? null,
-        })
-        await supabase.from('reagent_lots').update({
-          sealed_count: 0, current_stock: 0, status: 'disposed', disposal_date: today, needs_review: false,
-        }).eq('id', lotId)
-      } else {
-        await supabase.from('disposal_requests').insert({
-          reagent_id: info.reagentId, lot_id: lotId, reagent_name: info.reagentName, lot_no: info.lotNo,
-          quantity: '전체', reason: disposalReason,
-          requested_by: disposedBy, requested_by_student_id: student?.student_id ?? null, status: 'pending',
+    if (isAdmin) {
+      if (!adminSession.authed) { alert('관리자 로그인이 필요합니다. 화면 위쪽의 관리자 로그인을 먼저 해주세요.'); return }
+      if (!window.confirm(`Lot ${checkedLotIds.size}개를 폐기 처리합니다. 되돌릴 수 없어요. 계속할까요?`)) return
+      setBusy(true)
+      try {
+        const out = await adminDisposeLots([...checkedLotIds], disposalReason)
+        alert(`🗑️ Lot ${out.disposed}개 폐기 처리 완료!`)
+      } catch (e) { alert(e.message); setBusy(false); return }
+    } else {
+      if (!student?.session_token) { alert('제출하려면 로그인이 필요해요.'); return }
+      setBusy(true)
+      for (const lotId of checkedLotIds) {
+        const info = lotInfoById.get(lotId)
+        if (!info) continue
+        // 신청자 신원은 서버가 session_token으로 확정한다.
+        await supabase.rpc('disposal_request_submit', {
+          p_session_token: student.session_token, p_reagent_id: info.reagentId, p_lot_id: lotId,
+          p_reagent_name: info.reagentName, p_lot_no: info.lotNo, p_quantity: '전체', p_reason: disposalReason,
         })
       }
-    }
-    if (isAdmin) {
-      await supabase.from('admin_logs').insert({
-        admin_name: disposedBy, action: '시약 일괄정리 - 폐기처리', target_type: 'reagent',
-        description: `Lot ${checkedLotIds.size}개 폐기 (사유: ${disposalReason})`,
-      })
-      alert(`🗑️ Lot ${checkedLotIds.size}개 폐기 처리 완료!`)
-    } else {
       alert(`Lot ${checkedLotIds.size}개 폐기 신청 완료! 관리자 승인 후 반영돼요.`)
     }
     setShowDisposalModal(false); setDisposalReason(''); setBusy(false)
@@ -197,6 +177,7 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
           신청하면 목록에 바뀐 내용이 <b style={{ background: pendingBg, padding: '0 4px', borderRadius: '4px' }}>연한 배경색</b>으로 표시돼요. 관리자가 승인해 최종 반영되면 배경색이 사라집니다.
         </div>
       )}
+      {isAdmin && <AdminAuthBanner session={adminSession} purpose="일괄 위치이동/폐기를 처리" />}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchAll()}
           placeholder="시약명 검색" style={{ ...inputStyle, maxWidth: '200px' }} />
@@ -296,13 +277,12 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
       {showMoveModal && (
         <BulkMoveModal checkedCount={checkedLotIds.size} locations={locations}
           bulkMoveLocation={moveLocation} setBulkMoveLocation={setMoveLocation}
-          bulkMovedBy={movedBy} setBulkMovedBy={setMovedBy} submitLabel={isAdmin ? '이동하기' : '이동 신청'}
+          submitLabel={isAdmin ? '이동하기' : '이동 신청'}
           onClose={() => !busy && setShowMoveModal(false)} onSubmit={submitBulkMove} />
       )}
       {showDisposalModal && (
         <BulkDisposalModal checkedCount={checkedLotIds.size} isRequest={!isAdmin}
           reason={disposalReason} setReason={setDisposalReason}
-          disposedBy={disposedBy} setDisposedBy={setDisposedBy}
           onClose={() => !busy && setShowDisposalModal(false)} onSubmit={submitBulkDisposal} />
       )}
     </Card>

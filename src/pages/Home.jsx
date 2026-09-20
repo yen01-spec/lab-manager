@@ -3,6 +3,9 @@ import { useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, Icon, PageBanner, inputStyle } from '../design'
 import ReagentAutocomplete from '../components/ReagentAutocomplete'
+import AdminAuthBanner from '../components/admin/AdminAuthBanner'
+import { useAdminSession } from '../hooks/useAdminSession'
+import { reviewChangeRequest, reviewDisposalRequest, reviewLocationRequest } from '../lib/adminReview'
 
 const QUICK_MENU = [
   { to: '/reagents/list',    label: '시약 검색',   sub: '위치·잔량 바로 확인',     icon: 'science'   },
@@ -34,6 +37,7 @@ export default function Home() {
   const [recentConfirms, setRecentConfirms] = useState([])
   const [pendingRequests, setPendingRequests] = useState([])
   const [busyId, setBusyId] = useState(null)
+  const adminSession = useAdminSession()
 
   useEffect(() => { fetchAll() }, [student?.student_id, isAdmin])
 
@@ -74,45 +78,26 @@ export default function Home() {
     setStats(prev => ({ ...prev, totalPending: combined.length }))
   }
 
+  // 승인/반려는 Supabase Auth 관리자 세션 + 서버 RPC로만 처리된다(승인자·변경내용은 서버가 확정).
   async function approveItem(item) {
     setBusyId(item.id)
-    const now = new Date().toISOString()
-    if (item.type === 'change') {
-      const req = item.raw
-      await supabase.from('reagents').update({ [req.field_name]: req.new_value, last_confirmed_at: now, confirmed_by: student?.student_id ?? null }).eq('id', req.reagent_id)
-      await supabase.from('reagent_change_requests').update({ status: 'approved', approved_by: student?.name, approved_by_student_id: student?.student_id ?? null, approved_at: now }).eq('id', req.id)
-    } else if (item.type === 'disposal') {
-      const req = item.raw
-      await supabase.from('disposal_requests').update({ status: 'approved', approved_by_student_id: student?.student_id ?? null }).eq('id', req.id)
-      if (req.lot_id) await supabase.from('reagent_lots').update({
-        sealed_count: 0, current_stock: 0, needs_review: false,
-        // 시약 일괄정리 신청(quantity='전체')은 Lot을 통째로 폐기 상태로 전환
-        ...(req.quantity === '전체' ? { status: 'disposed', disposal_date: new Date().toISOString().split('T')[0] } : {}),
-      }).eq('id', req.lot_id)
-    } else if (item.type === 'location') {
-      const req = item.raw
-      if (!req.lot_id) {
-        alert('이 신청에는 Lot 정보가 없어 자동으로 처리할 수 없어요. 시약 상세 페이지에서 직접 위치를 이동해주세요.')
-        setBusyId(null)
-        return
-      }
-      await supabase.from('reagent_lots').update({ location_id: req.to_location_id }).eq('id', req.lot_id)
-      await supabase.from('location_history').insert({
-        reagent_id: req.reagent_id, lot_id: req.lot_id, reagent_name: req.reagent_name,
-        from_location_id: req.from_location_id, from_location_name: req.from_location_name,
-        to_location_id: req.to_location_id, to_location_name: req.to_location_name, moved_by: student?.name,
-      })
-      await supabase.from('location_requests').update({ status: 'approved' }).eq('id', req.id)
-    }
+    try {
+      if (item.type === 'change') await reviewChangeRequest(item.id, 'approve')
+      // 홈 대기목록의 폐기 "승인"은 기존과 같이 Lot 잔량을 0으로 만든다(관리자>폐기관리의 2단계와 의미가 다름 — 별도 업무 결정 대상).
+      else if (item.type === 'disposal') await reviewDisposalRequest(item.id, 'approve_and_zero_lot')
+      else await reviewLocationRequest(item.id, 'approve')
+    } catch (e) { alert(e.message) }
     await fetchPendingRequests()
     setBusyId(null)
   }
 
   async function rejectItem(item) {
     setBusyId(item.id)
-    const table = item.type === 'change' ? 'reagent_change_requests' : item.type === 'disposal' ? 'disposal_requests' : 'location_requests'
-    const extra = item.type === 'change' ? { approved_by: student?.name, approved_by_student_id: student?.student_id ?? null } : {}
-    await supabase.from(table).update({ status: 'rejected', ...extra }).eq('id', item.id)
+    try {
+      if (item.type === 'change') await reviewChangeRequest(item.id, 'reject')
+      else if (item.type === 'disposal') await reviewDisposalRequest(item.id, 'reject')
+      else await reviewLocationRequest(item.id, 'reject')
+    } catch (e) { alert(e.message) }
     await fetchPendingRequests()
     setBusyId(null)
   }
@@ -277,6 +262,7 @@ export default function Home() {
             </span>
           )
         }>
+          {isAdmin && pendingRequests.length > 0 && <AdminAuthBanner session={adminSession} purpose="요청을 승인/반려" />}
           {pendingRequests.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px 0', color: C.muted, fontSize: 12.5 }}>대기중인 요청·변경사항이 없습니다</div>
           ) : (
@@ -305,13 +291,13 @@ export default function Home() {
                     </div>
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                        <button onClick={() => rejectItem(item)} disabled={busy} style={{
+                        <button onClick={() => rejectItem(item)} disabled={busy || !adminSession.authed} style={{
                           padding: '5px 10px', borderRadius: 6, border: `1px solid ${C.border}`, background: C.white,
-                          color: C.muted, cursor: 'pointer', fontSize: 11.5, opacity: busy ? 0.5 : 1,
+                          color: C.muted, cursor: 'pointer', fontSize: 11.5, opacity: busy || !adminSession.authed ? 0.5 : 1,
                         }}>반려</button>
-                        <button onClick={() => approveItem(item)} disabled={busy} style={{
+                        <button onClick={() => approveItem(item)} disabled={busy || !adminSession.authed} style={{
                           padding: '5px 10px', borderRadius: 6, border: 'none', background: C.blue,
-                          color: '#fff', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, opacity: busy ? 0.5 : 1,
+                          color: '#fff', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, opacity: busy || !adminSession.authed ? 0.5 : 1,
                         }}>{busy ? '처리중...' : '승인'}</button>
                       </div>
                     )}

@@ -132,11 +132,11 @@ await test('§15 SELECT still open (admin pending-list read unaffected)', async 
   return { rows: data.length }
 })
 
-await test('§15 UPDATE still open (admin approve/reject flow unaffected, out of this batch scope)', async () => {
+await test('§15 UPDATE now closed (Master Finish Phase 1: only the admin review RPC may mutate)', async () => {
   const { data: rows } = await anon.from('reagent_change_requests').select('id').limit(1)
   if (!rows?.length) return { skipped: 'no row to test with' }
   const { error } = await anon.from('reagent_change_requests').update({ status: 'approved' }).eq('id', rows[0].id)
-  if (error) throw new Error(`UPDATE가 막히면 안 됨(admin 승인 흐름 회귀): ${error.message}`)
+  assertTrue(!!error, 'direct UPDATE가 아직 열려 있음(review migration 미적용?)')
 })
 
 await test('RPC still works after the lock (only path left)', async () => {

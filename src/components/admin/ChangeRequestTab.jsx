@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../supabase'
-import { C, Card, inputStyle, labelStyle, btnPrimary } from '../../design'
+import { C, Card, btnPrimary } from '../../design'
+import { reviewChangeRequest } from '../../lib/adminReview'
+import { useAdminSession } from '../../hooks/useAdminSession'
+import AdminAuthBanner from './AdminAuthBanner'
 
 // ══════════════════════════════════════════════
 //  변경 요청 탭
 // ══════════════════════════════════════════════
-export default function ChangeRequestTab({ student }) {
+export default function ChangeRequestTab() {
   const [requests, setRequests] = useState([])
   const [filter, setFilter] = useState('pending')
-  const [adminName, setAdminName] = useState(() => student?.name || '')
+  const session = useAdminSession()
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => { fetchRequests() }, [])
 
@@ -19,29 +23,19 @@ export default function ChangeRequestTab({ student }) {
     if (data) setRequests(data)
   }
 
-  async function approve(req) {
-    if (!adminName.trim()) { alert('승인자 이름을 입력해주세요'); return }
-    if (!window.confirm(`"${req.reagents?.name}"의 ${req.field_name}을 "${req.new_value}"로 변경하시겠습니까?`)) return
-
-    const now = new Date().toISOString()
-    await supabase.from('reagents').update({ [req.field_name]: req.new_value, last_confirmed_at: now, confirmed_by: student?.student_id ?? null }).eq('id', req.reagent_id)
-    await supabase.from('reagent_change_requests').update({
-      status: 'approved', approved_by: adminName, approved_by_student_id: student?.student_id ?? null, approved_at: now,
-    }).eq('id', req.id)
-    await supabase.from('admin_logs').insert({
-      admin_name: adminName, action: '변경 요청 승인',
-      target_type: 'reagent',
-      description: `${req.reagents?.name} ${req.field_name}: "${req.old_value}" → "${req.new_value}"`,
-    })
+  async function decide(req, decision) {
+    if (busy) return
+    const msg = decision === 'approve'
+      ? `"${req.reagents?.name}"의 ${req.field_name}을 "${req.new_value}"로 변경하시겠습니까?`
+      : '변경 요청을 반려하시겠습니까?'
+    if (!window.confirm(msg)) return
+    setBusy(true)
+    try { await reviewChangeRequest(req.id, decision) } catch (e) { alert(e.message) }
+    setBusy(false)
     fetchRequests()
   }
-
-  async function reject(req) {
-    if (!adminName.trim()) { alert('처리자 이름을 입력해주세요'); return }
-    if (!window.confirm('변경 요청을 반려하시겠습니까?')) return
-    await supabase.from('reagent_change_requests').update({ status: 'rejected', approved_by: adminName, approved_by_student_id: student?.student_id ?? null }).eq('id', req.id)
-    fetchRequests()
-  }
+  const approve = req => decide(req, 'approve')
+  const reject = req => decide(req, 'reject')
 
   const fieldLabels = { name: '시약명', volume: '용량', unit: '단위', category: '성상', hazard: '유해위험성', cas_no: 'CAS No.', company: '회사', manager: '담당자', msds_url: 'MSDS URL', notes: '비고' }
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter)
@@ -50,10 +44,7 @@ export default function ChangeRequestTab({ student }) {
 
   return (
     <Card title="📝 시약 정보 변경 요청" sub="Change Requests">
-      <div style={{ marginBottom: '20px', padding: '12px 16px', background: '#F0F4FF', borderRadius: '8px', border: '1px solid #C3D0F5' }}>
-        <label style={labelStyle}>처리자 이름 *</label>
-        <input value={adminName} onChange={e => setAdminName(e.target.value)} placeholder="본인 이름" style={{ ...inputStyle, maxWidth: '240px' }} />
-      </div>
+      <AdminAuthBanner session={session} purpose="변경 요청을 승인/반려" />
 
       <div style={{ display: 'flex', gap: '6px', marginBottom: '20px' }}>
         {[['all', '전체'], ['pending', '대기중'], ['approved', '승인됨'], ['rejected', '반려']].map(([key, label]) => (
@@ -92,8 +83,8 @@ export default function ChangeRequestTab({ student }) {
             )}
             {req.status === 'pending' && (
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => approve(req)} style={{ ...btnPrimary, background: '#38A169', padding: '6px 14px', fontSize: '12px' }}>✓ 승인</button>
-                <button onClick={() => reject(req)} style={{ ...btnPrimary, background: C.danger, padding: '6px 14px', fontSize: '12px' }}>✗ 반려</button>
+                <button disabled={!session.authed || busy} onClick={() => approve(req)} style={{ ...btnPrimary, background: '#38A169', padding: '6px 14px', fontSize: '12px' }}>✓ 승인</button>
+                <button disabled={!session.authed || busy} onClick={() => reject(req)} style={{ ...btnPrimary, background: C.danger, padding: '6px 14px', fontSize: '12px' }}>✗ 반려</button>
               </div>
             )}
           </div>

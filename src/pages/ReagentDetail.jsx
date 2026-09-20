@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useOutletContext, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../supabase'
+import { reviewDisposalRequest } from '../lib/adminReview'
+import { useAdminSession } from '../hooks/useAdminSession'
+import AdminAuthBanner from '../components/admin/AdminAuthBanner'
 import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../design'
 import CompanyPicker from '../components/CompanyPicker'
 import { getHazardCategory } from '../lib/hazardCategory'
@@ -46,6 +49,7 @@ export default function ReagentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const routeLocation = useLocation()
+  const adminSession = useAdminSession()
   const { isAdmin, student } = useOutletContext?.() || {}
 
   const [reagent, setReagent] = useState(null)
@@ -358,19 +362,12 @@ export default function ReagentDetail() {
     fetchAll()
   }
 
+  // 관리자 폐기 확정/반려 — Supabase Auth 관리자 세션 + 서버 RPC(요청 행/Lot은 서버가 다시 읽어 처리).
   async function resolveDisposal(action) {
     if (!disposalPending) return
-    if (action === 'confirm') {
-      await supabase.from('disposal_requests').update({
-        status: 'disposed', disposed_at: new Date().toISOString(), approved_by_student_id: student?.student_id ?? null,
-      }).eq('id', disposalPending.id)
-      const targetLotId = disposalPending.lot_id || lots[0]?.id
-      if (targetLotId) await supabase.from('reagent_lots').update({
-        sealed_count: 0, current_stock: 0, status: 'disposed', disposal_date: new Date().toISOString().split('T')[0], needs_review: false,
-      }).eq('id', targetLotId)
-    } else {
-      await supabase.from('disposal_requests').update({ status: 'rejected' }).eq('id', disposalPending.id)
-    }
+    try {
+      await reviewDisposalRequest(disposalPending.id, action === 'confirm' ? 'dispose_lot' : 'reject')
+    } catch (e) { alert(e.message); return }
     fetchAll()
   }
 
@@ -818,10 +815,13 @@ export default function ReagentDetail() {
                 <div style={{ fontSize: '12.5px', color: C.text, marginBottom: '4px' }}>사유: {disposalPending.reason}</div>
                 {isAdmin && <div style={{ fontSize: '11px', color: C.muted, marginBottom: '12px' }}>신청: {disposalPending.requested_by} · {new Date(disposalPending.created_at).toLocaleDateString()}</div>}
                 {isAdmin ? (
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <>
+                  <AdminAuthBanner session={adminSession} purpose="폐기 신청을 처리" />
+                  <div style={{ display: 'flex', gap: '8px', opacity: adminSession.authed ? 1 : 0.5, pointerEvents: adminSession.authed ? 'auto' : 'none' }}>
                     <button onClick={() => resolveDisposal('reject')} style={{ flex: 1, padding: '8px 0', borderRadius: '7px', border: `1px solid ${C.border}`, background: C.white, fontSize: '12px', color: '#586173', cursor: 'pointer' }}>보류</button>
                     <button onClick={() => resolveDisposal('confirm')} style={{ flex: 1, padding: '8px 0', borderRadius: '7px', border: 'none', background: '#E5484D', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>폐기 확정</button>
                   </div>
+                  </>
                 ) : (
                   <div style={{ fontSize: '10.5px', color: C.muted }}>관리자만 처리 가능합니다.</div>
                 )}
