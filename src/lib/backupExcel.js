@@ -2,7 +2,7 @@
 // 시트: 요약 + 테이블별 1시트. reagent_lots 시트에는 시약명/제조사/위치 이름 열을 덧붙여 읽기 쉽게 한다.
 const cellValue = (v) => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : v)
 
-export async function buildBackupExcel(snapshot, { ExcelJSLib, appVersion = 'unknown' } = {}) {
+export async function buildBackupExcel(snapshot, { ExcelJSLib, appVersion = 'unknown', storage = null } = {}) {
   const ExcelJS = ExcelJSLib || (await import('exceljs')).default
   const wb = new ExcelJS.Workbook()
   wb.creator = '연구실 시약관리 시스템'
@@ -13,7 +13,7 @@ export async function buildBackupExcel(snapshot, { ExcelJSLib, appVersion = 'unk
   sum.columns = [{ width: 30 }, { width: 14 }, { width: 40 }]
   sum.addRow(['전체 백업 — 조회용 Excel 사본']).font = { bold: true, size: 14 }
   sum.addRow(['※ 이 파일은 사람이 보는 용도입니다. 복원에는 반드시 JSON ZIP 을 사용하세요.'])
-  sum.addRow(['backup_version', snapshot.backup_version]); sum.addRow(['created_at', String(snapshot.created_at)])
+  sum.addRow(['backup_mode', snapshot.backup_mode || 'core']); sum.addRow(['backup_version', snapshot.backup_version]); sum.addRow(['created_at', String(snapshot.created_at)])
   sum.addRow(['app_version', appVersion]); sum.addRow(['schema_version', snapshot.schema_version])
   sum.addRow([])
   const h = sum.addRow(['테이블', '행 수', 'digest(md5)']); h.font = { bold: true }
@@ -32,6 +32,14 @@ export async function buildBackupExcel(snapshot, { ExcelJSLib, appVersion = 'unk
     ws.views = [{ state: 'frozen', ySplit: 1 }]
     ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: Math.max(1, cols.length + extra.length) } }
     ws.columns.forEach(c => { c.width = 18 })
+  }
+  if (storage) {
+    const ws = wb.addWorksheet('Storage 파일')
+    ws.addRow(['구분', 'bucket', 'path', '크기(byte)', 'sha256', '참조']).font = { bold: true }
+    for (const o of storage.objects) ws.addRow(['백업 포함', o.bucket, o.path, o.size, o.sha256, (o.refs || []).map(r => `${r.table}.${r.column}`).join(', ')])
+    for (const o of storage.missing || []) ws.addRow(['링크만 있고 파일 없음', o.bucket, o.path, '', '', (o.refs || []).map(r => `${r.table}.${r.column}`).join(', ')])
+    for (const o of storage.unreferenced || []) ws.addRow(['참조 없음(백업 제외)', o.bucket, o.path, o.size, '', ''])
+    ws.views = [{ state: 'frozen', ySplit: 1 }]; ws.columns.forEach(c => { c.width = 24 })
   }
   return wb
 }

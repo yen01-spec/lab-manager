@@ -55,7 +55,9 @@ const PAYLOAD = {
   admin_logs: () => ({ admin_name: 'acl', action: 'acl-test', target_type: 'reagent', description: 'x' }),
   locations: () => ({ room: 'ACL-ROOM' }),
   location_history: () => ({ reagent_name: 'acl' }),
-  notices: () => ({ title: 'acl', type: 'notice' }),
+  notices: () => ({ title: 'acl', content: 'acl', type: 'notice' }),
+  notice_files: () => ({ file_url: 'https://example.test/acl.pdf', file_name: 'acl.pdf' }),
+  purchase_requests: () => ({ user_name: 'acl', target_type: 'new' }),
   purchase_request_logs: () => ({}),
   // production 구조와 같은 테이블(NOT NULL/FK 포함)이라 시드에도 실제 컬럼이 필요하다. stock_logs.lot_id 는 소프트 참조(FK 없음)이지만 NOT NULL.
   stock_logs: () => ({ target_type: 'reagent', lot_id: '00000000-0000-4000-8000-0000000ac100', user_name: 'acl' }),
@@ -65,7 +67,7 @@ const PAYLOAD = {
   inventory_sessions: () => ({ year: 2026, start_date: '2026-01-01', created_by: 'acl' }),
 }
 const payload = (t) => (PAYLOAD[t] ? PAYLOAD[t]() : { v: 'acl-' + randomBytes(3).toString('hex') })
-const patch = (t) => (['reagents'].includes(t) ? { name: 'ACL-UPDATED' } : t === 'locations' ? { room: 'ACL-ROOM2' } : t === 'admin_logs' ? { description: 'u' } : t === 'notices' ? { title: 'u' } : t === 'location_history' ? { reagent_name: 'u' } : t === 'purchase_request_logs' ? { status: 'approved' } : t === 'inventory_sessions' ? { label: 'u' } : t === 'stock_logs' ? { notes: 'u' } : ['special_material_logs', 'stock_history'].includes(t) ? { notes: 'u' } : t === 'reagent_import_history' ? { note: 'u' } : { v: 'updated' })
+const patch = (t) => (['reagents'].includes(t) ? { name: 'ACL-UPDATED' } : t === 'locations' ? { room: 'ACL-ROOM2' } : t === 'admin_logs' ? { description: 'u' } : t === 'notices' ? { title: 'u' } : t === 'notice_files' ? { file_name: 'u.pdf' } : t === 'purchase_requests' ? { reason: 'u' } : t === 'location_history' ? { reagent_name: 'u' } : t === 'purchase_request_logs' ? { status: 'approved' } : t === 'inventory_sessions' ? { label: 'u' } : t === 'stock_logs' ? { notes: 'u' } : ['special_material_logs', 'stock_history'].includes(t) ? { notes: 'u' } : t === 'reagent_import_history' ? { note: 'u' } : { v: 'updated' })
 
 const seeded = {}
 async function seed(t) { return must(await service.from(t).insert(payload(t)).select('id').single(), `seed ${t}`).id }
@@ -135,7 +137,7 @@ await test('app_settings: admin can change normal keys, never admin_password; an
 })
 
 await test('notice_increment_views: anyone can +1 (nothing else); direct UPDATE of views blocked', async () => {
-  const n = must(await service.from('notices').insert({ title: 'views', type: 'notice', views: 5 }).select('id').single(), 'seed').id
+  const n = must(await service.from('notices').insert({ title: 'views', content: 'v', type: 'notice', views: 5 }).select('id').single(), 'seed').id
   must(await anon.rpc('notice_increment_views', { p_id: n }), 'rpc anon')
   eq(must(await service.from('notices').select('views').eq('id', n).single(), 'v').views, 6, 'views+1')
   eq((await anon.from('notices').update({ views: 999 }).eq('id', n).select('id')).data?.length ?? 0, 0, 'direct update blocked')

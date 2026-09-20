@@ -40,4 +40,5 @@
 
 ## G. 백업/복원 (별도 Gate — 이번 적용 범위 아님)
 - `20260924090000_backup_restore` 는 백업 RPC(`admin_backup_export`)와 복원 RPC 를 만든다. **복원 실행은 `app_settings.restore_enabled = 'true'` 가 수동으로 설정된 환경에서만** 통과하며 이 migration 은 그 값을 만들지 않는다 → production 은 적용 후에도 복원이 계속 비활성. (dry-run 검증은 쓰기 0)
-- production 에 적용하기 전에 staging 리허설(`scripts/staging/test-backup-restore.mjs`)과 `scripts/schema-diff.mjs` 로 스키마 동등성을 다시 확인한다.
+- v2: 두 모드(핵심 16 / 전체 24 + Storage 파일 + app_settings 허용 목록). 복원은 빈 대상 전용이며 DB 트랜잭션과 Storage 는 원자적이지 않다(업로드 → sha256 검증 → DB 순서, 실패 시 올린 객체 정리). production 에서는 관리자 Auth 계정 + admin_users 등록 + 실제 로그인 + `is_admin()=true` 확인 전까지 db push / 프론트 배포 / 복원 모두 금지.
+- production 에 적용하기 전에 staging 리허설(`scripts/staging/test-backup-restore.mjs`, `test-backup-restore-full.mjs`)과 `scripts/schema-diff.mjs` 로 스키마 동등성을 다시 확인한다.

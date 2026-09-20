@@ -9,7 +9,7 @@ begin
   return new;
 end;
 $fn$;
-drop table if exists public."students", public."locations", public."reagents", public."reagent_lots", public."location_history", public."location_requests", public."disposal_requests", public."reagent_change_requests", public."stock_history", public."stock_logs", public."reagent_import_history", public."special_material_logs", public."inventory_sessions", public."inventory_assignments", public."inventory_counts", public."admin_logs" cascade;
+drop table if exists public."students", public."locations", public."reagents", public."reagent_lots", public."location_history", public."location_requests", public."disposal_requests", public."reagent_change_requests", public."stock_history", public."stock_logs", public."reagent_import_history", public."special_material_logs", public."inventory_sessions", public."inventory_assignments", public."inventory_counts", public."admin_logs", public."purchase_request_logs", public."purchase_request_reagent_items", public."purchase_request_goods_items", public."purchase_requests", public."notices", public."notice_files", public."resource_files" cascade;
 create table public."students" (
   "student_id" text not null,
   "name" text not null,
@@ -327,6 +327,141 @@ create table public."admin_logs" (
 );
 alter sequence public.admin_logs_id_seq owned by public."admin_logs"."id";
 alter table public."admin_logs" enable row level security;
+create table public."purchase_request_logs" (
+  "id" uuid default gen_random_uuid() not null,
+  "requested_by" text,
+  "note" text,
+  "created_at" timestamp with time zone default now() not null,
+  "status" text default 'pending'::text not null,
+  "reject_note" text,
+  "approved_by" text,
+  "ordered_at" timestamp with time zone,
+  "tracking_number" text,
+  "estimated_arrival" date,
+  "delivered_at" timestamp with time zone,
+  constraint "purchase_request_logs_status_check" CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text, 'ordered'::text, 'delivered'::text, 'done'::text]))),
+  constraint "purchase_request_logs_pkey" PRIMARY KEY (id)
+);
+create table public."purchase_request_reagent_items" (
+  "id" uuid default gen_random_uuid() not null,
+  "request_id" uuid not null,
+  "reagent_id" uuid,
+  "name" text not null,
+  "company" text,
+  "cas_no" text,
+  "cat_no" text,
+  "state" text,
+  "spec" text,
+  "quantity" text,
+  "purpose" text,
+  "note" text,
+  "needed_amount" text,
+  "usage_place" text,
+  "purchase_reason" text,
+  "purity" text,
+  constraint "purchase_request_reagent_items_pkey" PRIMARY KEY (id)
+);
+create index if not exists "purchase_request_reagent_items_pi0_idx" on public.purchase_request_reagent_items USING btree (request_id);
+create table public."purchase_request_goods_items" (
+  "id" uuid default gen_random_uuid() not null,
+  "request_id" uuid not null,
+  "name" text not null,
+  "spec" text,
+  "quantity" numeric,
+  "unit_price" numeric,
+  "shipping_fee" numeric,
+  "total_price" numeric,
+  "note" text,
+  "link" text,
+  "purpose" text,
+  "cat_no" text,
+  constraint "purchase_request_goods_items_pkey" PRIMARY KEY (id)
+);
+create index if not exists "purchase_request_goods_items_pi0_idx" on public.purchase_request_goods_items USING btree (request_id);
+create table public."purchase_requests" (
+  "id" uuid default gen_random_uuid() not null,
+  "user_name" text not null,
+  "target_type" text not null,
+  "target_id" uuid,
+  "target_name" text,
+  "quantity" text,
+  "reason" text,
+  "status" text default 'pending'::text not null,
+  "created_at" timestamp with time zone default now(),
+  "updated_at" timestamp with time zone default now(),
+  "reject_note" text,
+  "ordered_at" timestamp with time zone,
+  "delivered_at" timestamp with time zone,
+  "tracking_number" text,
+  "estimated_arrival" date,
+  "cas_no" text,
+  "company" text,
+  "product_name" text,
+  "product_volume" text,
+  "unit_price" text,
+  "shipping_cost" text,
+  "total_price" text,
+  "product_link" text,
+  "usage_place" text,
+  "purpose" text,
+  "spec" text,
+  "notes" text,
+  constraint "purchase_requests_status_check" CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'done'::text]))),
+  constraint "purchase_requests_target_type_check" CHECK ((target_type = ANY (ARRAY['reagent'::text, 'item'::text, 'new'::text]))),
+  constraint "purchase_requests_pkey" PRIMARY KEY (id)
+);
+create trigger "purchase_requests_pt0" BEFORE UPDATE ON public.purchase_requests FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+alter table public."purchase_requests" enable row level security;
+create table public."notices" (
+  "id" uuid default gen_random_uuid() not null,
+  "title" text not null,
+  "content" text not null,
+  "created_at" timestamp with time zone default now(),
+  "updated_at" timestamp with time zone default now(),
+  "type" text default 'notice'::text,
+  "file_url" text,
+  "file_name" text,
+  "views" integer default 0,
+  constraint "notices_pkey" PRIMARY KEY (id)
+);
+create trigger "notices_pt0" BEFORE UPDATE ON public.notices FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+alter table public."notices" enable row level security;
+create table public."notice_files" (
+  "id" uuid default gen_random_uuid() not null,
+  "notice_id" uuid,
+  "file_url" text not null,
+  "file_name" text not null,
+  "file_size" bigint,
+  "created_at" timestamp with time zone default now(),
+  constraint "notice_files_pkey" PRIMARY KEY (id)
+);
+alter table public."notice_files" enable row level security;
+create table public."resource_files" (
+  "id" uuid default gen_random_uuid() not null,
+  "category_key" text not null,
+  "section_key" text not null,
+  "resource_key" text,
+  "title" text not null,
+  "resource_type" text not null,
+  "issuer" text,
+  "revision_date" date,
+  "effective_date" date,
+  "version_label" text,
+  "is_current" boolean default true not null,
+  "storage_path" text not null,
+  "file_url" text,
+  "original_filename" text,
+  "mime_type" text,
+  "sort_order" integer default 0 not null,
+  "notes" text,
+  "created_at" timestamp with time zone default now() not null,
+  "updated_at" timestamp with time zone default now() not null,
+  constraint "resource_files_resource_type_check" CHECK ((resource_type = ANY (ARRAY['form'::text, 'official'::text, 'reference'::text]))),
+  constraint "resource_files_pkey" PRIMARY KEY (id)
+);
+create index if not exists "resource_files_pi0_idx" on public.resource_files USING btree (category_key, section_key, is_current, sort_order);
+create UNIQUE index if not exists "resource_files_pi1_idx" on public.resource_files USING btree (category_key, section_key, resource_key) WHERE (is_current AND (resource_key IS NOT NULL));
+alter table public."resource_files" enable row level security;
 -- FK (범위 안 테이블끼리 + production FK 그대로)
 alter table public."reagents" add constraint "reagents_confirmed_by_fkey" FOREIGN KEY (confirmed_by) REFERENCES students(student_id);
 alter table public."reagents" add constraint "reagents_location_id_fkey" FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE SET NULL;
@@ -360,7 +495,10 @@ alter table public."inventory_counts" add constraint "inventory_counts_lot_id_fk
 alter table public."inventory_counts" add constraint "inventory_counts_reagent_id_fkey" FOREIGN KEY (reagent_id) REFERENCES reagents(id);
 alter table public."inventory_counts" add constraint "inventory_counts_session_id_fkey" FOREIGN KEY (session_id) REFERENCES inventory_sessions(id);
 alter table public."inventory_counts" add constraint "inventory_counts_staged_location_id_fkey" FOREIGN KEY (staged_location_id) REFERENCES locations(id);
+alter table public."purchase_request_logs" add constraint "purchase_request_logs_requested_by_fkey" FOREIGN KEY (requested_by) REFERENCES students(student_id);
+alter table public."purchase_request_reagent_items" add constraint "purchase_request_reagent_items_reagent_id_fkey" FOREIGN KEY (reagent_id) REFERENCES reagents(id);
+alter table public."purchase_request_reagent_items" add constraint "purchase_request_reagent_items_request_id_fkey" FOREIGN KEY (request_id) REFERENCES purchase_request_logs(id) ON DELETE CASCADE;
+alter table public."purchase_request_goods_items" add constraint "purchase_request_goods_items_request_id_fkey" FOREIGN KEY (request_id) REFERENCES purchase_request_logs(id) ON DELETE CASCADE;
+alter table public."notice_files" add constraint "notice_files_notice_id_fkey" FOREIGN KEY (notice_id) REFERENCES notices(id) ON DELETE CASCADE;
 -- 범위 밖 테이블 → 범위 안 테이블 FK 복구(테이블이 있을 때만)
 do $$ begin if to_regclass('public.items') is not null and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'items' and column_name = 'location_id') and not exists (select 1 from pg_constraint where conname = 'items_location_id_fkey' and conrelid = 'public.items'::regclass) then alter table public."items" add constraint "items_location_id_fkey" FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE SET NULL; end if; end $$;
-do $$ begin if to_regclass('public.purchase_request_logs') is not null and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'purchase_request_logs' and column_name = 'requested_by') and not exists (select 1 from pg_constraint where conname = 'purchase_request_logs_requested_by_fkey' and conrelid = 'public.purchase_request_logs'::regclass) then alter table public."purchase_request_logs" add constraint "purchase_request_logs_requested_by_fkey" FOREIGN KEY (requested_by) REFERENCES students(student_id); end if; end $$;
-do $$ begin if to_regclass('public.purchase_request_reagent_items') is not null and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'purchase_request_reagent_items' and column_name = 'reagent_id') and not exists (select 1 from pg_constraint where conname = 'purchase_request_reagent_items_reagent_id_fkey' and conrelid = 'public.purchase_request_reagent_items'::regclass) then alter table public."purchase_request_reagent_items" add constraint "purchase_request_reagent_items_reagent_id_fkey" FOREIGN KEY (reagent_id) REFERENCES reagents(id); end if; end $$;

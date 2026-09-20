@@ -1,9 +1,9 @@
-// production 스키마 지문(schema-fingerprint.sql 결과, 읽기 전용)에서 "복원 범위 테이블"의 baseline DDL 을 생성한다.
+// production 스키마 지문(schema-fingerprint.sql 결과, 읽기 전용)에서 "복원(백업) 범위 테이블(핵심 16 + 전체 시스템 추가 7)"의 baseline DDL 을 생성한다.
 //   node scripts/gen-scope-baseline.mjs <fp-prod.json> > scripts/staging/production-baseline-scope.sql
 // 생성물은 staging 전용: 범위 테이블을 DROP ... CASCADE 후 production 과 같은 컬럼/제약/인덱스/트리거로 재생성한다(데이터 없음).
 // 그 위에 pending migration 들을 순서대로 적용하면 "production 이 migration 을 적용한 뒤의 스키마"와 같은 staging 이 된다.
 import { readFileSync } from 'node:fs'
-import { SCOPE } from './schema-diff-scope.mjs'
+import { BASELINE_SCOPE as SCOPE } from './schema-diff-scope.mjs'
 
 const t = readFileSync(process.argv[2], 'utf8')
 const prod = JSON.parse(t.slice(t.indexOf('{'))).rows[0].jsonb_build_object

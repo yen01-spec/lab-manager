@@ -11,7 +11,7 @@ if [ "${1:-}" != "--no-reset" ]; then
   for f in auth disposal batch1 review inventory-workflow acl; do q scripts/staging/$f-fixture-schema.sql; done
   q scripts/staging/production-baseline-scope.sql
   q scripts/staging/post-baseline-seed.sql
-  for m in $(ls supabase/migrations/2026091[6-9]*.sql supabase/migrations/202609[2-9]*.sql 2>/dev/null | sort -u); do q "$m"; done
+  for m in $(ls supabase/migrations/20260913*.sql supabase/migrations/2026091[6-9]*.sql supabase/migrations/202609[2-9]*.sql 2>/dev/null | sort -u); do q "$m"; done
 fi
 for t in test-auth-rpc test-session-token test-batch1-requests; do
   node scripts/staging/$t.mjs > "reg-$t.log" 2>&1; echo "$t exit=$? $(grep -E '^TOTAL' reg-$t.log)"
@@ -24,4 +24,5 @@ q scripts/staging/inventory-snapshot-fixture-reset.sql; q scripts/staging/invent
 $RUN scripts/staging/test-inventory-snapshot-rpc.mjs > reg-inv.log 2>&1; echo "inventory exit=$? $(grep -E 'TOTAL' reg-inv.log)"
 # 복원 리허설은 범위 테이블을 비우고 합성 데이터로 채우므로 마지막에 실행한다.
 $RUN scripts/staging/test-backup-restore.mjs > reg-test-backup-restore.log 2>&1; echo "test-backup-restore exit=$? $(grep -E '^TOTAL' reg-test-backup-restore.log)"
+$RUN scripts/staging/test-backup-restore-full.mjs > reg-test-backup-restore-full.log 2>&1; echo "test-backup-restore-full exit=$? $(grep -E '^TOTAL' reg-test-backup-restore-full.log)"
 grep -l "FAIL\]" reg-*.log
