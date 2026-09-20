@@ -27,7 +27,7 @@ export async function signInAdmin(email, password) {
     .from('admin_users').select('user_id').eq('user_id', data.user.id).eq('active', true).maybeSingle()
   if (!row) {
     await supabaseAdmin.auth.signOut()
-    return { ok: false, error: '이 계정은 자료관리 관리자로 등록되어 있지 않습니다.' }
+    return { ok: false, error: '이 계정은 관리자로 등록되어 있지 않습니다.' }
   }
   return { ok: true, user: data.user }
 }

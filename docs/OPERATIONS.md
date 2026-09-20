@@ -92,3 +92,8 @@ ref 상수는 `scripts/supabase-refs.mjs` 한 곳에만 있다.
 |---|---|---|
 | DB 회귀(auth 14 / session 11 / batch1 12 / review 28 / inventory-workflow 18 / reagent-domain 14 / ACL 35 / snapshot 36) | `scripts/staging/` | fixture 재적용 후 각 `test-*.mjs` (service key 는 환경변수) |
 | UI(reagent list 24 / 라우트 / Excel 4 / 모달 / 느린 네트워크 / a11y·모바일 감사) | `scripts/ui/` | `node scripts/ui/serve-mock.mjs` 후 `node scripts/ui/test-*.mjs` (가짜 Supabase — 실제 연결 없음) |
+
+## 관리자 권한 점검 결과 (2026-09-20)
+- 관리자 판별: Supabase Auth 로그인 + `admin_users(active)` → DB `public.is_admin()`. 프론트는 `useAdminSession`(Layout 이 1회 판정해 Context 로 공유, 조회 실패/시간초과(5s) = 관리자 아님)로 **노출만** 제어하고, 실제 권한은 DB(RLS/RPC)가 결정한다.
+- production 은 `resource_files`/`sync_inventory_snapshot`/`set_resource_current` 만 DB 보호. 나머지 관리자 쓰기 보호는 대기 중인 9개 마이그레이션 적용(`docs/PRODUCTION_GATE_RUNBOOK.md` B~C) 후 완성된다.
+- 읽기 전용 감사: `scripts/production-admin-audit.sql`. 프론트 게이트 검증: `scripts/ui/test-admin-gate.mjs`.

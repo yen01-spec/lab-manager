@@ -29,7 +29,7 @@ export default function ResourceAdminAuth({ onAuthed }) {
   return (
     <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
-        공식 자료를 추가·수정·삭제하려면 자료관리 관리자 계정으로 로그인하세요.
+        공식 자료를 추가·수정·삭제하려면 관리자 계정으로 로그인하세요.
         이 로그인은 앱의 일반 로그인과 별개이며, 자료 write 권한에만 사용됩니다.
       </div>
       <label style={{ fontSize: 11.5, fontWeight: 700, color: C.textSub }}>

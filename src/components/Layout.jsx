@@ -6,7 +6,8 @@ import { C, Icon } from '../design'
 import { readSession, revalidateSession, logoutSession } from '../lib/session'
 import LoginModal from './LoginModal'
 import AdminLoginModal from './AdminLoginModal'
-import { useAdminSession } from '../hooks/useAdminSession'
+import { useAdminSessionState } from '../hooks/useAdminSession'
+import { AdminSessionContext } from '../hooks/adminSessionContext'
 import { signOutAdmin } from '../lib/adminAuth'
 
 const NAV_ITEMS = [
@@ -26,7 +27,7 @@ export default function Layout() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
   const [adminLoginOpen, setAdminLoginOpen] = useState(false)
-  const adminSession = useAdminSession()
+  const adminSession = useAdminSessionState()
   const location = useLocation()
   const { isMobile, isTablet, isDesktop } = useBreakpoint()
 
@@ -164,7 +165,9 @@ export default function Layout() {
         }}>
           {/* applySession: 자식 페이지가 자체적으로 로그인을 확인한 뒤(예: 등록 버튼 누를 때
               인라인으로 뜨는 로그인란) 헤더/전역 세션에도 곧바로 반영할 수 있게 노출 */}
-          <Outlet context={{ isAdmin, student, applySession: setSession, adminSession }} />
+          <AdminSessionContext.Provider value={adminSession}>
+            <Outlet context={{ isAdmin, student, applySession: setSession, adminSession }} />
+          </AdminSessionContext.Provider>
         </main>
       </div>
 

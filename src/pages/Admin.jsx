@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useOutletContext, useNavigate } from 'react-router-dom'
+import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner } from '../design'
 import DashboardTab from '../components/admin/DashboardTab'
@@ -31,14 +31,13 @@ const TABS = [
 
 export default function Admin() {
   const { isAdmin, student } = useOutletContext()
-  const navigate = useNavigate()
   const [tab, setTab] = useState('dashboard')
   const [locations, setLocations] = useState([])
   const [pendingCount, setPendingCount] = useState(0)
   const [disposalCount, setDisposalCount] = useState(0)
 
   useEffect(() => {
-    if (!isAdmin) { alert('관리자만 접근 가능합니다'); navigate('/'); return }
+    if (!isAdmin) return // 접근 차단은 RequireAdmin 이 담당. 여기서는 관리자일 때만 데이터를 로드한다.
     fetchLocations()
     fetchPendingCount()
     fetchDisposalCount()

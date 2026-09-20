@@ -4,7 +4,8 @@ import {
   getResources, createResource, updateResourceMeta, replaceResourceFile,
   addResourceVersion, setResourceCurrent, deleteResource,
 } from '../../lib/resources'
-import { isAuthedAdmin, getAdminAuthUser, signOutAdmin } from '../../lib/adminAuth'
+import { signOutAdmin } from '../../lib/adminAuth'
+import { useAdminSession } from '../../hooks/useAdminSession'
 import ResourceFileCard from './ResourceFileCard'
 import ResourceAdminAuth from './ResourceAdminAuth'
 import ResourceFileForm from './ResourceFileForm'
@@ -22,7 +23,8 @@ const isSessionError = (msg) => /jwt|expired|만료|401|not authorized|권한이
 
 export default function ResourceFiles({ categoryKey, sectionKey, isAdmin = false }) {
   const [state, setState] = useState({ status: 'loading', rows: [] })
-  const [admin, setAdmin] = useState({ ready: !isAdmin, authed: false, email: null })
+  const adminSession = useAdminSession()
+  const admin = { ready: !isAdmin || adminSession.ready, authed: adminSession.authed, email: adminSession.email }
   const [authOpen, setAuthOpen] = useState(false)
   const [form, setForm] = useState(null)   // { mode:'add'|'edit'|'version', base? }
   const [busy, setBusy] = useState(false)
@@ -41,25 +43,13 @@ export default function ResourceFiles({ categoryKey, sectionKey, isAdmin = false
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => load(), [load])
 
-  // 기존 관리자 Auth 세션(lm_admin_auth) 복원 — 네비게이션 후에도 유지.
-  useEffect(() => {
-    if (!isAdmin) return
-    let alive = true
-    ;(async () => {
-      const ok = await isAuthedAdmin()
-      const u = ok ? await getAdminAuthUser() : null
-      if (alive) setAdmin({ ready: true, authed: ok, email: u?.email || null })
-    })()
-    return () => { alive = false }
-  }, [isAdmin])
-
   const canManage = isAdmin && admin.authed
 
   function report(e, okText) {
     if (!e) { setFlash(okText ? { kind: 'ok', text: okText } : null); return }
     const text = e instanceof Error ? e.message : String(e)
     if (isSessionError(text)) {
-      setAdmin(a => ({ ...a, authed: false }))
+      adminSession.refresh()
       setFlash({ kind: 'err', text: '관리자 세션이 만료되었습니다. 다시 로그인해주세요.' })
     } else {
       setFlash({ kind: 'err', text })
@@ -108,7 +98,7 @@ export default function ResourceFiles({ categoryKey, sectionKey, isAdmin = false
 
   async function logout() {
     await signOutAdmin()
-    setAdmin(a => ({ ...a, authed: false, email: null }))
+    adminSession.refresh()
     setFlash(null)
   }
 
@@ -231,9 +221,9 @@ export default function ResourceFiles({ categoryKey, sectionKey, isAdmin = false
       {body}
 
       <Modal open={authOpen} onClose={() => setAuthOpen(false)} title="자료 관리 로그인" width={420}>
-        <ResourceAdminAuth onAuthed={(u) => {
+        <ResourceAdminAuth onAuthed={() => {
           setAuthOpen(false)
-          setAdmin({ ready: true, authed: true, email: u?.email || null })
+          adminSession.refresh()
           setFlash({ kind: 'ok', text: '자료 관리 관리자로 로그인했습니다.' })
         }} />
       </Modal>
