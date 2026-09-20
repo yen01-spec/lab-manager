@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../../supabase'
+import { supabaseAdmin as supabase } from '../../supabase'  // 관리자 write 는 Supabase Auth 세션(RLS is_admin())으로만 통과
 import { C, Card, inputStyle, labelStyle, btnPrimary, btnGhost } from '../../design'
 import { getSetting, setSetting, SCHOOL_SAFETY_SYSTEM_FALLBACK, KOSHA_LABEL_FALLBACK } from '../../lib/appSettings'
-import { changeAdminPassword as changeAdminPasswordRpc } from '../../lib/session'
 
 // ══════════════════════════════════════════════
 //  설정 — 관리자 비밀번호 / 실험실 규칙 / 안전 브리핑 / 알림(FCM) 토큰
 //  (예전 SuperTab에서 슈퍼관리자 관련만 빼고 관리자 설정으로 통합)
 // ══════════════════════════════════════════════
 export default function SettingsTab() {
-  const [adminPw, setAdminPw] = useState({ current: '', new1: '', new2: '' })
   const [tokenCount, setTokenCount] = useState(0)
   const [links, setLinks] = useState({ school_safety_system_url: '', kosha_label_url: '' })
   const [linksSaved, setLinksSaved] = useState({ school_safety_system_url: '', kosha_label_url: '' })
@@ -59,22 +57,6 @@ export default function SettingsTab() {
   async function fetchBriefings() {
     const { data } = await supabase.from('safety_briefings').select('*').order('created_at', { ascending: false })
     if (data) setBriefings(data)
-  }
-
-  async function changeAdminPassword() {
-    if (!adminPw.new1.trim()) { alert('새 비밀번호를 입력해주세요'); return }
-    if (adminPw.new1 !== adminPw.new2) { alert('새 비밀번호가 일치하지 않습니다'); return }
-    if (adminPw.new1.length < 6) { alert('비밀번호는 6자 이상이어야 합니다'); return }
-    try {
-      await changeAdminPasswordRpc({ current: adminPw.current, next: adminPw.new1 })
-    } catch (err) {
-      alert(err.message || '현재 비밀번호가 틀렸습니다')
-      return
-    }
-    await supabase.from('fcm_tokens').delete().eq('role', 'admin')
-    alert('✅ 관리자 비밀번호가 변경되었습니다.\n기존 관리자 기기의 알림이 초기화되었어요.')
-    setAdminPw({ current: '', new1: '', new2: '' })
-    fetchTokenCount()
   }
 
   async function clearAllTokens() {
@@ -262,26 +244,13 @@ export default function SettingsTab() {
         </div>
       </Card>
 
-      {/* 관리자 비밀번호 변경 */}
-      <Card title="🔑 관리자 비밀번호 변경" sub="변경 시 관리자 기기의 알림(FCM) 토큰도 초기화됩니다">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '360px' }}>
-          <div><label style={labelStyle}>현재 비밀번호</label>
-            <input type="password" value={adminPw.current} onChange={e => setAdminPw({ ...adminPw, current: e.target.value })} style={inputStyle} /></div>
-          <div><label style={labelStyle}>새 비밀번호 (6자 이상)</label>
-            <input type="password" value={adminPw.new1} onChange={e => setAdminPw({ ...adminPw, new1: e.target.value })} style={inputStyle} /></div>
-          <div><label style={labelStyle}>새 비밀번호 확인</label>
-            <input type="password" value={adminPw.new2} onChange={e => setAdminPw({ ...adminPw, new2: e.target.value })} style={inputStyle} /></div>
-          <button onClick={changeAdminPassword} style={{ ...btnPrimary }}>변경</button>
-        </div>
-      </Card>
-
       {/* FCM 토큰 관리 */}
       <Card title="🔔 알림(FCM) 토큰 관리">
         <div style={{ fontSize: '13px', color: C.muted, marginBottom: '16px' }}>
           현재 등록된 알림 토큰: <strong style={{ color: C.navy }}>{tokenCount}개</strong>
         </div>
         <div style={{ padding: '12px 16px', background: '#FFF8E7', border: '1px solid #F6C343', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
-          ⚠️ 비밀번호 변경 시 자동으로 토큰이 초기화됩니다. 수동으로 초기화가 필요한 경우에만 아래 버튼을 사용하세요.
+          ⚠️ 관리자 기기가 바뀌었거나 알림이 잘못 가는 경우에만 아래 버튼으로 수동 초기화하세요.
         </div>
         <button onClick={clearAllTokens} style={{ ...btnPrimary, background: '#D63031' }}>🗑️ 전체 토큰 초기화</button>
       </Card>

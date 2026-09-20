@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
-import { supabase } from '../supabase'
+import { supabase, supabaseAdmin } from '../supabase'
 import { C, PageBanner, Icon, SearchInput, Modal, inputStyle, btnPrimary, btnGhost, EmptyState } from '../design'
 
 const PAGE_SIZE = 10
@@ -148,18 +148,18 @@ export default function Notices() {
     setUploading(true)
     let noticeId = editingId
     if (editingId) {
-      await supabase.from('notices').update({ title: form.title, content: form.content, author: form.author }).eq('id', editingId)
+      await supabaseAdmin.from('notices').update({ title: form.title, content: form.content, author: form.author }).eq('id', editingId)
     } else {
-      const { data } = await supabase.from('notices').insert({ title: form.title, content: form.content, author: form.author, type: 'notice', views: 0 }).select().single()
+      const { data } = await supabaseAdmin.from('notices').insert({ title: form.title, content: form.content, author: form.author, type: 'notice', views: 0 }).select().single()
       noticeId = data.id
     }
     for (const file of files) {
       const ext = file.name.split('.').pop()
       const path = `notices/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-      const { error } = await supabase.storage.from('documents').upload(path, file)
+      const { error } = await supabaseAdmin.storage.from('documents').upload(path, file)
       if (!error) {
         const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path)
-        await supabase.from('notice_files').insert({ notice_id: noticeId, file_url: urlData.publicUrl, file_name: file.name, file_size: file.size })
+        await supabaseAdmin.from('notice_files').insert({ notice_id: noticeId, file_url: urlData.publicUrl, file_name: file.name, file_size: file.size })
       }
     }
     setForm({ title: '', content: '', author: '' }); setFiles([]); setShowModal(false); setEditingId(null); setUploading(false)
@@ -173,7 +173,7 @@ export default function Notices() {
 
   async function handleDelete(id) {
     if (!confirm('삭제하시겠습니까?')) return
-    await supabase.from('notices').delete().eq('id', id)
+    await supabaseAdmin.from('notices').delete().eq('id', id)
     fetchNotices()
   }
 

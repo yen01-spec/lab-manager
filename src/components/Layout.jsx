@@ -5,7 +5,9 @@ import { useBreakpoint } from '../hooks/useBreakpoint'
 import { C, Icon } from '../design'
 import { readSession, revalidateSession, logoutSession } from '../lib/session'
 import LoginModal from './LoginModal'
-import AdminUpgradeModal from './AdminUpgradeModal'
+import AdminLoginModal from './AdminLoginModal'
+import { useAdminSession } from '../hooks/useAdminSession'
+import { signOutAdmin } from '../lib/adminAuth'
 
 const NAV_ITEMS = [
   { to: '/',                 label: '홈',        icon: 'home',          end: true },
@@ -23,11 +25,13 @@ export default function Layout() {
   const [session, setSession] = useState(() => readSession())
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
-  const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [adminLoginOpen, setAdminLoginOpen] = useState(false)
+  const adminSession = useAdminSession()
   const location = useLocation()
   const { isMobile, isTablet, isDesktop } = useBreakpoint()
 
-  const isAdmin = !!session?.is_admin
+  // 관리자 = Supabase Auth 로그인 + admin_users 등록(DB의 public.is_admin()와 같은 근거). 학생 로그인과 별개.
+  const isAdmin = adminSession.authed
   const student = session ? { student_id: session.student_id, name: session.name, session_token: session.session_token } : null
 
   useFCM(isAdmin)
@@ -35,6 +39,11 @@ export default function Layout() {
   useEffect(() => {
     revalidateSession().then(setSession)
   }, [])
+
+  async function handleAdminLogout() {
+    await signOutAdmin()
+    adminSession.refresh()
+  }
 
   function handleLogout() {
     setSession(null)
@@ -79,25 +88,28 @@ export default function Layout() {
           )}
         </div>
 
-        {/* 오른쪽: 로그인 */}
+        {/* 오른쪽: 관리자 로그인 / 학생 로그인 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {!isMobile && (isAdmin ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <NavLink to="/admin" style={{ textDecoration: 'none' }}>
+                <span style={{ color: '#B8C9E8', fontSize: 12 }}>관리자 · {adminSession.email}</span>
+              </NavLink>
+              <button onClick={handleAdminLogout} style={{
+                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
+                color: 'rgba(255,255,255,0.8)', padding: '5px 12px', borderRadius: 7,
+                cursor: 'pointer', fontSize: 12, fontFamily: 'inherit',
+              }}>관리자 로그아웃</button>
+            </div>
+          ) : adminSession.ready && (
+            <button onClick={() => setAdminLoginOpen(true)} style={{
+              background: 'none', border: 'none', color: '#8FA6D4', fontSize: 12,
+              cursor: 'pointer', fontFamily: 'inherit', padding: 0,
+            }}>관리자 로그인</button>
+          ))}
           {session ? (
             <>
-              {!isMobile && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ color: '#DCE4F2', fontSize: 13, fontWeight: 600 }}>{session.name}님</span>
-                  {isAdmin ? (
-                    <NavLink to="/admin" style={{ textDecoration: 'none' }}>
-                      <span style={{ color: '#B8C9E8', fontSize: 12 }}>· 관리자</span>
-                    </NavLink>
-                  ) : (
-                    <button onClick={() => setUpgradeOpen(true)} style={{
-                      background: 'none', border: 'none', color: '#8FA6D4', fontSize: 12,
-                      cursor: 'pointer', fontFamily: 'inherit', padding: 0,
-                    }}>· 관리자 승격</button>
-                  )}
-                </div>
-              )}
+              {!isMobile && <span style={{ color: '#DCE4F2', fontSize: 13, fontWeight: 600 }}>{session.name}님</span>}
               <button onClick={handleLogout} style={{
                 background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
                 color: 'rgba(255,255,255,0.8)', padding: '5px 12px', borderRadius: 7,
@@ -135,10 +147,11 @@ export default function Layout() {
         {/* 모바일 드로어 */}
         {isMobile && drawerOpen && (
           <Drawer
-            items={navItems} isAdmin={isAdmin} session={session}
+            items={navItems} isAdmin={isAdmin} session={session} adminEmail={adminSession.email}
             onClose={() => setDrawerOpen(false)}
             onLogin={() => setLoginOpen(true)}
-            onUpgrade={() => setUpgradeOpen(true)}
+            onAdminLogin={() => { setDrawerOpen(false); setAdminLoginOpen(true) }}
+            onAdminLogout={handleAdminLogout}
             onLogout={handleLogout}
             location={location}
           />
@@ -151,14 +164,12 @@ export default function Layout() {
         }}>
           {/* applySession: 자식 페이지가 자체적으로 로그인을 확인한 뒤(예: 등록 버튼 누를 때
               인라인으로 뜨는 로그인란) 헤더/전역 세션에도 곧바로 반영할 수 있게 노출 */}
-          <Outlet context={{ isAdmin, student, applySession: setSession }} />
+          <Outlet context={{ isAdmin, student, applySession: setSession, adminSession }} />
         </main>
       </div>
 
-      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} onSuccess={setSession} />
-      {student && (
-        <AdminUpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} student={student} onSuccess={setSession} />
-      )}
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} onSuccess={setSession} onAdminLogin={() => setAdminLoginOpen(true)} />
+      <AdminLoginModal open={adminLoginOpen} onClose={() => setAdminLoginOpen(false)} onSuccess={adminSession.refresh} />
 
       {/* 모바일 바텀 탭 */}
       {isMobile && (
@@ -279,7 +290,7 @@ function SidebarMini({ items, isAdmin, location }) {
   )
 }
 
-function Drawer({ items, isAdmin, session, onClose, onLogin, onUpgrade, onLogout, location }) {
+function Drawer({ items, isAdmin, session, adminEmail, onClose, onLogin, onAdminLogin, onAdminLogout, onLogout, location }) {
   return (
     <>
       <div onClick={onClose} style={{
@@ -312,18 +323,26 @@ function Drawer({ items, isAdmin, session, onClose, onLogin, onUpgrade, onLogout
           </nav>
         </div>
         <div style={{ padding: '14px 16px', borderTop: `1px solid ${C.border}` }}>
+          {isAdmin ? (
+            <div style={{ marginBottom: 10, textAlign: 'center' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 6, wordBreak: 'break-all' }}>관리자 · {adminEmail}</div>
+              <button onClick={onAdminLogout} style={{
+                width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${C.border}`, background: C.white,
+                cursor: 'pointer', fontSize: 13, color: C.muted, fontFamily: 'inherit',
+              }}>관리자 로그아웃</button>
+            </div>
+          ) : (
+            <button onClick={onAdminLogin} style={{
+              width: '100%', padding: 10, borderRadius: 8, marginBottom: 10,
+              border: `1px solid ${C.border}`, background: C.white,
+              cursor: 'pointer', fontSize: 13, color: C.blueDark, fontWeight: 600, fontFamily: 'inherit',
+            }}>관리자 로그인</button>
+          )}
           {session ? (
             <>
               <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text, marginBottom: 8, textAlign: 'center' }}>
-                {session.name}님 {isAdmin && '· 관리자'}
+                {session.name}님
               </div>
-              {!isAdmin && (
-                <button onClick={onUpgrade} style={{
-                  width: '100%', padding: 9, borderRadius: 8, marginBottom: 8,
-                  border: `1px solid rgba(47,107,219,0.4)`, background: C.blueTint,
-                  cursor: 'pointer', fontSize: 12.5, color: C.blueDark, fontWeight: 600, fontFamily: 'inherit',
-                }}>관리자 승격</button>
-              )}
               <button onClick={onLogout} style={{
                 width: '100%', padding: 10, borderRadius: 8,
                 border: `1px solid ${C.border}`, background: C.white,

@@ -3,6 +3,7 @@ import Safety from './pages/Safety'
 import Resources from './pages/Resources'
 import { Routes, Route, useOutletContext } from 'react-router-dom'
 import Layout from './components/Layout'
+import AdminAuthBanner from './components/admin/AdminAuthBanner'
 import Home from './pages/Home'
 import ReagentLocations from './pages/ReagentLocations'
 import ReagentList from './pages/ReagentList'
@@ -16,13 +17,18 @@ import BulkEdit from './pages/BulkEdit'
 import ReagentDetail from './pages/ReagentDetail'
 import SafetySignage from './pages/SafetySignage'
 
-// isAdmin이 확정되기 전엔 관리자 화면을 렌더링하지 않는다 (한 프레임도 노출 안 함).
+// 관리자 화면은 Supabase Auth 관리자 로그인(admin_users, DB의 public.is_admin())이 확인된 뒤에만 렌더링한다.
+// (세션 확인 중엔 아무것도 노출하지 않고, 확인 후 미로그인이면 로그인 폼을 보여준다.)
 function RequireAdmin({ children }) {
-  const { isAdmin } = useOutletContext()
+  const { isAdmin, adminSession } = useOutletContext()
+  if (!adminSession?.ready) {
+    return <div style={{ padding: '60px 20px', textAlign: 'center', color: '#9AA1AD', fontSize: 14 }}>관리자 로그인 상태를 확인하는 중…</div>
+  }
   if (!isAdmin) {
     return (
-      <div style={{ padding: '60px 20px', textAlign: 'center', color: '#9AA1AD', fontSize: 14 }}>
-        관리자만 접근할 수 있습니다.
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '40px 16px' }}>
+        <div style={{ textAlign: 'center', color: '#586173', fontSize: 14, marginBottom: 16 }}>관리자 로그인 후 이용할 수 있습니다.</div>
+        <AdminAuthBanner session={adminSession} purpose="관리자 메뉴를 사용" />
       </div>
     )
   }

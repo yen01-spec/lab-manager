@@ -3,6 +3,7 @@ import { useOutletContext, useLocation, useNavigate } from 'react-router-dom'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { supabase } from '../supabase'
+import { getSessionToken } from '../lib/session'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, btnGhost, btnExcel, thStyle, tdStyle } from '../design'
 import { exportPurchaseRequestForm } from '../exportUtils'
 import ReagentAutocomplete from '../components/ReagentAutocomplete'
@@ -166,26 +167,25 @@ export default function PurchaseRequest() {
   const reagentDraftHasContent = reagentDraft.name.trim() || reagentDraft.cas_no.trim() || reagentDraft.needed_amount.trim() || reagentDraft.usage_place.trim() || reagentDraft.purchase_reason.trim() || reagentDraft.note.trim()
   const goodsDraftHasContent = goodsDraft.name.trim() || goodsDraft.unit_price.trim()
 
+  // 한 번의 서버 트랜잭션(RPC)으로 로그 + 시약/물품 항목을 저장한다. 요청자는 로그인 세션이 있으면
+  // 서버가 세션으로 확정하고(client 값 무시), 없으면 예전처럼 익명(null)으로 저장된다.
   async function saveToDb() {
     if (reagentItems.length === 0 && goodsItems.length === 0) { alert('담긴 항목이 없습니다.'); return null }
-    const { data: log, error } = await supabase.from('purchase_request_logs')
-      .insert({ requested_by: student?.student_id ?? null }).select().single()
-    if (error) { alert('저장 중 오류가 발생했습니다: ' + error.message); return null }
-    if (reagentItems.length > 0) {
-      await supabase.from('purchase_request_reagent_items').insert(reagentItems.map(it => ({
-        request_id: log.id, reagent_id: it.reagent_id, name: it.name, purity: it.purity, cas_no: it.cas_no, state: null,
+    const { data, error } = await supabase.rpc('purchase_request_submit', {
+      p_session_token: getSessionToken(),
+      p_reagent_items: reagentItems.map(it => ({
+        reagent_id: it.reagent_id, name: it.name, purity: it.purity, cas_no: it.cas_no, state: null,
         needed_amount: it.needed_amount, usage_place: it.usage_place, purchase_reason: it.purchase_reason,
         company: it.company, cat_no: it.cat_no, spec: it.spec, quantity: it.quantity, note: it.note,
-      })))
-    }
-    if (goodsItems.length > 0) {
-      await supabase.from('purchase_request_goods_items').insert(goodsItems.map(it => ({
-        request_id: log.id, name: it.name, cat_no: it.cat_no, spec: it.spec, quantity: Number(it.quantity) || null,
+      })),
+      p_goods_items: goodsItems.map(it => ({
+        name: it.name, cat_no: it.cat_no, spec: it.spec, quantity: Number(it.quantity) || null,
         unit_price: Number(it.unit_price) || null, shipping_fee: Number(it.shipping_fee) || null,
         total_price: totalOf(it), purpose: it.purpose, note: it.note, link: it.link,
-      })))
-    }
-    return log
+      })),
+    })
+    if (error) { alert('저장 중 오류가 발생했습니다: ' + error.message); return null }
+    return data
   }
 
   async function handleExportExcel() {

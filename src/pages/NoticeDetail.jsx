@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom'
-import { supabase } from '../supabase'
+import { supabase, supabaseAdmin } from '../supabase'
 import { C, PageBanner, Icon, btnGhost, btnDanger } from '../design'
 
 export default function NoticeDetail() {
@@ -17,7 +17,7 @@ export default function NoticeDetail() {
     const { data } = await supabase.from('notices').select('*, notice_files(*)').eq('id', id).single()
     if (!data) return
     setNotice(data)
-    await supabase.from('notices').update({ views: (data.views || 0) + 1 }).eq('id', id)
+    await supabase.rpc('notice_increment_views', { p_id: id })
     const type = data.type
     const { data: prevData } = await supabase.from('notices').select('id, title').eq('type', type)
       .lt('created_at', data.created_at).order('created_at', { ascending: false }).limit(1).single()
@@ -28,7 +28,7 @@ export default function NoticeDetail() {
 
   async function handleDelete() {
     if (!confirm('삭제하시겠습니까?')) return
-    await supabase.from('notices').delete().eq('id', id)
+    await supabaseAdmin.from('notices').delete().eq('id', id)
     navigate(notice?.type === 'safety' ? '/safety' : '/notices')
   }
 

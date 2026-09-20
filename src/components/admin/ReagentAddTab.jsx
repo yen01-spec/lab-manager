@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { supabase } from '../../supabase'
+import { supabaseAdmin as supabase } from '../../supabase'  // 관리자 write 는 Supabase Auth 세션(RLS is_admin())으로만 통과
 import { C, Card, inputStyle, labelStyle, btnPrimary } from '../../design'
 import CompanyPicker from '../CompanyPicker'
 import { computeSortLetter } from '../../lib/sortLetter'

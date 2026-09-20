@@ -1,6 +1,12 @@
 -- STAGING TEST ONLY
 -- NEVER APPLY TO PRODUCTION
 -- NOT A PRODUCTION MIGRATION
+drop function if exists public.purchase_request_log_update(uuid, text, text, text, text);
+drop function if exists public.purchase_request_submit(text, jsonb, jsonb);
+drop function if exists public.notice_increment_views(uuid);
+drop table if exists purchase_request_goods_items;
+drop table if exists purchase_request_reagent_items;
+drop table if exists purchase_request_logs;
 drop function if exists public.admin_dispose_lots(uuid[], text);
 drop function if exists public.admin_move_lots(uuid[], uuid);
 drop function if exists public.disposal_request_review(uuid, text, text);

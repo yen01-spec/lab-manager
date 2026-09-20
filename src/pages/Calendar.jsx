@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { supabase } from '../supabase'
+import { supabase, supabaseAdmin } from '../supabase'
 import { C, PageBanner } from '../design'
 
 const HOLIDAYS = [
@@ -43,7 +43,7 @@ export default function Calendar() {
 
   async function addEvent() {
     if (!newEvent.date || !newEvent.title.trim()) { alert('날짜와 제목을 입력하세요'); return }
-    await supabase.from('calendar_events').insert({ date: newEvent.date, title: newEvent.title, type: newEvent.type })
+    await supabaseAdmin.from('calendar_events').insert({ date: newEvent.date, title: newEvent.title, type: newEvent.type })
     setNewEvent({ date: '', title: '', type: 'academic' })
     setShowForm(false)
     fetchEvents()
@@ -52,7 +52,7 @@ export default function Calendar() {
   async function deleteEvent(id, e) {
     e.stopPropagation()
     if (!window.confirm('삭제하시겠습니까?')) return
-    await supabase.from('calendar_events').delete().eq('id', id)
+    await supabaseAdmin.from('calendar_events').delete().eq('id', id)
     fetchEvents()
   }
 

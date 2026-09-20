@@ -104,54 +104,15 @@ await test('student_register: duplicate id rejected', async () => {
   assertTrue(!!error, '중복 등록이 차단되지 않음')
 })
 
-await test('student_admin_login: wrong password before any password set', async () => {
-  const { data, error } = await anon.rpc('student_admin_login', { p_student_id: 'TEST-STU-0002', p_name: 'TEST Student Two', p_birth_date: '2001-02-02', p_password: 'whatever' })
-  if (error) throw new Error(error.message)
-  assertEq(data.status, 'wrong_password', 'password_hash가 null인 상태에서도 안전하게 거부')
-})
-
-await test('student_admin_upgrade: wrong pin rejected', async () => {
-  const { error } = await anon.rpc('student_admin_upgrade', { p_student_id: 'TEST-STU-0002', p_pin: 'WRONG-PIN' })
-  assertTrue(!!error, '틀린 PIN이 차단되지 않음')
-})
-
-await test('student_admin_upgrade: correct pin promotes + sets password', async () => {
-  const { data, error } = await anon.rpc('student_admin_upgrade', { p_student_id: 'TEST-STU-0002', p_pin: 'TEST-ADMIN-PIN-0001' })
-  if (error) throw new Error(error.message)
-  assertEq(data.is_admin, true, 'is_admin true')
-  return data
-})
-
-await test('student_admin_login: now works with the PIN as password', async () => {
-  const { data, error } = await anon.rpc('student_admin_login', { p_student_id: 'TEST-STU-0002', p_name: 'TEST Student Two', p_birth_date: '2001-02-02', p_password: 'TEST-ADMIN-PIN-0001' })
-  if (error) throw new Error(error.message)
-  assertEq(data.status, 'ok', 'status')
-  assertEq(data.is_admin, true, 'is_admin')
-})
-
-await test('student_admin_login: wrong password still rejected after upgrade', async () => {
-  const { data, error } = await anon.rpc('student_admin_login', { p_student_id: 'TEST-STU-0002', p_name: 'TEST Student Two', p_birth_date: '2001-02-02', p_password: 'totally-wrong' })
-  if (error) throw new Error(error.message)
-  assertEq(data.status, 'wrong_password', 'status')
-})
-
-// student_session_refresh는 20260916100000부터 p_student_id가 아니라 p_session_token을
-// 받는다(Phase S-RLS2 B안 — 신원을 client가 보낸 student_id로 믿지 않기 위함). 토큰
-// 발급/검증 흐름은 scripts/staging/test-session-token.mjs에서 별도로 더 철저히 테스트.
-
-await test('admin_password_change: wrong current rejected', async () => {
-  const { error } = await anon.rpc('admin_password_change', { p_current: 'WRONG', p_new: 'TEST-ADMIN-PIN-0002' })
-  assertTrue(!!error, '틀린 현재값이 차단되지 않음')
-})
-
-await test('admin_password_change: correct current changes it, old pin then invalid', async () => {
-  const { error } = await anon.rpc('admin_password_change', { p_current: 'TEST-ADMIN-PIN-0001', p_new: 'TEST-ADMIN-PIN-0002' })
-  if (error) throw new Error(error.message)
-  const { error: upgradeErr } = await anon.rpc('student_admin_upgrade', { p_student_id: 'TEST-STU-0001', p_pin: 'TEST-ADMIN-PIN-0001' })
-  assertTrue(!!upgradeErr, '변경 전 PIN이 여전히 통하면 안 됨')
-  const { data, error: upgrade2Err } = await anon.rpc('student_admin_upgrade', { p_student_id: 'TEST-STU-0001', p_pin: 'TEST-ADMIN-PIN-0002' })
-  if (upgrade2Err) throw new Error(upgrade2Err.message)
-  assertEq(data.is_admin, true, '새 PIN으로는 정상 동작')
+// Master Finish Phase 5: 학생 관리자 승격(PIN) 체계는 폐기됐다 — 관리자 권한은 Supabase Auth +
+// admin_users + is_admin() 뿐. 옛 RPC 3개는 이제 존재하지 않아야 한다.
+await test('retired: student_admin_login / student_admin_upgrade / admin_password_change no longer exist', async () => {
+  const calls = [
+    anon.rpc('student_admin_login', { p_student_id: 'TEST-STU-0002', p_name: 'x', p_birth_date: '2001-02-02', p_password: 'x' }),
+    anon.rpc('student_admin_upgrade', { p_student_id: 'TEST-STU-0002', p_pin: 'TEST-ADMIN-PIN-0001' }),
+    anon.rpc('admin_password_change', { p_current: 'a', p_new: 'b' }),
+  ]
+  for (const r of await Promise.all(calls)) assertTrue(!!r.error, '폐기된 RPC가 아직 호출됨')
 })
 
 await test('anon cannot delete students', async () => {

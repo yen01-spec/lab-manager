@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useOutletContext, useNavigate, useLocation } from 'react-router-dom'
-import { supabase } from '../supabase'
+import { supabase, supabaseAdmin } from '../supabase'
 import { reviewDisposalRequest } from '../lib/adminReview'
 import { useAdminSession } from '../hooks/useAdminSession'
 import AdminAuthBanner from '../components/admin/AdminAuthBanner'
@@ -289,7 +289,7 @@ export default function ReagentDetail() {
     }
     if (!window.confirm(`"${reagent.name}"을(를) 시약 마스터 목록에서 삭제할까요?\n(데이터는 삭제되지 않고 보관 처리되어 이력은 유지되지만, 목록에는 더 이상 표시되지 않습니다.)`)) return
     await supabase.from('reagents').update({ status: 'archived' }).eq('id', id)
-    await supabase.from('admin_logs').insert({
+    await supabaseAdmin.from('admin_logs').insert({
       admin_name: student?.name || '관리자', action: '시약 종류 삭제',
       target_type: 'reagent',
       description: `시약 종류 삭제(보관 처리): ${reagent.name}`,
@@ -311,7 +311,7 @@ export default function ReagentDetail() {
     setUploadingMsds(true)
     const ext = file.name.split('.').pop()
     const path = `msds/${id}_${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('documents').upload(path, file)
+    const { error } = await supabaseAdmin.storage.from('documents').upload(path, file)
     if (error) { alert('업로드 중 오류가 발생했습니다: ' + error.message); setUploadingMsds(false); return }
     const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path)
     await supabase.from('reagents').update({ msds_url: urlData.publicUrl, msds_source: 'manual' }).eq('id', id)

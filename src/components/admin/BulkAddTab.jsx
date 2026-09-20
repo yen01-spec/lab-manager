@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import * as XLSX from 'xlsx'
-import { supabase } from '../../supabase'
+import { supabaseAdmin as supabase } from '../../supabase'  // 관리자 write 는 Supabase Auth 세션(RLS is_admin())으로만 통과
 import { C, Card, btnPrimary, btnExcel, thStyle, tdStyle } from '../../design'
 import { computeSortLetter } from '../../lib/sortLetter'
 import { generateInternalLotNos } from '../../lib/lotNo'

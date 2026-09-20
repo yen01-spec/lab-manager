@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
-import { supabase } from '../supabase'
+import { supabase, supabaseAdmin } from '../supabase'
 import { C, PageBanner, Card, StatusBadge, inputStyle, btnPrimary, thStyle, tdStyle } from '../design'
 
 const FILTER_TABS = [
@@ -9,7 +9,7 @@ const FILTER_TABS = [
 ]
 
 export default function PurchaseRequestList() {
-  const { isAdmin, student } = useOutletContext?.() || {}
+  const { isAdmin } = useOutletContext?.() || {}
   const navigate = useNavigate()
   const [logs, setLogs] = useState([])
   const [reagentItemsByLog, setReagentItemsByLog] = useState({})
@@ -44,24 +44,24 @@ export default function PurchaseRequestList() {
     setLoading(false)
   }
 
+  // 상태/승인자/타임스탬프는 서버 RPC가 확정한다(관리자 Supabase Auth 세션 필요).
   async function updateStatus(id, status, note) {
     const tracking = trackingInputs[id] || {}
-    await supabase.from('purchase_request_logs').update({
-      status,
-      ...(note ? { reject_note: note } : {}),
-      approved_by: student?.name || null,
-      ...(status === 'ordered' ? { ordered_at: new Date().toISOString(), tracking_number: tracking.tracking_number || null, estimated_arrival: tracking.estimated_arrival || null } : {}),
-      ...(status === 'delivered' ? { delivered_at: new Date().toISOString() } : {}),
-    }).eq('id', id)
+    const { error } = await supabaseAdmin.rpc('purchase_request_log_update', {
+      p_id: id, p_status: status, p_note: note || null,
+      p_tracking_number: tracking.tracking_number || null, p_estimated_arrival: tracking.estimated_arrival || null,
+    })
+    if (error) { alert(error.message); return }
     fetchAll()
   }
 
   async function saveTracking(id) {
     const tracking = trackingInputs[id] || {}
-    await supabase.from('purchase_request_logs').update({
-      tracking_number: tracking.tracking_number || null,
-      estimated_arrival: tracking.estimated_arrival || null,
-    }).eq('id', id)
+    const { error } = await supabaseAdmin.rpc('purchase_request_log_update', {
+      p_id: id, p_status: null, p_note: null,
+      p_tracking_number: tracking.tracking_number || null, p_estimated_arrival: tracking.estimated_arrival || null,
+    })
+    if (error) { alert(error.message); return }
     alert('저장되었습니다!')
     fetchAll()
   }

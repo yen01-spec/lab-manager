@@ -42,13 +42,13 @@ export async function revalidateSession() {
     return null
   }
 
-  const fresh = { student_id: data.student_id, name: data.name, is_admin: data.is_admin, session_token: data.session_token }
+  const fresh = { student_id: data.student_id, name: data.name, session_token: data.session_token }
   writeSession(fresh)
   return fresh
 }
 
 // 비밀번호 없는 "일반 로그인" 확인 — 존재하지 않으면 null(신규등록 단계로), 이름/생년월일이
-// 다르면 throw, 일치하면 세션 후보(+session_token) 반환(is_admin은 항상 false로 시작).
+// 다르면 throw, 일치하면 세션 후보(+session_token) 반환. (관리자 권한은 이 세션과 무관 — Supabase Auth)
 export async function checkStudentLogin({ student_id, name, birth_date }) {
   const { data, error } = await supabase.rpc('student_check_login', {
     p_student_id: student_id, p_name: name, p_birth_date: birth_date,
@@ -56,7 +56,7 @@ export async function checkStudentLogin({ student_id, name, birth_date }) {
   if (error) throw new Error(error.message)
   if (data.status === 'not_found') return null
   if (data.status === 'mismatch') throw new Error('등록된 정보와 다릅니다. 본인이 맞다면 관리자에게 문의하세요')
-  return { student_id: data.student_id, name: data.name, is_admin: false, session_token: data.session_token }
+  return { student_id: data.student_id, name: data.name, session_token: data.session_token }
 }
 
 export async function registerStudent({ student_id, name, birth_date }) {
@@ -64,34 +64,7 @@ export async function registerStudent({ student_id, name, birth_date }) {
     p_student_id: student_id, p_name: name, p_birth_date: birth_date,
   })
   if (error) throw new Error(error.message)
-  return data // { student_id, name, is_admin, session_token }
-}
-
-export async function loginAdmin({ student_id, birth_date, name, password }) {
-  const { data, error } = await supabase.rpc('student_admin_login', {
-    p_student_id: student_id, p_name: name, p_birth_date: birth_date, p_password: password,
-  })
-  if (error) throw new Error(error.message)
-  if (data.status === 'not_found') throw new Error('등록되지 않은 학번입니다')
-  if (data.status === 'mismatch') throw new Error('등록된 정보와 다릅니다. 관리자에게 문의하세요')
-  if (data.status === 'wrong_password') throw new Error('비밀번호가 틀렸습니다')
-  return { student_id: data.student_id, name: data.name, is_admin: data.is_admin, session_token: data.session_token }
-}
-
-// 관리자 승격 — 공유 PIN을 입력하면 그 값이 그대로 본인 비밀번호가 된다(기존 동작 그대로).
-// PIN 대조/해싱 전부 서버(student_admin_upgrade RPC)에서 처리. 이미 로그인된 상태에서만
-// 쓰는 흐름이라 새 토큰을 발급하지 않고 기존 session_token을 그대로 이어서 쓴다.
-export async function upgradeToAdmin({ student_id, pin }) {
-  const { data, error } = await supabase.rpc('student_admin_upgrade', { p_student_id: student_id, p_pin: pin })
-  if (error) throw new Error(error.message)
-  return data
-}
-
-// 관리자 공유 PIN 변경(SettingsTab) — 현재값 대조도 서버에서 처리.
-export async function changeAdminPassword({ current, next }) {
-  const { data, error } = await supabase.rpc('admin_password_change', { p_current: current, p_new: next })
-  if (error) throw new Error(error.message)
-  return data
+  return data // { student_id, name, session_token }
 }
 
 // 로그아웃 — 서버 세션도 명시적으로 폐기(Phase S-RLS2). localStorage clear만 하던

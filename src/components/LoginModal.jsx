@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react'
 import { C, inputStyle, labelStyle, btnPrimary, btnGhost, Icon } from '../design'
-import { checkStudentLogin, registerStudent, loginAdmin, writeSession } from '../lib/session'
+import { checkStudentLogin, registerStudent, writeSession } from '../lib/session'
+import { useBreakpoint } from '../hooks/useBreakpoint'
 
-const EMPTY_FORM = { student_id: '', birth_date: '', name: '', password: '' }
+const EMPTY_FORM = { student_id: '', birth_date: '', name: '' }
 
 // 연도 4자리 입력 시 월로, 월 입력(1자리 완결 또는 2자리) 시 일로 자동 이동하는 생년월일 입력.
 // Modal이 닫힐 때 언마운트되므로(재오픈 시 새로 마운트) 초기값만 반영하면 충분하다.
@@ -55,15 +56,15 @@ function BirthDateInput({ value, onChange }) {
   )
 }
 
-export default function LoginModal({ open, onClose, onSuccess }) {
+export default function LoginModal({ open, onClose, onSuccess, onAdminLogin }) {
+  const { isMobile } = useBreakpoint()
   const [step, setStep] = useState('id_entry') // 'id_entry' | 'confirm_new'
   const [form, setForm] = useState(EMPTY_FORM)
-  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   function reset() {
-    setStep('id_entry'); setForm(EMPTY_FORM); setShowPassword(false); setError(''); setLoading(false)
+    setStep('id_entry'); setForm(EMPTY_FORM); setError(''); setLoading(false)
   }
   function handleClose() { reset(); onClose() }
 
@@ -87,17 +88,6 @@ export default function LoginModal({ open, onClose, onSuccess }) {
     setLoading(true)
     setError('')
     try {
-      if (showPassword && form.password.trim()) {
-        const session = await loginAdmin({
-          student_id: form.student_id.trim(),
-          birth_date: form.birth_date.trim(),
-          name: form.name.trim(),
-          password: form.password,
-        })
-        finish(session)
-        return
-      }
-
       const session = await checkStudentLogin({
         student_id: form.student_id.trim(), name: form.name.trim(), birth_date: form.birth_date.trim(),
       })
@@ -105,7 +95,6 @@ export default function LoginModal({ open, onClose, onSuccess }) {
         setStep('confirm_new')
         return
       }
-      // 비밀번호 없이 로그인 — 관리자 권한이 있어도 이번 세션은 일반 사용자로 시작
       finish(session)
     } catch (err) {
       setError(err.message || '처리 중 오류가 발생했습니다')
@@ -140,7 +129,7 @@ export default function LoginModal({ open, onClose, onSuccess }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }} onClick={e => { if (e.target === e.currentTarget) handleClose() }}>
       <div style={{
-        width: '100%', maxWidth: 860, display: 'grid', gridTemplateColumns: '1fr 1fr',
+        width: '100%', maxWidth: 860, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', maxHeight: '92vh', overflowY: 'auto',
         background: C.white, border: `1px solid ${C.border}`, borderRadius: 16,
         boxShadow: '0 24px 64px rgba(16,24,40,.2)', overflow: 'hidden', position: 'relative',
       }}>
@@ -149,8 +138,8 @@ export default function LoginModal({ open, onClose, onSuccess }) {
           borderRadius: 8, width: 30, height: 30, cursor: 'pointer', color: C.muted, fontSize: 16, zIndex: 2,
         }}>×</button>
 
-        {/* 왼쪽 브랜드 패널 */}
-        <div style={{
+        {/* 왼쪽 브랜드 패널 (모바일에서는 숨김) */}
+        {!isMobile && <div style={{
           background: C.navy, padding: '48px 40px', display: 'flex', flexDirection: 'column',
           justifyContent: 'space-between', color: '#fff',
         }}>
@@ -172,26 +161,21 @@ export default function LoginModal({ open, onClose, onSuccess }) {
             </div>
           </div>
           <div style={{ fontSize: 11, color: '#7889A4' }}>강원대학교 과학교육학부 연구실</div>
-        </div>
+        </div>}
 
         {/* 오른쪽 로그인 폼 */}
-        <div style={{ padding: '44px 40px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ padding: isMobile ? '40px 20px 24px' : '44px 40px', display: 'flex', flexDirection: 'column', gap: 18 }}>
           {step === 'id_entry' ? (
             <>
               <div style={{ display: 'flex', background: C.bg, borderRadius: 10, padding: 3, gap: 2 }}>
-                <button type="button" onClick={() => setShowPassword(false)} style={{
-                  flex: 1, textAlign: 'center', padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
-                  background: !showPassword ? C.white : 'transparent',
-                  boxShadow: !showPassword ? '0 1px 3px rgba(16,24,40,.06)' : 'none',
-                  fontSize: 13, fontWeight: !showPassword ? 700 : 600, color: !showPassword ? C.blueDark : C.muted,
-                  fontFamily: 'inherit',
+                <button type="button" style={{
+                  flex: 1, textAlign: 'center', padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'default',
+                  background: C.white, boxShadow: '0 1px 3px rgba(16,24,40,.06)',
+                  fontSize: 13, fontWeight: 700, color: C.blueDark, fontFamily: 'inherit',
                 }}>일반 로그인</button>
-                <button type="button" onClick={() => setShowPassword(true)} style={{
+                <button type="button" onClick={() => { handleClose(); onAdminLogin?.() }} style={{
                   flex: 1, textAlign: 'center', padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
-                  background: showPassword ? C.white : 'transparent',
-                  boxShadow: showPassword ? '0 1px 3px rgba(16,24,40,.06)' : 'none',
-                  fontSize: 13, fontWeight: showPassword ? 700 : 600, color: showPassword ? C.blueDark : C.muted,
-                  fontFamily: 'inherit',
+                  background: 'transparent', fontSize: 13, fontWeight: 600, color: C.muted, fontFamily: 'inherit',
                 }}>관리자 로그인</button>
               </div>
 
@@ -213,13 +197,6 @@ export default function LoginModal({ open, onClose, onSuccess }) {
                   <label style={labelStyle}>이름</label>
                   <input style={inputStyle} value={form.name} onChange={e => update('name', e.target.value)} placeholder="예) 이OO" />
                 </div>
-
-                {showPassword && (
-                  <div>
-                    <label style={labelStyle}>관리자 비밀번호</label>
-                    <input style={inputStyle} type="password" value={form.password} onChange={e => update('password', e.target.value)} placeholder="관리자 승격 시 설정한 비밀번호" />
-                  </div>
-                )}
 
                 {error && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: C.dangerDark, background: C.dangerTint, padding: '8px 10px', borderRadius: 8 }}>
