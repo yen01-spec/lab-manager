@@ -5,6 +5,8 @@ import { requestStatusLabel, requestStatusColorFor } from '../../lib/requestStat
 import { reviewDisposalRequest } from '../../lib/adminReview'
 import { useAdminSession } from '../../hooks/useAdminSession'
 import AdminAuthBanner from './AdminAuthBanner'
+import BottleInfo from './BottleInfo'
+import { useBottleInfo } from '../../hooks/useBottleInfo'
 
 // ══════════════════════════════════════════════
 //  폐기 관리
@@ -14,6 +16,7 @@ export default function DisposalTab({ onCountChange }) {
   const [filter, setFilter] = useState('pending')
   const session = useAdminSession()
   const [busy, setBusy] = useState(false)
+  const bottles = useBottleInfo(requests)
 
   useEffect(() => { fetchRequests() }, [])
 
@@ -30,7 +33,7 @@ export default function DisposalTab({ onCountChange }) {
     if (action === 'reject') {
       reason = window.prompt('반려 사유 (선택 — 신청한 사람에게 보여요)', '')
       if (reason === null) return
-    } else if (!window.confirm(`"${req.reagent_name}" 폐기를 승인하시겠습니까?\n승인하면 즉시 폐기 완료 처리되고 재고에서 빠집니다.`)) return
+    } else if (!window.confirm(`"${req.reagent_name}" (Lot ${req.lot_no || '-'}) 병 1개의 폐기를 승인하시겠습니까?\n승인하면 이 병만 즉시 폐기 완료 처리됩니다. (같은 시약/같은 Lot 번호의 다른 병은 그대로)`)) return
     setBusy(true)
     try { await reviewDisposalRequest(req.id, action, reason || null) } catch (e) { alert(e.message) }
     setBusy(false)
@@ -72,15 +75,14 @@ export default function DisposalTab({ onCountChange }) {
                 <span style={{ fontWeight: '700', fontSize: '15px', color: C.navy }}>{req.reagent_name}</span>
                 <span style={{ color: C.muted, fontSize: '12px', marginLeft: 'auto' }}>{new Date(req.created_at).toLocaleDateString()}</span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', fontSize: '12px', color: C.muted, marginBottom: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px', fontSize: '12px', color: C.muted, marginBottom: '10px' }}>
                 <div><span style={{ fontWeight: '600' }}>신청자:</span> {req.requested_by}</div>
-                <div><span style={{ fontWeight: '600' }}>수량:</span> {req.quantity}</div>
-                <div><span style={{ fontWeight: '600' }}>Lot:</span> {req.lot_no || '-'}</div>
                 <div><span style={{ fontWeight: '600' }}>사유:</span> {req.reason || '-'}</div>
                 {req.approved_by && <div><span style={{ fontWeight: '600' }}>{req.status === 'rejected' ? '반려자' : '승인자'}:</span> {req.approved_by}</div>}
                 {req.review_note && <div><span style={{ fontWeight: '600' }}>반려 사유:</span> {req.review_note}</div>}
                 {req.disposed_at && <div><span style={{ fontWeight: '600' }}>폐기일:</span> {new Date(req.disposed_at).toLocaleDateString()}</div>}
               </div>
+              <BottleInfo lotId={req.lot_id} lot={bottles.get(req.lot_id)} fallbackLotNo={req.lot_no} label="폐기 대상 병 (1병)" />
               <div style={{ display: 'flex', gap: '8px' }}>
                 {(req.status === 'pending' || req.status === 'approved') && (<>
                   <button disabled={!session.authed || busy} onClick={() => approve(req)} style={{ ...btnPrimary, background: '#38A169', padding: '6px 14px', fontSize: '12px' }}>✓ 승인 (즉시 폐기 완료)</button>

@@ -69,13 +69,6 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
     return m
   }, [pendingMoves, pendingDisposals])
 
-  const lotInfoById = useMemo(() => {
-    const m = new Map()
-    for (const r of reagents) for (const lot of r._activeLots) {
-      m.set(lot.id, { reagentId: r.id, reagentName: r.name, fromLocationId: lot.location_id, lotNo: lot.lot_no })
-    }
-    return m
-  }, [reagents])
   // 이미 대기중인 Lot은 다시 신청 못 하게 선택 대상에서 뺌
   const selectableLotIds = useMemo(
     () => reagents.flatMap(r => r._activeLots.map(l => l.id)).filter(id => !pendingByLotId.has(id)),
@@ -122,19 +115,16 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
     } else {
       if (!student?.session_token) { alert('제출하려면 로그인이 필요해요.'); return }
       setBusy(true)
-      const toLoc = locations.find(l => l.id === moveLocation)
-      const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
+      const failed = []
+      let okN = 0
       for (const lotId of checkedLotIds) {
-        const info = lotInfoById.get(lotId)
-        if (!info) continue
-        // requested_by는 서버가 session_token으로 확정한다(client 입력 이름 무시).
-        await supabase.rpc('location_request_submit', {
-          p_session_token: student.session_token, p_reagent_id: info.reagentId, p_lot_id: lotId, p_reagent_name: info.reagentName,
-          p_from_location_id: info.fromLocationId, p_from_location_name: locationLabel(info.fromLocationId),
-          p_to_location_id: moveLocation, p_to_location_name: toLocName, p_notes: null,
+        // 병 1개(reagent_lots.id) = 신청 1건. 시약명/기존 위치는 서버가 병 행에서 확정한다.
+        const { error } = await supabase.rpc('location_request_submit', {
+          p_session_token: student.session_token, p_lot_id: lotId, p_to_location_id: moveLocation, p_notes: null,
         })
+        if (error) failed.push(error.message); else okN++
       }
-      alert(`위치 변경 신청이 완료되었습니다. (Lot ${checkedLotIds.size}개 · 관리자가 승인하면 반영돼요)`)
+      alert(failed.length === 0 ? `위치 변경 신청이 완료되었습니다. (${okN}병 · 관리자가 승인하면 반영돼요)` : `${okN}병 신청 완료, ${failed.length}병은 신청되지 않았습니다.\n${[...new Set(failed)].join('\n')}`)
     }
     setShowMoveModal(false); setMoveLocation(''); setBusy(false)
     fetchAll()
@@ -153,16 +143,16 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
     } else {
       if (!student?.session_token) { alert('제출하려면 로그인이 필요해요.'); return }
       setBusy(true)
+      const failed = []
+      let okN = 0
       for (const lotId of checkedLotIds) {
-        const info = lotInfoById.get(lotId)
-        if (!info) continue
-        // 신청자 신원은 서버가 session_token으로 확정한다.
-        await supabase.rpc('disposal_request_submit', {
-          p_session_token: student.session_token, p_reagent_id: info.reagentId, p_lot_id: lotId,
-          p_reagent_name: info.reagentName, p_lot_no: info.lotNo, p_quantity: '전체', p_reason: disposalReason,
+        // 병 1개(reagent_lots.id) = 신청 1건. 신청자/시약명/Lot 번호는 서버가 확정한다.
+        const { error } = await supabase.rpc('disposal_request_submit', {
+          p_session_token: student.session_token, p_lot_id: lotId, p_reason: disposalReason,
         })
+        if (error) failed.push(error.message); else okN++
       }
-      alert(`폐기 신청이 완료되었습니다. (Lot ${checkedLotIds.size}개 · 관리자가 승인하면 폐기가 완료돼요)`)
+      alert(failed.length === 0 ? `폐기 신청이 완료되었습니다. (${okN}병 · 관리자가 승인하면 폐기가 완료돼요)` : `${okN}병 신청 완료, ${failed.length}병은 신청되지 않았습니다.\n${[...new Set(failed)].join('\n')}`)
     }
     setShowDisposalModal(false); setDisposalReason(''); setBusy(false)
     fetchAll()

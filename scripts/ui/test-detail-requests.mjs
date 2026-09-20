@@ -56,7 +56,7 @@ async function newCtx(browser, { w, h, mobile, admin }) {
     }
     if (name === 'disposal_request_submit') {
       if (db.disposal_requests.some(x => x.lot_id === body.p_lot_id && x.status === 'pending')) return reply(r, { message: '이 Lot은 이미 폐기 신청이 접수되어 관리자 검토 대기 중입니다.' }, 400)
-      db.disposal_requests.push({ id: 'dr' + db.disposal_requests.length, reagent_id: RID, lot_id: body.p_lot_id, lot_no: body.p_lot_no, quantity: body.p_quantity, reason: body.p_reason, requested_by: '테스터', status: 'pending', created_at: now })
+      db.disposal_requests.push({ id: 'dr' + db.disposal_requests.length, reagent_id: RID, lot_id: body.p_lot_id, lot_no: body.p_lot_no, quantity: null, reason: body.p_reason, requested_by: '테스터', status: 'pending', created_at: now })
       return reply(r, { id: 'x' })
     }
     const table = name.startsWith('location') ? 'location_requests' : name.startsWith('reagent') ? 'reagent_change_requests' : 'disposal_requests'
@@ -113,13 +113,17 @@ for (const [w, h, mobile] of [[1440, 900, false], [320, 568, true], [360, 800, t
   await page.getByRole('button', { name: /^🗑️ 폐기 신청$/ }).click()
   const d2 = page.getByRole('dialog')
   const d2t = await d2.innerText()
-  ok(`${tag} disposal modal title/copy`, d2t.includes('폐기 신청') && d2t.includes('승인되면 폐기가 완료'))
+  ok(`${tag} disposal modal title/copy (병 1개 단위, 수량 입력 없음)`, d2t.includes('폐기 신청') && d2t.includes('이 병만 폐기 완료') && !d2t.includes('수량'), d2t.slice(0, 200))
   await d2.locator('textarea').fill('용기 파손')
   if (mobile) { const sb = d2.getByRole('button', { name: '폐기 신청하기' }); await sb.scrollIntoViewIfNeeded(); ok(`${tag} mobile: disposal modal fits & submit reachable`, (await inViewport(d2, page)) && (await inViewport(sb, page)) && await noOverflow(page)) }
   await d2.getByRole('button', { name: '폐기 신청하기' }).click()
   await page.getByText('폐기 신청이 완료되었습니다.').first().waitFor({ timeout: 8000 }).catch(() => {})
   ok(`${tag} disposal success message`, await page.getByText('폐기 신청이 완료되었습니다.').count() >= 1)
   ok(`${tag} disposal uses submit RPC; Lot still shown as 보유중 (신청 완료 ≠ 폐기 완료)`, rpcCalls.some(c => c.name === 'disposal_request_submit' && c.body.p_session_token === TOKEN) && (await page.getByText('보유중').count()) >= 1)
+  const dcall = rpcCalls.find(c => c.name === 'disposal_request_submit')
+  ok(`${tag} disposal RPC payload = {token, lot_id, reason} only (no quantity / reagent_id / lot_no from client)`, dcall && JSON.stringify(Object.keys(dcall.body).sort()) === JSON.stringify(['p_lot_id', 'p_reason', 'p_session_token']) && !!dcall.body.p_lot_id, dcall && Object.keys(dcall.body))
+  const lcall = rpcCalls.find(c => c.name === 'location_request_submit')
+  ok(`${tag} location RPC payload = {token, lot_id, to_location_id, notes} only`, lcall && JSON.stringify(Object.keys(lcall.body).sort()) === JSON.stringify(['p_lot_id', 'p_notes', 'p_session_token', 'p_to_location_id']) && !!lcall.body.p_lot_id, lcall && Object.keys(lcall.body))
   await page.waitForTimeout(600)
   ok(`${tag} disposal pending visible`, (await page.getByText('폐기 신청 완료 · 관리자 검토 대기').count()) >= 1)
 

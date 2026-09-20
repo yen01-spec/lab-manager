@@ -51,7 +51,7 @@ async function seed() {
   must(await service.from('locations').insert([{ id: LOC1, room: 'UNI-1', detail: 'A' }, { id: LOC2, room: 'UNI-2', detail: null }, { id: LOC3, room: 'UNI-3', detail: null }]), 'locs')
   must(await service.from('reagents').upsert({ id: RX, name: 'UNI-Reagent', company: 'OLD-CO', manager: 'OLD-MGR', notes: 'old notes', reagent_type: 'purchased', status: 'active' }), 'reagent')
   must(await service.from('reagent_lots').insert([
-    { id: L1, reagent_id: RX, lot_no: 'UNI-1', sealed_count: 2, current_stock: 60, location_id: LOC1, status: 'active' },
+    { id: L1, reagent_id: RX, lot_no: 'UNI-1', sealed_count: 1, current_stock: 60, location_id: LOC1, status: 'active' },
     { id: L2, reagent_id: RX, lot_no: 'UNI-2', sealed_count: 1, current_stock: 30, location_id: LOC1, status: 'active' },
     { id: L3, reagent_id: RX, lot_no: 'UNI-3', sealed_count: 1, current_stock: 80, location_id: LOC2, status: 'active' },
   ]), 'lots')
@@ -60,9 +60,9 @@ const lots = async () => JSON.stringify(must(await service.from('reagent_lots').
 const reagent = async () => JSON.stringify(must(await service.from('reagents').select('company,manager,notes,name').eq('id', RX).single(), 'rg'))
 const req = async (t, id) => must(await service.from(t).select('*').eq('id', id).single(), 'req')
 
-const submitLoc = (tok, lot, to, from = LOC1) => anon.rpc('location_request_submit', { p_session_token: tok, p_reagent_id: RX, p_lot_id: lot, p_reagent_name: 'UNI-Reagent', p_from_location_id: from, p_from_location_name: 'x', p_to_location_id: to, p_to_location_name: 'y', p_notes: null })
+const submitLoc = (tok, lot, to) => anon.rpc('location_request_submit', { p_session_token: tok, p_lot_id: lot, p_to_location_id: to, p_notes: null })
 const submitChg = (tok, field, val) => anon.rpc('reagent_change_request_submit', { p_session_token: tok, p_reagent_id: RX, p_field_name: field, p_old_value: 'old', p_new_value: val })
-const submitDisp = (tok, lot, qty = '1', reason = '파손') => anon.rpc('disposal_request_submit', { p_session_token: tok, p_reagent_id: RX, p_lot_id: lot, p_reagent_name: 'UNI-Reagent', p_lot_no: 'x', p_quantity: qty, p_reason: reason })
+const submitDisp = (tok, lot, reason = '파손') => anon.rpc('disposal_request_submit', { p_session_token: tok, p_lot_id: lot, p_reason: reason })
 
 await test('setup', async () => {
   const a = must(await service.auth.admin.createUser({ email: ADMIN_EMAIL, password: PW, email_confirm: true }), 'admin')
@@ -175,7 +175,7 @@ await test('INFO K: forbidden field in a request row => approval fails, rolled b
 let dispReq
 await test('DISPOSAL A/B/C: student submit -> pending, lot NOT disposed, pending survives reload/relogin', async () => {
   const before = await lots()
-  dispReq = must(await submitDisp(tokA, L1, '전체'), 'submit').id
+  dispReq = must(await submitDisp(tokA, L1), 'submit').id
   eq(await lots(), before, 'Lot 불변(신청 완료 ≠ 폐기 완료)')
   eq((await req('disposal_requests', dispReq)).status, 'pending', 'pending')
   const fresh = createClient(URL_, ANON, opts)
@@ -187,25 +187,25 @@ await test('DISPOSAL A/B/C: student submit -> pending, lot NOT disposed, pending
 await test('DISPOSAL dup rules: same lot pending blocked; other lot OK; empty reason / inactive lot blocked; concurrent -> 1', async () => {
   denied(await submitDisp(tokB, L1), 'dup same lot')
   must(await submitDisp(tokB, L2), 'other lot ok')
-  denied(await submitDisp(tokA, L3, '1', '   '), 'blank reason')
+  denied(await submitDisp(tokA, L3, '   '), 'blank reason')
   const rs = await Promise.all([1, 2, 3, 4].map(() => submitDisp(tokA, L3)))
   eq(rs.filter(x => !x.error).length, 1, '동시 4건 중 1건')
   await service.from('disposal_requests').delete().in('lot_id', [L2, L3])
 })
 await test('DISPOSAL D: admin approve = IMMEDIATE real disposal (status disposed, single step); E: reject => lot untouched + reason', async () => {
   const out = must(await adminC.rpc('disposal_request_review', { p_request_id: dispReq, p_action: 'approve' }), 'approve')
-  eq([out.status, out.disposal], ['disposed', 'full'], '승인=폐기 완료')
+  eq([out.status, out.lot_id], ['disposed', L1], '승인=폐기 완료(대상=요청의 lot_id 1행)')
   const l = JSON.parse(await lots()).find(x => x.id === L1)
   eq([l.status, l.sealed_count, l.current_stock], ['disposed', 0, 0], 'Lot 폐기')
   eq((await req('disposal_requests', dispReq)).status, 'disposed', '요청 상태')
   denied(await adminC.rpc('disposal_request_review', { p_request_id: dispReq, p_action: 'approve' }), 'double approve')
   denied(await adminC.rpc('disposal_request_review', { p_request_id: dispReq, p_action: 'complete' }), '별도 폐기 완료 액션 없음')
-  const r2 = must(await submitDisp(tokA, L3, '1', '사유'), 'submit L3')
+  const r2 = must(await submitDisp(tokA, L3, '사유'), 'submit L3')
   const before = await lots()
   must(await adminC.rpc('disposal_request_review', { p_request_id: r2.id, p_action: 'reject', p_reason: '아직 사용 중' }), 'reject')
   eq(await lots(), before, '반려는 Lot 변화 0')
   const rr = await req('disposal_requests', r2.id); eq([rr.status, rr.review_note], ['rejected', '아직 사용 중'], '반려 사유')
-  must(await submitDisp(tokA, L3, '1', '재신청'), '반려 후 재신청 가능')
+  must(await submitDisp(tokA, L3, '재신청'), '반려 후 재신청 가능')
   denied(await submitDisp(tokA, L1), '이미 폐기된 Lot 은 신청 불가')
   await service.from('disposal_requests').delete().eq('status', 'pending')
 })

@@ -89,7 +89,7 @@ export default function ReagentDetail() {
   const [inlineEdit, setInlineEdit] = useState(null)
 
   const [showDisposalModal, setShowDisposalModal] = useState(false)
-  const [disposalForm, setDisposalForm] = useState({ lot_id: '', quantity: '1', reason: '' })
+  const [disposalForm, setDisposalForm] = useState({ lot_id: '', reason: '' })
   const [showMoveModal, setShowMoveModal] = useState(false)
   const [moveForm, setMoveForm] = useState({ lot_id: '', to_location_id: '', notes: '' })
   const [showAddLotModal, setShowAddLotModal] = useState(false)
@@ -388,22 +388,19 @@ export default function ReagentDetail() {
       try { await adminDisposeLots([disposalForm.lot_id], disposalForm.reason) } catch (e) { alert(e.message); return }
       showNotice(REVIEW_RESULT.disposal.approve)
       setShowDisposalModal(false)
-      setDisposalForm({ lot_id: '', quantity: '1', reason: '' })
+      setDisposalForm({ lot_id: '', reason: '' })
       fetchAll()
       return
     }
     if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
     // requested_by/requested_by_student_id는 client가 보내지 않는다. 서버가 session_token으로 신원을 확정한다.
     const { error } = await supabase.rpc('disposal_request_submit', {
-      p_session_token: getSessionToken(),
-      p_reagent_id: id, p_lot_id: targetLot?.id || null,
-      p_reagent_name: reagent.name, p_lot_no: targetLot?.lot_no || null,
-      p_quantity: disposalForm.quantity, p_reason: disposalForm.reason,
+      p_session_token: getSessionToken(), p_lot_id: targetLot?.id || null, p_reason: disposalForm.reason,
     })
     if (error) { alert(error.message || '폐기 신청 중 오류가 발생했어요'); fetchPendingRequests(); return }
     showNotice(SUBMIT_SUCCESS.disposal)
     setShowDisposalModal(false)
-    setDisposalForm({ lot_id: '', quantity: '1', reason: '' })
+    setDisposalForm({ lot_id: '', reason: '' })
     fetchAll()
   }
 
@@ -446,9 +443,7 @@ export default function ReagentDetail() {
     } else {
       // Phase S-RLS3 Batch 1 — requested_by는 서버가 session_token으로 조회한 이름을 쓴다.
       const { error } = await supabase.rpc('location_request_submit', {
-        p_session_token: getSessionToken(), p_reagent_id: id, p_lot_id: moveForm.lot_id, p_reagent_name: reagent.name,
-        p_from_location_id: targetLot?.location_id || null, p_from_location_name: fromLocName,
-        p_to_location_id: moveForm.to_location_id, p_to_location_name: toLocName, p_notes: moveForm.notes,
+        p_session_token: getSessionToken(), p_lot_id: moveForm.lot_id, p_to_location_id: moveForm.to_location_id, p_notes: moveForm.notes,
       })
       if (error) { alert(error.message || '위치 변경 신청 중 오류가 발생했어요'); fetchPendingRequests(); return }
       showNotice(SUBMIT_SUCCESS.location)
@@ -517,7 +512,7 @@ export default function ReagentDetail() {
   const requestableForDisposal = isAdmin ? activeLots : activeLots.filter(l => !pendingDisposalByLot.has(l.id))
 
   function openDisposalModal() {
-    setDisposalForm({ lot_id: requestableForDisposal.length === 1 ? requestableForDisposal[0].id : '', quantity: '1', reason: '' })
+    setDisposalForm({ lot_id: requestableForDisposal.length === 1 ? requestableForDisposal[0].id : '', reason: '' })
     setShowDisposalModal(true)
   }
   function openMoveModal() {
@@ -903,7 +898,7 @@ export default function ReagentDetail() {
               <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {pendingDisposals.map(d => (
                   <div key={d.id}>
-                    <div style={{ fontSize: '12.5px', color: C.text, overflowWrap: 'anywhere' }}>{d.lot_no ? `Lot ${d.lot_no} · ` : ''}수량 {d.quantity || '-'} · 사유: {d.reason || '-'}</div>
+                    <div style={{ fontSize: '12.5px', color: C.text, overflowWrap: 'anywhere' }}>{d.lot_no ? `Lot ${d.lot_no} · ` : ''}폐기 대상 병 1개{d.lot_id ? ` (병 ID ${String(d.lot_id).slice(0, 8)})` : ''} · 사유: {d.reason || '-'}</div>
                     <div style={{ fontSize: '11px', color: C.muted }}>신청: {d.requested_by} · {new Date(d.created_at).toLocaleDateString()}{d.status === 'approved' ? ' · 이전 방식으로 승인됨(폐기 처리 대기)' : ''}</div>
                     {isAdmin && <ReviewButtons session={adminSession} busy={reviewBusy} approveLabel="승인 (즉시 폐기 완료)" onApprove={() => reviewRequest('disposal', d, 'approve')} onReject={() => reviewRequest('disposal', d, 'reject')} />}
                   </div>
@@ -966,11 +961,11 @@ export default function ReagentDetail() {
             <h3 style={{ margin: '0 0 4px', color: C.navy }}>🗑️ {isAdmin ? '폐기 처리' : '폐기 신청'}</h3>
             <p style={{ margin: '0 0 6px', color: C.muted, fontSize: '13px', overflowWrap: 'anywhere' }}>{reagent.name}</p>
             <p style={{ margin: '0 0 16px', color: '#8A5A16', background: '#FBF0DF', borderRadius: '8px', padding: '8px 10px', fontSize: '12px', lineHeight: 1.5 }}>
-              {isAdmin ? '확인하면 즉시 폐기 완료 처리됩니다(되돌릴 수 없어요).' : '신청하면 관리자가 검토합니다. 승인되면 폐기가 완료되고, 그 전에는 재고가 그대로예요.'}
+              {isAdmin ? '이 병 1개를 즉시 폐기 완료 처리합니다(되돌릴 수 없어요). 같은 시약의 다른 병은 그대로예요.' : '이 병 1개에 대한 폐기 신청입니다. 승인되면 이 병만 폐기 완료되고, 그 전에는 재고가 그대로예요.'}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {activeLots.length > 1 && (
-                <div><label style={labelStyle}>폐기할 Lot *</label>
+                <div><label style={labelStyle}>폐기 대상 병 *</label>
                   <select value={disposalForm.lot_id} onChange={e => setDisposalForm({ ...disposalForm, lot_id: e.target.value })} style={inputStyle}>
                     <option value="">선택하세요</option>
                     {activeLots.map(l => {
@@ -980,8 +975,6 @@ export default function ReagentDetail() {
                     })}
                   </select></div>
               )}
-              {!isAdmin && <div><label style={labelStyle}>수량</label>
-                <input value={disposalForm.quantity} onChange={e => setDisposalForm({ ...disposalForm, quantity: e.target.value })} style={inputStyle} /></div>}
               <div><label style={labelStyle}>폐기 사유 *</label>
                 <textarea value={disposalForm.reason} rows={3} onChange={e => setDisposalForm({ ...disposalForm, reason: e.target.value })} style={{ ...inputStyle, resize: 'vertical' }} /></div>
             </div>
@@ -992,7 +985,7 @@ export default function ReagentDetail() {
             )}
             <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
               <button onClick={() => setShowDisposalModal(false)} style={{ ...btnGhost, flex: 1 }}>취소</button>
-              <button onClick={submitDisposal} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.danger, color: '#fff', cursor: 'pointer', fontWeight: '700' }}>{isAdmin ? '폐기 처리' : '폐기 신청하기'}</button>
+              <button onClick={submitDisposal} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.danger, color: '#fff', cursor: 'pointer', fontWeight: '700' }}>{isAdmin ? '이 병 폐기 처리' : '1병 폐기 신청하기'}</button>
             </div>
           </div>
         </div>
@@ -1005,11 +998,11 @@ export default function ReagentDetail() {
             <h3 style={{ margin: '0 0 4px', color: C.navy }}>📍 {isAdmin ? '위치 변경' : '위치 변경 신청'}</h3>
             <p style={{ margin: '0 0 6px', color: C.muted, fontSize: '13px', overflowWrap: 'anywhere' }}>{reagent.name}</p>
             <p style={{ margin: '0 0 16px', color: '#8A5A16', background: '#FBF0DF', borderRadius: '8px', padding: '8px 10px', fontSize: '12px', lineHeight: 1.5 }}>
-              {isAdmin ? '확인하면 즉시 위치가 변경되고 이력이 기록됩니다.' : '신청하면 관리자가 검토합니다. 승인되면 위치가 변경되고, 그 전에는 기존 위치 그대로예요.'}
+              {isAdmin ? '이 병 1개의 위치가 즉시 변경되고 이력이 기록됩니다.' : '이 병 1개의 위치 변경 신청입니다. 승인되면 이 병만 이동하고, 그 전에는 기존 위치 그대로예요.'}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {activeLots.length > 1 && (
-                <div><label style={labelStyle}>위치를 바꿀 Lot *</label>
+                <div><label style={labelStyle}>위치를 바꿀 병 *</label>
                   <select value={moveForm.lot_id} onChange={e => setMoveForm({ ...moveForm, lot_id: e.target.value })} style={inputStyle}>
                     <option value="">선택하세요</option>
                     {activeLots.map(l => {

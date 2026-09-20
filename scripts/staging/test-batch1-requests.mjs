@@ -78,9 +78,7 @@ await test('reagent_change_request_submit: no token rejected', async () => {
 
 await test('location_request_submit: normal submission records real actor name (no student_id column on this table)', async () => {
   const { data, error } = await anon.rpc('location_request_submit', {
-    p_session_token: tokenB, p_reagent_id: REAGENT_ID, p_lot_id: null, p_reagent_name: 'TEST Batch1 Reagent',
-    p_from_location_id: null, p_from_location_name: '미지정', p_to_location_id: '10000000-0000-0000-0000-000000000001',
-    p_to_location_name: 'TEST-ROOM-A', p_notes: 'test move',
+    p_session_token: tokenB, p_lot_id: '40000000-0000-0000-0000-0000000000a1', p_to_location_id: '40000000-0000-0000-0000-0000000000b2', p_notes: 'test move',
   })
   if (error) throw new Error(error.message)
   assertEq(data.requested_by, 'TEST Student Two', 'requested_by')
@@ -89,8 +87,7 @@ await test('location_request_submit: normal submission records real actor name (
 
 await test('location_request_submit: missing target location rejected', async () => {
   const { error } = await anon.rpc('location_request_submit', {
-    p_session_token: tokenA, p_reagent_id: REAGENT_ID, p_lot_id: null, p_reagent_name: 'x',
-    p_from_location_id: null, p_from_location_name: null, p_to_location_id: null, p_to_location_name: null, p_notes: null,
+    p_session_token: tokenA, p_lot_id: '40000000-0000-0000-0000-0000000000a1', p_to_location_id: null, p_notes: null,
   })
   assertTrue(!!error, '목적지 위치 없는 요청이 차단되지 않음')
 })

@@ -76,8 +76,7 @@ await test('student_session_refresh rejects null token', async () => {
 
 await test('disposal_request_submit: rejects request with no token', async () => {
   const { error } = await anon.rpc('disposal_request_submit', {
-    p_session_token: 'bogus-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', p_reagent_id: null, p_lot_id: null,
-    p_reagent_name: 'TEST Reagent', p_lot_no: 'TEST-LOT', p_quantity: '1', p_reason: 'test',
+    p_session_token: 'bogus-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', p_lot_id: '40000000-0000-0000-0000-0000000000a1', p_reason: 'test',
   })
   assertTrue(!!error, '유효하지 않은 토큰인데 요청이 통과됨')
 })
@@ -86,8 +85,7 @@ await test('disposal_request_submit: identity comes from token, NOT from any cli
   // 이 RPC 시그니처 자체가 student_id를 파라미터로 안 받는다 -- 그게 핵심 방어.
   // tokenA(TEST-STU-0001)로 호출하면 반드시 TEST-STU-0001 이름으로 기록되어야 한다.
   const { data, error } = await anon.rpc('disposal_request_submit', {
-    p_session_token: tokenA, p_reagent_id: null, p_lot_id: null,
-    p_reagent_name: 'TEST Reagent', p_lot_no: 'TEST-LOT-1', p_quantity: '1', p_reason: 'test disposal',
+    p_session_token: tokenA, p_lot_id: '40000000-0000-0000-0000-0000000000a1', p_reason: 'test disposal',
   })
   if (error) throw new Error(error.message)
   assertEq(data.requested_by_student_id, 'TEST-STU-0001', 'requested_by_student_id가 토큰 소유자와 일치해야 함')
@@ -97,8 +95,7 @@ await test('disposal_request_submit: identity comes from token, NOT from any cli
 
 await test('disposal_request_submit: empty reason rejected', async () => {
   const { error } = await anon.rpc('disposal_request_submit', {
-    p_session_token: tokenA, p_reagent_id: null, p_lot_id: null,
-    p_reagent_name: 'TEST Reagent', p_lot_no: 'TEST-LOT-2', p_quantity: '1', p_reason: '   ',
+    p_session_token: tokenA, p_lot_id: '40000000-0000-0000-0000-0000000000a1', p_reason: '   ',
   })
   assertTrue(!!error, '빈 사유가 차단되지 않음')
 })
@@ -112,8 +109,7 @@ await test('student_logout revokes the token', async () => {
 
 await test('logged-out token cannot submit a disposal request', async () => {
   const { error } = await anon.rpc('disposal_request_submit', {
-    p_session_token: tokenB, p_reagent_id: null, p_lot_id: null,
-    p_reagent_name: 'TEST Reagent', p_lot_no: 'TEST-LOT-3', p_quantity: '1', p_reason: 'test',
+    p_session_token: tokenB, p_lot_id: '40000000-0000-0000-0000-0000000000a1', p_reason: 'test',
   })
   assertTrue(!!error, '로그아웃된 토큰으로 제출이 통과됨')
 })

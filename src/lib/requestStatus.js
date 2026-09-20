@@ -47,9 +47,9 @@ export function requestStatusColorFor(kind, status) {
 }
 
 export const DUPLICATE_PENDING_MESSAGE = {
-  location: '이 Lot은 이미 위치 변경 신청이 접수되어 관리자 검토 대기 중입니다.',
+  location: '이 병은 이미 위치 변경 신청이 접수되어 관리자 검토 대기 중입니다.',
   change: '이 항목은 이미 수정 신청이 접수되어 관리자 검토 대기 중입니다.',
-  disposal: '이 Lot은 이미 폐기 신청이 접수되어 관리자 검토 대기 중입니다.',
+  disposal: '이 병은 이미 폐기 신청이 접수되어 관리자 검토 대기 중입니다.',
 }
 
 // 최근 14일 안에 반려된 신청만, 최신순 상위 n개 — 반려 사유를 학생에게 잠깐 보여주기 위함(영구 표시 아님).

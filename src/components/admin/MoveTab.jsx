@@ -5,6 +5,8 @@ import { reviewLocationRequest } from '../../lib/adminReview'
 import { requestStatusLabel, requestStatusColorFor } from '../../lib/requestStatus'
 import { useAdminSession } from '../../hooks/useAdminSession'
 import AdminAuthBanner from './AdminAuthBanner'
+import BottleInfo from './BottleInfo'
+import { useBottleInfo } from '../../hooks/useBottleInfo'
 
 // ══════════════════════════════════════════════
 //  위치 이동 요청 처리 — 승인/반려만.
@@ -16,6 +18,7 @@ export default function MoveTab() {
   const [reqFilter, setReqFilter] = useState('pending')
   const session = useAdminSession()
   const [busy, setBusy] = useState(false)
+  const bottles = useBottleInfo(requests)
 
   useEffect(() => { fetchHistory(); fetchRequests() }, [])
 
@@ -44,7 +47,7 @@ export default function MoveTab() {
     setBusy(false)
     fetchRequests(); fetchHistory()
   }
-  const approveRequest = req => decide(req, 'approve', `"${req.reagent_name}" 위치 변경을 승인하시겠습니까?\n${req.from_location_name} → ${req.to_location_name}`)
+  const approveRequest = req => decide(req, 'approve', `"${req.reagent_name}" (Lot ${req.lot_no || '-'}) 병 1개의 위치 변경을 승인하시겠습니까?\n${req.from_location_name} → ${req.to_location_name}\n이 병만 이동하고 같은 시약/같은 Lot 번호의 다른 병은 그대로입니다.`)
   const rejectRequest = req => decide(req, 'reject', `"${req.reagent_name}" 위치 변경 신청을 반려하시겠습니까?`)
 
   const filteredReqs = reqFilter === 'all' ? requests : requests.filter(r => r.status === reqFilter)
@@ -82,14 +85,18 @@ export default function MoveTab() {
                 {req.from_location_name || '미지정'} → <strong style={{ color: '#276749' }}>{req.to_location_name}</strong>
                 {req.notes && <span style={{ marginLeft: '8px' }}>({req.notes})</span>}
               </div>
-              {req.status === 'pending' && (
+              {req.status === 'pending' && (<>
+                <BottleInfo lotId={req.lot_id} lot={bottles.get(req.lot_id)} label="이 병의 위치 변경 (1병)" />
+                {bottles.get(req.lot_id) && bottles.get(req.lot_id).location_id !== req.from_location_id && (
+                  <div style={{ fontSize: 12, color: '#B45F06', marginBottom: 8 }}>⚠ 신청 이후 이 병의 위치가 바뀌어 승인할 수 없습니다. 반려 후 다시 신청해주세요.</div>
+                )}
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button disabled={!session.authed || busy} onClick={() => approveRequest(req)}
                     style={{ ...btnPrimary, background: '#38A169', padding: '5px 14px', fontSize: '12px' }}>✓ 승인</button>
                   <button disabled={!session.authed || busy} onClick={() => rejectRequest(req)}
                     style={{ ...btnPrimary, background: C.danger, padding: '5px 14px', fontSize: '12px' }}>✗ 반려</button>
                 </div>
-              )}
+              </>)}
               {req.approved_by && <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px' }}>{req.status === 'rejected' ? '반려자' : '승인자'}: {req.approved_by}{req.review_note ? ` · 반려 사유: ${req.review_note}` : ''}</div>}
             </div>
           ))}
