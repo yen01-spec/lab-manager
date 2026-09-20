@@ -1,11 +1,10 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useOutletContext, useNavigate, useLocation, useNavigationType } from 'react-router-dom'
-import { supabase } from '../supabase'
+import { supabase, supabaseAdmin } from '../supabase'
 import { C, PageBanner } from '../design'
 import { exportReagents } from '../exportUtils'
 import { checkStudentLogin, writeSession } from '../lib/session'
 import { computeSortLetter } from '../lib/sortLetter'
-import { resolveLotNo } from '../lib/lotNo'
 import { groupReagentsByName } from '../lib/nameGroup'
 import { useReagentSearch } from '../hooks/useReagentSearch'
 import { useReagentListParams } from '../hooks/useReagentListParams'
@@ -215,18 +214,13 @@ export default function ReagentList() {
     if (!madeForm.name.trim()) { alert('시약명을 입력해주세요'); return }
     if (!madeForm.location_id) { alert('보관 위치를 선택해주세요'); return }
     if (!activeStudent) { setPendingRegisterTab('made'); setShowInlineLogin(true); return }
-    const { data: reagent, error } = await supabase.from('reagents').insert({
-      name: madeForm.name, volume: madeForm.volume || null, unit: madeForm.unit || null,
-      location_id: madeForm.location_id, reagent_type: 'self_made',
-      made_date: madeForm.made_date, made_purpose: madeForm.made_purpose,
-      registered_by: activeStudent.student_id, pending_confirm: true,
-      sort_letter: computeSortLetter(madeForm.name),
-    }).select().single()
-    if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
-    await supabase.from('reagent_lots').insert({
-      reagent_id: reagent.id, sealed_count: 0, current_stock: 100, received_date: madeForm.made_date,
-      pending_confirm: true,
+    // 서버 RPC가 등록자를 세션으로 확정하고 미확정(검토대기)으로 등록한다.
+    const { error } = await supabase.rpc('reagent_register', {
+      p_session_token: activeStudent.session_token, p_kind: 'self_made', p_reagent_id: null,
+      p_reagent: { name: madeForm.name, volume: madeForm.volume, unit: madeForm.unit, made_date: madeForm.made_date, made_purpose: madeForm.made_purpose, sort_letter: computeSortLetter(madeForm.name) },
+      p_lot: { location_id: madeForm.location_id },
     })
+    if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
     alert('직접 제조 시약이 등록됐어요! 관리자가 최종 확인하기 전까지는 목록에 "검토대기"로 표시돼요.')
     setShowRegisterModal(false)
     setMadeForm({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
@@ -262,25 +256,20 @@ export default function ReagentList() {
     if (!newReagentForm.name.trim()) { alert('시약명을 입력해주세요'); return }
     if (!newReagentForm.location_id) { alert('보관 위치를 선택해주세요'); return }
     if (!activeStudent) { setPendingRegisterTab('new'); setShowInlineLogin(true); return }
-    let reagentId = newReagentForm.reagent_id
-    if (!reagentId) {
-      const { data: reagent, error } = await supabase.from('reagents').insert({
-        name: newReagentForm.name, cas_no: newReagentForm.cas_no || null, company: newReagentForm.company || null,
-        category: newReagentForm.category || null, volume: newReagentForm.volume || null, unit: newReagentForm.unit || null,
-        registered_by: activeStudent.student_id, pending_confirm: true,
-        sort_letter: computeSortLetter(newReagentForm.name),
-      }).select().single()
-      if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
-      reagentId = reagent.id
-    }
-    const lot = await resolveLotNo({ lotNo: newReagentForm.lot_no, noLotReason: newReagentForm.noLotReason })
-    await supabase.from('reagent_lots').insert({
-      reagent_id: reagentId, location_id: newReagentForm.location_id,
-      lot_no: lot.lot_no, lot_source: lot.lot_source, cat_no: newReagentForm.cat_no || null,
-      sealed_count: Number(newReagentForm.sealed_count) || 0, current_stock: Number(newReagentForm.current_stock) || 0,
-      received_date: new Date().toISOString().split('T')[0], pending_confirm: true,
+    // 시약/Lot 생성 + 내부 관리번호(KNU-날짜-순번) 부여를 서버가 한 트랜잭션으로 처리한다.
+    const { data: reg, error } = await supabase.rpc('reagent_register', {
+      p_session_token: activeStudent.session_token, p_kind: 'purchased', p_reagent_id: newReagentForm.reagent_id,
+      p_reagent: newReagentForm.reagent_id ? null : {
+        name: newReagentForm.name, cas_no: newReagentForm.cas_no, company: newReagentForm.company, category: newReagentForm.category,
+        volume: newReagentForm.volume, unit: newReagentForm.unit, sort_letter: computeSortLetter(newReagentForm.name),
+      },
+      p_lot: {
+        location_id: newReagentForm.location_id, lot_no: newReagentForm.lot_no, no_lot_reason: newReagentForm.noLotReason || null,
+        cat_no: newReagentForm.cat_no, sealed_count: newReagentForm.sealed_count, current_stock: newReagentForm.current_stock,
+      },
     })
-    const genNote = lot.lot_source.startsWith('generated') ? `\n내부 관리번호: ${lot.lot_no}` : ''
+    if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
+    const genNote = reg.lot_source?.startsWith('generated') ? `\n내부 관리번호: ${reg.lot_no}` : ''
     alert((newReagentForm.reagent_id ? '기존 시약에 새 Lot이 등록됐어요! 관리자가 최종 확인하기 전까지는 "검토대기"로 표시돼요.' : '신규 시약이 등록됐어요! 관리자가 최종 확인하기 전까지는 목록에 "검토대기"로 표시돼요.') + genNote)
     setShowRegisterModal(false)
     setNewReagentForm({ name: '', cas_no: '', company: '', category: '', volume: '', unit: '', cat_no: '', lot_no: '', noLotReason: '', location_id: '', sealed_count: '1', current_stock: '100', reagent_id: null })
@@ -333,10 +322,10 @@ export default function ReagentList() {
   // 최종 확인 처리 — "검토대기" 배지 클릭으로 호출됨.
   const confirmPending = useCallback(async (r) => {
     if (!window.confirm(`"${r.name}"의 등록 내용을 최종 확인 처리할까요?\n확인 후엔 "검토대기" 표시가 사라집니다.`)) return
-    await supabase.from('reagents').update({ pending_confirm: false }).eq('id', r.id)
+    await supabaseAdmin.from('reagents').update({ pending_confirm: false }).eq('id', r.id)
     const pendingLotIds = (r.reagent_lots || []).filter(l => l.pending_confirm).map(l => l.id)
     if (pendingLotIds.length > 0) {
-      await supabase.from('reagent_lots').update({ pending_confirm: false }).in('id', pendingLotIds)
+      await supabaseAdmin.from('reagent_lots').update({ pending_confirm: false }).in('id', pendingLotIds)
     }
     fetchResultsRef.current()
   }, [])
@@ -355,14 +344,8 @@ export default function ReagentList() {
     const lotId = inlineEdit.lotId
     const numVal = Number(value)
     if (isNaN(numVal)) { alert('숫자를 입력해주세요'); return }
-    await supabase.from('reagent_lots').update({ [field]: numVal, needs_review: false }).eq('id', lotId)
-    await supabase.from('stock_logs').insert({
-      target_type: 'reagent', lot_id: lotId, user_name: student?.name || '',
-      before_sealed: lot.sealed_count,
-      after_sealed: field === 'sealed_count' ? numVal : lot.sealed_count,
-      before_stock: lot.current_stock,
-      after_stock: field === 'current_stock' ? numVal : lot.current_stock,
-    })
+    const { error } = await supabaseAdmin.rpc('admin_lot_update', { p_lot_id: lotId, p_fields: { [field]: numVal } })
+    if (error) { alert(error.message); return }
     setInlineEdit(null)
     const fresh = await fetchResults()
     if (advance && fresh) {

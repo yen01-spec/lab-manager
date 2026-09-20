@@ -1,6 +1,18 @@
 -- STAGING TEST ONLY
 -- NEVER APPLY TO PRODUCTION
 -- NOT A PRODUCTION MIGRATION
+drop function if exists public.admin_lot_move(uuid, uuid, text);
+drop function if exists public.admin_lot_set_status(uuid, text);
+drop function if exists public.admin_lot_update(uuid, jsonb);
+drop function if exists public.reagent_enrich(uuid, jsonb);
+drop function if exists public.reagent_confirm(text, uuid);
+drop function if exists public.lot_add(text, uuid, jsonb);
+drop function if exists public.reagent_register(text, text, uuid, jsonb, jsonb);
+drop function if exists public._resolve_lot_no(jsonb);
+drop function if exists public.admin_next_internal_lot_nos(int);
+drop function if exists public._next_internal_lot_nos(int);
+drop index if exists public.reagent_lots_generated_lot_no_key;
+drop table if exists public.internal_lot_counters;
 drop function if exists public.inventory_session_finalize(bigint);
 drop function if exists public.inventory_session_transition(bigint, text);
 drop function if exists public.inventory_session_start(int, date, text, text, text[], uuid[]);

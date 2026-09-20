@@ -11,9 +11,9 @@
 -- 방식(테이블 단위로 "기존 정책 전부 삭제 → 필요한 권한/정책만 재생성"):
 --   public_read_admin_write : 읽기는 공개, 쓰기는 Supabase Auth 관리자(public.is_admin())만.
 --   admin_only              : 읽기/쓰기 모두 관리자만.
---   open_rw                 : (보류) 학생 세션 흐름이 아직 base table을 직접 쓰는 테이블(reagents/reagent_lots/
---                             stock_logs/location_history/hazard_ledger_notes) — 실제로 쓰는 연산만 남긴다.
---                             재고실사 테이블(inventory_*)은 20260920120000 의 RPC 로만 쓴다(직접 쓰기 없음).
+--   open_rw                 : hazard_ledger_notes 만 — 로그인 없이 누구나 편집하던 문서 준비 메모(업무 결정 대기).
+--   RPC 전용(직접 쓰기 없음)  : inventory_*(20260920120000), stock_logs/location_history(서버 생성 감사기록,
+--                             20260920130000) — 클라이언트 롤은 SELECT 만.
 --   구매요청/조회수: 별도 RPC. 그 외 특수 테이블은 개별 처리.
 -- production에 없는 테이블은 to_regclass 로 건너뛴다(같은 파일이 staging fixture/production 모두에서 동작).
 -- ════════════════════════════════════════════════════════════════════════
@@ -44,10 +44,10 @@ declare
     {"t":"purchase_request_goods_items","mode":"public_read_admin_write","ops":[]},
     {"t":"admin_logs","mode":"admin_only","ops":["insert"]},
     {"t":"reagent_import_history","mode":"admin_only","ops":["insert","update","delete"]},
-    {"t":"reagents","mode":"open_rw","ops":["insert","update","delete"]},
-    {"t":"reagent_lots","mode":"open_rw","ops":["insert","update","delete"]},
-    {"t":"stock_logs","mode":"open_rw","ops":["insert"]},
-    {"t":"location_history","mode":"open_rw","ops":["insert"]},
+    {"t":"reagents","mode":"public_read_admin_write","ops":["insert","update"]},
+    {"t":"reagent_lots","mode":"public_read_admin_write","ops":["insert","update"]},
+    {"t":"stock_logs","mode":"public_read_admin_write","ops":[]},
+    {"t":"location_history","mode":"public_read_admin_write","ops":[]},
     {"t":"inventory_sessions","mode":"public_read_admin_write","ops":[]},
     {"t":"inventory_counts","mode":"public_read_admin_write","ops":[]},
     {"t":"inventory_assignments","mode":"public_read_admin_write","ops":[]},

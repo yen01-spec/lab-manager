@@ -1,4 +1,4 @@
-import { supabase } from '../supabase'
+import { supabaseAdmin } from '../supabase'
 
 // ── 제조사 Lot No. / 내부 관리번호 ────────────────────────────────
 // 원칙(수정방안 §12~15):
@@ -7,43 +7,31 @@ import { supabase } from '../supabase'
 //    KNU-YYYYMMDD-NNN (등록일 + 당일 순번) 형식으로 자동 부여한다.
 //  - 그냥 입력 안 한 것(단순 누락)과 "정보 부재"를 구분하기 위해 lot_source에 기록한다.
 //    lot_source: 'manufacturer' | 'generated:unmarked' | 'generated:unknown' | 'unspecified'
+//
+// 번호 생성은 서버(admin_next_internal_lot_nos RPC — 원자 카운터 + 유일 인덱스)가 전담한다. 예전엔 클라이언트가
+// "오늘자 최대 순번+1"을 계산해서 동시에 등록하면 같은 번호가 나올 수 있었다. 이 파일의 생성 함수는 관리자
+// 화면(시약 1건 추가/Excel 일괄 추가)용이고, 학생 화면은 각 등록 RPC가 서버 안에서 번호를 직접 부여한다.
 
 export const NO_LOT_REASONS = [
   { key: 'unmarked', label: '제품에 Lot No. 표기 없음' },
   { key: 'unknown', label: '확인 불가 (라벨 훼손 등)' },
 ]
 
-const INSTITUTION_CODE = 'KNU'
-
+// 화면 안내문용(실제 번호는 서버가 부여). 서버와 같은 한국시간 날짜 기준.
 export function internalLotPrefix(d = new Date()) {
-  const code = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
-  return `${INSTITUTION_CODE}-${code}-`
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d).replaceAll('-', '')
+  return `KNU-${day}-`
 }
 
-// 오늘자 KNU-YYYYMMDD-NNN 중 가장 큰 순번 +1. (연구실 1곳·저동시성이라 클라이언트 계산으로 충분)
-export async function generateInternalLotNo() {
-  const prefix = internalLotPrefix()
-  const { data } = await supabase.from('reagent_lots').select('lot_no').ilike('lot_no', `${prefix}%`)
-  let maxN = 0
-  for (const r of data || []) {
-    const m = (r.lot_no || '').match(/-(\d{3,})$/)
-    if (m) maxN = Math.max(maxN, parseInt(m[1], 10))
-  }
-  return `${prefix}${String(maxN + 1).padStart(3, '0')}`
-}
-
-// Excel 일괄 등록처럼 한 번에 여러 개가 필요할 때 — DB를 한 번만 조회하고
-// 로컬에서 순번을 이어붙인다(각 행마다 조회하면 같은 번호가 중복됨).
 export async function generateInternalLotNos(count) {
   if (count <= 0) return []
-  const prefix = internalLotPrefix()
-  const { data } = await supabase.from('reagent_lots').select('lot_no').ilike('lot_no', `${prefix}%`)
-  let maxN = 0
-  for (const r of data || []) {
-    const m = (r.lot_no || '').match(/-(\d{3,})$/)
-    if (m) maxN = Math.max(maxN, parseInt(m[1], 10))
-  }
-  return Array.from({ length: count }, (_, i) => `${prefix}${String(maxN + 1 + i).padStart(3, '0')}`)
+  const { data, error } = await supabaseAdmin.rpc('admin_next_internal_lot_nos', { p_count: count })
+  if (error) throw new Error(error.message || '내부 관리번호 생성에 실패했습니다.')
+  return data
+}
+
+export async function generateInternalLotNo() {
+  return (await generateInternalLotNos(1))[0]
 }
 
 // 폼 상태({ lotNo, noLotReason }) → reagent_lots에 저장할 { lot_no, lot_source }

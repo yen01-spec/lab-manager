@@ -44,9 +44,9 @@ const M = [
   { t: 'purchase_request_logs', mode: 'pub_admin', ops: [] },
   { t: 'admin_logs', mode: 'admin_only', ops: ['insert'] },
   { t: 'reagent_import_history', mode: 'admin_only', ops: ADM },
-  { t: 'reagents', mode: 'open', ops: ['insert', 'update', 'delete'] },
-  { t: 'stock_logs', mode: 'open', ops: ['insert'] },
-  { t: 'location_history', mode: 'open', ops: ['insert'] },
+  { t: 'reagents', mode: 'pub_admin', ops: ['insert', 'update'] },
+  { t: 'stock_logs', mode: 'pub_admin', ops: [] },
+  { t: 'location_history', mode: 'pub_admin', ops: [] },
   { t: 'inventory_sessions', mode: 'pub_admin', ops: [] },
   { t: 'hazard_ledger_notes', mode: 'open', ops: ['insert', 'update'] },
 ]

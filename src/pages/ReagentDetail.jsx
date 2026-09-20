@@ -8,7 +8,6 @@ import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../
 import CompanyPicker from '../components/CompanyPicker'
 import { getHazardCategory } from '../lib/hazardCategory'
 import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
-import { resolveLotNo } from '../lib/lotNo'
 import LotNoInput from '../components/reagents/LotNoInput'
 import { getSessionToken } from '../lib/session'
 
@@ -139,7 +138,7 @@ export default function ReagentDetail() {
               const foundCas = syns.find(s => /^\d{2,7}-\d{2}-\d$/.test(s))
               if (foundCas) {
                 casForLookup = foundCas
-                await supabase.from('reagents').update({ cas_no: foundCas, cas_source: 'auto_ghs' }).eq('id', id)
+                await supabase.rpc('reagent_enrich', { p_reagent_id: id, p_fields: { cas_no: foundCas, cas_source: 'auto_ghs' } })
                 setReagent(prev => ({ ...prev, cas_no: foundCas, cas_source: 'auto_ghs' }))
               }
             }
@@ -183,7 +182,7 @@ export default function ReagentDetail() {
             if (!data.hazard_classifications && classifications.length > 0) dbUpdate.hazard_classifications = classifications
             if (!data.is_yudok && isYudok) dbUpdate.is_yudok = isYudok
             if (Object.keys(dbUpdate).length > 0) {
-              await supabase.from('reagents').update(dbUpdate).eq('id', id)
+              await supabase.rpc('reagent_enrich', { p_reagent_id: id, p_fields: dbUpdate })
               setReagent(prev => ({ ...prev, ...dbUpdate }))
             }
           }
@@ -263,7 +262,7 @@ export default function ReagentDetail() {
     if (isAdmin) {
       const updateData = { [field]: value }
       if (sourceField) updateData[sourceField] = 'manual'
-      await supabase.from('reagents').update(updateData).eq('id', id)
+      await supabaseAdmin.from('reagents').update(updateData).eq('id', id)
       setReagent(prev => ({ ...prev, [field]: value, ...(sourceField ? { [sourceField]: 'manual' } : {}) }))
     } else {
       if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
@@ -288,7 +287,7 @@ export default function ReagentDetail() {
       return
     }
     if (!window.confirm(`"${reagent.name}"을(를) 시약 마스터 목록에서 삭제할까요?\n(데이터는 삭제되지 않고 보관 처리되어 이력은 유지되지만, 목록에는 더 이상 표시되지 않습니다.)`)) return
-    await supabase.from('reagents').update({ status: 'archived' }).eq('id', id)
+    await supabaseAdmin.from('reagents').update({ status: 'archived' }).eq('id', id)
     await supabaseAdmin.from('admin_logs').insert({
       admin_name: student?.name || '관리자', action: '시약 종류 삭제',
       target_type: 'reagent',
@@ -299,9 +298,9 @@ export default function ReagentDetail() {
 
   async function confirmReagent() {
     if (!student) { alert('로그인 후 이용해주세요'); return }
-    const now = new Date().toISOString()
-    await supabase.from('reagents').update({ last_confirmed_at: now, confirmed_by: student.student_id }).eq('id', id)
-    setReagent(prev => ({ ...prev, last_confirmed_at: now, confirmed_by: student.student_id }))
+    const { data, error } = await supabase.rpc('reagent_confirm', { p_session_token: getSessionToken(), p_reagent_id: id })
+    if (error) { alert(error.message || '확인 처리 중 오류가 발생했어요'); return }
+    setReagent(prev => ({ ...prev, last_confirmed_at: data.last_confirmed_at, confirmed_by: data.confirmed_by }))
     setConfirmedByName(student.name)
   }
 
@@ -314,7 +313,7 @@ export default function ReagentDetail() {
     const { error } = await supabaseAdmin.storage.from('documents').upload(path, file)
     if (error) { alert('업로드 중 오류가 발생했습니다: ' + error.message); setUploadingMsds(false); return }
     const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path)
-    await supabase.from('reagents').update({ msds_url: urlData.publicUrl, msds_source: 'manual' }).eq('id', id)
+    await supabaseAdmin.from('reagents').update({ msds_url: urlData.publicUrl, msds_source: 'manual' }).eq('id', id)
     setReagent(prev => ({ ...prev, msds_url: urlData.publicUrl, msds_source: 'manual' }))
     setUploadingMsds(false)
   }
@@ -325,19 +324,13 @@ export default function ReagentDetail() {
     setInlineEdit({ lotId, field, value: currentValue })
   }
 
-  async function saveInlineEdit(lot) {
+  async function saveInlineEdit() {
     if (!inlineEdit) return
     const { lotId, field, value } = inlineEdit
     const numVal = Number(value)
     if (isNaN(numVal)) { alert('숫자를 입력해주세요'); return }
-    await supabase.from('reagent_lots').update({ [field]: numVal }).eq('id', lotId)
-    await supabase.from('stock_logs').insert({
-      target_type: 'reagent', lot_id: lotId, user_name: student?.name || '',
-      before_sealed: lot.sealed_count,
-      after_sealed: field === 'sealed_count' ? numVal : lot.sealed_count,
-      before_stock: lot.current_stock,
-      after_stock: field === 'current_stock' ? numVal : lot.current_stock,
-    })
+    const { error } = await supabaseAdmin.rpc('admin_lot_update', { p_lot_id: lotId, p_fields: { [field]: numVal } })
+    if (error) { alert(error.message); return }
     setInlineEdit(null)
     fetchAll()
   }
@@ -374,7 +367,7 @@ export default function ReagentDetail() {
   async function submitMove() {
     if (!moveForm.lot_id) { alert('이동할 Lot을 선택해주세요'); return }
     if (!moveForm.to_location_id) { alert('이동할 위치를 선택해주세요'); return }
-    if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
+    if (!isAdmin && !student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
     const targetLot = lots.find(l => l.id === moveForm.lot_id)
     if (targetLot?.location_id === moveForm.to_location_id) { alert('현재 위치와 같습니다'); return }
     const fromLoc = locations.find(l => l.id === targetLot?.location_id)
@@ -382,13 +375,8 @@ export default function ReagentDetail() {
     const fromLocName = fromLoc ? `${fromLoc.room}${fromLoc.detail ? ' - ' + fromLoc.detail : ''}` : '미지정'
     const toLocName = toLoc ? `${toLoc.room}${toLoc.detail ? ' - ' + toLoc.detail : ''}` : ''
     if (isAdmin) {
-      await supabase.from('reagent_lots').update({ location_id: moveForm.to_location_id }).eq('id', moveForm.lot_id)
-      await supabase.from('location_history').insert({
-        reagent_id: id, lot_id: moveForm.lot_id, reagent_name: reagent.name,
-        from_location_id: targetLot?.location_id || null, from_location_name: fromLocName,
-        to_location_id: moveForm.to_location_id, to_location_name: toLocName,
-        moved_by: student.name, notes: moveForm.notes,
-      })
+      const { error } = await supabaseAdmin.rpc('admin_lot_move', { p_lot_id: moveForm.lot_id, p_to_location_id: moveForm.to_location_id, p_notes: moveForm.notes || null })
+      if (error) { alert(error.message); return }
       alert(`✅ 위치 이동 완료!\n${fromLocName} → ${toLocName}`)
       setShowMoveModal(false)
       fetchAll()
@@ -409,18 +397,15 @@ export default function ReagentDetail() {
   async function submitAddLot() {
     if (!addLotForm.location_id) { alert('보관 위치를 선택해주세요'); return }
     if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
-    const lot = await resolveLotNo({ lotNo: addLotForm.lot_no, noLotReason: addLotForm.noLotReason })
-    const { data: newLot } = await supabase.from('reagent_lots').insert({
-      reagent_id: id, lot_no: lot.lot_no, lot_source: lot.lot_source, cat_no: addLotForm.cat_no || null,
-      sealed_count: Number(addLotForm.sealed_count) || 0, current_stock: Number(addLotForm.current_stock) || 0,
-      location_id: addLotForm.location_id, received_date: addLotForm.received_date || null,
-      expiry_date: addLotForm.expiry_date || null, status: 'active',
-    }).select().single()
-    await supabase.from('stock_logs').insert({
-      target_type: 'reagent', lot_id: newLot?.id || null, user_name: student.name,
-      before_sealed: 0, after_sealed: Number(addLotForm.sealed_count) || 0,
-      before_stock: 0, after_stock: Number(addLotForm.current_stock) || 0,
+    // 내부 관리번호(KNU-날짜-순번)는 서버가 원자적으로 부여하고, 최초 재고 이력도 서버가 기록한다.
+    const { data: lot, error } = await supabase.rpc('lot_add', {
+      p_session_token: getSessionToken(), p_reagent_id: id,
+      p_lot: {
+        location_id: addLotForm.location_id, lot_no: addLotForm.lot_no, no_lot_reason: addLotForm.noLotReason || null, cat_no: addLotForm.cat_no,
+        sealed_count: addLotForm.sealed_count, current_stock: addLotForm.current_stock, received_date: addLotForm.received_date, expiry_date: addLotForm.expiry_date,
+      },
     })
+    if (error) { alert(error.message || 'Lot 등록 중 오류가 발생했어요'); return }
     alert('새 Lot이 등록됐어요!' + (lot.lot_source.startsWith('generated') ? `\n내부 관리번호: ${lot.lot_no}` : ''))
     setShowAddLotModal(false)
     setAddLotForm({ lot_no: '', noLotReason: '', cat_no: '', sealed_count: '1', current_stock: '100', location_id: '', received_date: new Date().toISOString().split('T')[0], expiry_date: '' })
@@ -431,11 +416,8 @@ export default function ReagentDetail() {
     if (!isAdmin) return
     const label = { used_up: '사용완료', missing: '분실' }[status] || status
     if (!window.confirm(`Lot ${lot.lot_no || '(번호없음)'}을(를) "${label}"(으)로 표시할까요?`)) return
-    await supabase.from('reagent_lots').update({ status, sealed_count: 0, current_stock: 0, needs_review: false }).eq('id', lot.id)
-    await supabase.from('stock_logs').insert({
-      target_type: 'reagent', lot_id: lot.id, user_name: student?.name || '',
-      before_sealed: lot.sealed_count, after_sealed: 0, before_stock: lot.current_stock, after_stock: 0,
-    })
+    const { error } = await supabaseAdmin.rpc('admin_lot_set_status', { p_lot_id: lot.id, p_status: status })
+    if (error) { alert(error.message); return }
     fetchAll()
   }
 

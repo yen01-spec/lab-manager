@@ -8,6 +8,13 @@
 alter table reagents add column if not exists pending_confirm boolean not null default false;
 alter table reagents add column if not exists registered_by text;
 alter table reagents add column if not exists sort_letter text;
+alter table reagents add column if not exists location_id uuid references locations(id);
+alter table reagents add column if not exists made_date date;
+alter table reagents add column if not exists made_purpose text;
+alter table reagents add column if not exists hazard_source text;
+alter table reagents add column if not exists ghs_pictograms text;
+alter table reagents add column if not exists hazard_classifications jsonb;
+alter table reagents add column if not exists is_yudok text;
 alter table reagent_lots add column if not exists pending_confirm boolean not null default false;
 
 create table if not exists inventory_sessions (
