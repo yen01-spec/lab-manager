@@ -11,6 +11,7 @@ import ReagentAddTab from '../components/admin/ReagentAddTab'
 import BulkAddTab from '../components/admin/BulkAddTab'
 import BulkUpdateTab from '../components/admin/BulkUpdateTab'
 import InventorySnapshotSyncTab from '../components/admin/InventorySnapshotSyncTab'
+import RelocationTab from '../components/admin/RelocationTab'
 import LogTab from '../components/admin/LogTab'
 import SettingsTab from '../components/admin/SettingsTab'
 
@@ -25,6 +26,7 @@ const TABS = [
   { key: 'data-bulk-add', label: 'Excel 일괄 추가', icon: '📥' },
   { key: 'data-bulk', label: '정보 일괄갱신', icon: '🔄' },
   { key: 'data-inventory-sync', label: '현재 재고 동기화', icon: '🔁' },
+  { key: 'data-relocation', label: '시약장 재배치 작업표', icon: '🗄️' },
   { key: 'log', label: '작업 기록', icon: '📋', section: '기타' },
   { key: 'settings', label: '설정', icon: '⚙️' },
 ]
@@ -112,6 +114,7 @@ export default function Admin() {
           {tab === 'data-bulk-add' && <BulkAddTab locations={locations} student={student} />}
           {tab === 'data-bulk' && <BulkUpdateTab />}
           {tab === 'data-inventory-sync' && <InventorySnapshotSyncTab />}
+          {tab === 'data-relocation' && <RelocationTab />}
           {tab === 'log' && <LogTab />}
           {tab === 'settings' && <SettingsTab />}
         </div>
