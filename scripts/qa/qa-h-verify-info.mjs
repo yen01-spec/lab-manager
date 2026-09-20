@@ -1,0 +1,11 @@
+import { browserLaunch, session, ok, summary, studentLogin, waitList, BASE } from './lib.mjs'
+const browser = await browserLaunch(false)
+const S = await session(browser, { w: 1440, h: 900 })
+await S.page.goto(BASE + '/', { waitUntil: 'domcontentloaded' }); await studentLogin(S.page)
+await S.page.goto(`${BASE}/reagents/list?q=QA-FINAL%20Info`, { waitUntil: 'domcontentloaded' }); await waitList(S.page)
+const p = await S.page.evaluate(() => { const e = [...document.querySelectorAll('tbody tr[title^="클릭"] td:nth-child(2)')].find(x => { const r = x.getBoundingClientRect(); return r.top > 150 && r.bottom < innerHeight - 20 }); const r = e.getBoundingClientRect(); return { x: r.left + 60, y: r.top + r.height / 2 } })
+await S.page.mouse.click(p.x, p.y); await S.page.waitForURL(/\/reagents\/[0-9a-f-]{36}/); await S.page.getByRole('button', { name: '시약 목록으로 돌아가기' }).waitFor({ timeout: 20000 }); await S.page.waitForTimeout(1500)
+const t = await S.page.locator('main').innerText()
+const where = t.indexOf('검토 대기')
+ok('STEP11 after approval: master shows 95% + 큐에이 정보 승인됨 and NO pending-request marker ("시약정보 수정 신청 완료 · 관리자 검토 대기" / 요청 대기 card)', t.includes('95%') && t.includes('큐에이 정보 승인됨') && !t.includes('시약정보 수정 신청 완료') && !t.includes('수정 요청 대기') && !t.includes('수정 신청 완료'), where >= 0 ? t.slice(where - 60, where + 20).replace(/\n/g, ' | ') : 'no 검토 대기 text')
+await S.ctx.close(); await browser.close(); summary()

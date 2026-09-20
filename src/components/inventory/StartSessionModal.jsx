@@ -11,12 +11,12 @@ export default function StartSessionModal({
       <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '28px', width: '380px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(26,42,94,0.25)' }}>
         <h3 style={{ marginTop: 0, color: C.navy }}>🚀 실사 시작</h3>
         <div style={{ marginBottom: '14px' }}>
-          <label style={labelStyle}>연도</label>
-          <input type="number" value={startForm.year} onChange={e => setStartForm({ ...startForm, year: Number(e.target.value) })} style={inputStyle} />
+          <label htmlFor="inv-start-year" style={labelStyle}>연도</label>
+          <input id="inv-start-year" type="number" value={startForm.year} onChange={e => setStartForm({ ...startForm, year: Number(e.target.value) })} style={inputStyle} />
         </div>
         <div style={{ marginBottom: '14px' }}>
-          <label style={labelStyle}>라벨 (선택)</label>
-          <input value={startForm.label || ''} onChange={e => setStartForm({ ...startForm, label: e.target.value })} placeholder="예: 1학기, 여름방학, 3층 점검" style={inputStyle} />
+          <label htmlFor="inv-start-label" style={labelStyle}>라벨 (선택)</label>
+          <input id="inv-start-label" value={startForm.label || ''} onChange={e => setStartForm({ ...startForm, label: e.target.value })} placeholder="예: 1학기, 여름방학, 3층 점검" style={inputStyle} />
         </div>
         <div style={{ marginBottom: '14px' }}>
           <label style={labelStyle}>시작일 *</label>

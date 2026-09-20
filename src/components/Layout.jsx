@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useFCM } from '../hooks/useFCM'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { C, Icon } from '../design'
@@ -25,6 +25,9 @@ const BOTTOM_NAV = NAV_ITEMS
 export default function Layout() {
   const [session, setSession] = useState(() => readSession())
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const hamRef = useRef(null)
+  // Esc/×/배경 클릭으로 닫을 때만 햄버거로 포커스를 돌려준다(로그인 모달을 여는 닫기는 모달이 포커스를 가져간다).
+  const closeDrawerToButton = () => { setDrawerOpen(false); setTimeout(() => hamRef.current?.focus(), 0) }
   const [loginOpen, setLoginOpen] = useState(false)
   const [adminLoginOpen, setAdminLoginOpen] = useState(false)
   const adminSession = useAdminSessionState()
@@ -69,7 +72,7 @@ export default function Layout() {
         {/* 왼쪽: 햄버거(모바일) + 로고 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {isMobile && (
-            <button onClick={() => setDrawerOpen(true)} aria-label="메뉴 열기" style={{
+            <button ref={hamRef} onClick={() => setDrawerOpen(true)} aria-label="메뉴 열기" aria-expanded={drawerOpen} style={{
               background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)',
               cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center',
             }}>
@@ -149,7 +152,7 @@ export default function Layout() {
         {isMobile && drawerOpen && (
           <Drawer
             items={navItems} isAdmin={isAdmin} session={session} adminEmail={adminSession.email}
-            onClose={() => setDrawerOpen(false)}
+            onClose={closeDrawerToButton}
             onLogin={() => setLoginOpen(true)}
             onAdminLogin={() => { setDrawerOpen(false); setAdminLoginOpen(true) }}
             onAdminLogout={handleAdminLogout}
@@ -219,7 +222,7 @@ function NavItem({ to, label, icon, end, location, compact = false }) {
           borderLeft: active ? `3px solid ${C.blue}` : '3px solid transparent',
           cursor: 'pointer',
         }}>
-          <Icon name={icon} size={21} color={active ? C.blue : '#5F6B7A'} />
+          <Icon name={icon} size={21} color={active ? C.blueDark : '#5F6B7A'} />
           <span style={{ fontSize: 9, color: active ? C.blueDark : '#5F6B7A', fontWeight: active ? 700 : 400, textAlign: 'center' }}>
             {label.length > 4 ? label.slice(0, 4) : label}
           </span>
@@ -235,7 +238,7 @@ function NavItem({ to, label, icon, end, location, compact = false }) {
           onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#F0F4FD' }}
           onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
         >
-          <Icon name={icon} size={20} color={active ? C.blue : '#5F6B7A'} />
+          <Icon name={icon} size={20} color={active ? C.blueDark : '#5F6B7A'} />
           <span style={{ fontSize: 13.5, fontWeight: active ? 600 : 500, color: active ? C.blueDark : '#586173' }}>
             {label}
           </span>
@@ -294,12 +297,29 @@ function SidebarMini({ items, isAdmin, location }) {
 }
 
 function Drawer({ items, isAdmin, session, adminEmail, onClose, onLogin, onAdminLogin, onAdminLogout, onLogout, location }) {
+  const panelRef = useRef(null)
+  // 모바일 메뉴 = 모달 대화상자: 열리면 키보드 포커스를 안으로, 뒤 화면 스크롤 잠금, Esc 로 닫기, Tab 은 메뉴 안에서만 순환.
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    panelRef.current?.querySelector('button[aria-label="메뉴 닫기"]')?.focus()
+    return () => { document.body.style.overflow = prev }
+  }, [])
+  function onKeyDown(e) {
+    if (e.key === 'Escape') { e.stopPropagation(); onClose(); return }
+    if (e.key !== 'Tab') return
+    const f = [...panelRef.current.querySelectorAll('a[href], button:not([disabled])')]
+    if (!f.length) return
+    const first = f[0], last = f[f.length - 1]
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+  }
   return (
     <>
       <div onClick={onClose} style={{
         position: 'fixed', inset: 0, background: 'rgba(16,24,40,0.5)', zIndex: 300,
       }} />
-      <div style={{
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="메뉴" onKeyDown={onKeyDown} style={{
         position: 'fixed', top: 0, left: 0, bottom: 0, width: 260,
         background: C.white, zIndex: 400, display: 'flex', flexDirection: 'column',
         boxShadow: '4px 0 24px rgba(16,24,40,0.15)',

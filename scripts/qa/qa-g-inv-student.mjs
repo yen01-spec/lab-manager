@@ -1,0 +1,107 @@
+// QA G2 — 학생 Inventory Count (실제 student session, 데스크톱 + 모바일): 화면/검색/저장/reload/입력 완료/목록의 미확정 표시
+import { browserLaunch, session, ok, note, summary, shot, overflowX, crumbText, studentLogin, BASE } from './lib.mjs'
+const LABEL = 'QA_FINAL_INVENTORY_20260921'
+const browser = await browserLaunch(process.env.QA_HEADED === '1', process.env.QA_HEADED === '1' ? 120 : 0)
+const saves = rec => rec.net.filter(r => r.m === 'POST' && /rpc\/inventory_count_save/.test(r.u)).length
+const row = (page, id) => page.locator('tr', { has: page.locator(`input[placeholder="${id}"]`) })
+const stock = (page, id) => row(page, id).locator('input[type=number]')
+const progress = async page => (await page.locator('main').innerText()).match(/(\d+) \/ (\d+)/)?.slice(1, 3).map(Number)
+
+// ═══ 데스크톱 ═══
+{
+  const { ctx, page, rec } = await session(browser, { w: 1440, h: 900 })
+  await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' }); await studentLogin(page)
+  await page.goto(BASE + '/inventory', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: /실사 입력 시작|실사 이어서 진행/ }).waitFor({ timeout: 20000 }); await page.waitForTimeout(1200)
+  const m = await page.locator('main').innerText()
+  await shot(page, 'G2-1440-student-main')
+  ok('STEP4 student main: active session label, scope (QA-FINAL-실사실), mode, progress, "실사 이어서 진행" (already 1 count)', m.includes(LABEL) && m.includes('범위: QA-FINAL-실사실') && m.includes('현재목록 재고실사') && /\d \/ 3개 완료/.test(m) && m.includes('QA 최종학생님으로 시작합니다'), m.slice(m.indexOf('📊'), m.indexOf('📊') + 200).replace(/\n/g, ' | '))
+  ok('STEP4 page has no admin-only session controls for a student (일시중단/취소/완료 처리/최종 반영 absent)', (await page.getByRole('button', { name: /일시중단|실사 취소|실사 완료 처리|DB 최종 반영/ }).count()) === 0)
+  await page.getByRole('button', { name: /실사 입력 시작|실사 이어서 진행/ }).click()
+  await page.getByPlaceholder(/Lot No\. 검색 후 Enter/).waitFor({ timeout: 20000 }); await page.waitForTimeout(1500)
+  ok('STEP4 count view: breadcrumb "홈 › 재고 실사 › 실사 입력", 3 bottles listed, progress shown', (await crumbText(page)) === '홈 › 재고 실사 › 실사 입력' && (await page.locator('input[placeholder^="QA-INV-"]').count()) === 3, await crumbText(page))
+  await shot(page, 'G2-1440-count-view')
+  // 검색/자동완성(세션 범위로 제한)
+  const box = page.getByPlaceholder(/Lot No\. 검색 후 Enter/)
+  await page.mouse.move(2, 2)
+  await box.fill('Inventory'); await page.getByTestId('reagent-suggest-popover').getByRole('option').first().waitFor({ timeout: 8000 })
+  const opts = (await page.getByTestId('reagent-suggest-popover').getByRole('option').allInnerTexts()).map(t => t.replace(/\s+/g, ' '))
+  ok('STEP4 reagent search autocomplete inside the count view suggests the session reagents (A, B)', opts.length === 2 && opts.some(t => t.includes('reagent A')) && opts.some(t => t.includes('reagent B')), opts)
+  await box.fill(''); await box.fill('Move reagent'); await page.waitForTimeout(900)
+  const outside = await page.getByTestId('reagent-suggest-popover').innerText().catch(() => '')
+  ok('STEP4 search is SCOPE-LIMITED: a QA reagent outside the session ("Move reagent") is not suggested', !outside.includes('QA-FINAL Move reagent'), outside.slice(0, 80))
+  await box.fill(''); await box.press('Escape')
+  await box.fill('QA-INV-B1'); await page.getByTestId('reagent-suggest-popover').getByRole('option').first().waitFor({ timeout: 8000 })
+  ok('STEP4 Lot No. search works too ("QA-INV-B1" → reagent B)', (await page.getByTestId('reagent-suggest-popover').innerText()).includes('reagent B'))
+  await box.fill(''); await page.keyboard.press('Escape')
+
+  // A1 저장/변경/reload 유지
+  const s0 = saves(rec)
+  await stock(page, 'QA-INV-A1').fill('95'); await stock(page, 'QA-INV-A1').press('Enter'); await page.waitForTimeout(1500)
+  note('inventory_count_save POSTs for ONE Enter on a changed value', saves(rec) - s0)
+  ok('STEP4 count save: A1 95% saved (progress stays counted)', (await progress(page))?.[1] === 3)
+  await stock(page, 'QA-INV-A1').fill('90'); await stock(page, 'QA-INV-A1').press('Enter'); await page.waitForTimeout(1500)
+  await page.reload({ waitUntil: 'domcontentloaded' }); await page.locator('input[placeholder="QA-INV-A1"]').waitFor({ timeout: 25000 }); await page.waitForTimeout(1500)
+  ok('STEP4 reload persistence: count view restored and A1 shows the saved 90%', (await stock(page, 'QA-INV-A1').inputValue()) === '90', await stock(page, 'QA-INV-A1').inputValue())
+  // A2: 변경 없이 Enter = 장부값 그대로 저장
+  await stock(page, 'QA-INV-A2').click(); await stock(page, 'QA-INV-A2').press('Enter'); await page.waitForTimeout(1500)
+  const p = await progress(page)
+  ok('STEP4 "Enter without changing" saves the book value (A2 50%) → progress 2 / 3', p?.[0] === 2 && p?.[1] === 3, p)
+  await shot(page, 'G2-1440-after-2-counts')
+  ok('STEP4 desktop count view: no horizontal PAGE overflow; console clean', (await overflowX(page)) <= 0 && rec.errors.length === 0 && rec.console.filter(c => c.t === 'error').length === 0, { ox: await overflowX(page), c: rec.console.slice(0, 3) })
+  ok('no production/Firebase request', rec.prod.length === 0)
+  await ctx.close()
+}
+
+// ═══ 모바일 390 ═══
+{
+  const { ctx, page, rec } = await session(browser, { w: 390, h: 844 })
+  await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' }); await studentLogin(page)
+  await page.goto(BASE + '/inventory', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: /실사 이어서 진행/ }).waitFor({ timeout: 20000 }); await page.waitForTimeout(1200)
+  ok('STEP4 mobile main: progress 2 / 3, only "실사 이어서 진행" (admin controls are PC-only)', (await page.locator('main').innerText()).includes('2 / 3개 완료') && (await page.getByRole('button', { name: /일시중단|실사 취소|실사 완료 처리/ }).count()) === 0)
+  await page.getByRole('button', { name: /실사 이어서 진행/ }).click(); await page.waitForTimeout(1800)
+  await shot(page, 'G2-390-list')
+  const list = await page.locator('main').innerText()
+  ok('STEP4 mobile list: 미완료 1 / 완료 2 tabs, bottles show "Lot …" and location, breadcrumb OK', /미완료 1/.test(list) && /완료 2/.test(list) && (await crumbText(page)) === '홈 › 재고 실사 › 실사 입력', await crumbText(page))
+  const sb = page.getByPlaceholder(/시약명.*Lot No\. 검색/)
+  const ph = await sb.getAttribute('placeholder'), sbw = (await sb.boundingBox()).width
+  note('mobile count-view search placeholder / width', { ph, sbw })
+  ok('STEP4 mobile count-view search field fits (placeholder not clipped by the box)', await sb.evaluate(e => { const c = document.createElement('canvas').getContext('2d'); c.font = getComputedStyle(e).font; return c.measureText(e.placeholder).width <= e.clientWidth - 24 }), { ph, sbw })
+  await page.getByRole('button', { name: /^미완료/ }).click().catch(() => {})
+  await page.getByText('QA-FINAL-실사실 · Lot QA-INV-B1').click(); await page.waitForTimeout(1200)
+  await shot(page, 'G2-390-panel')
+  const s0 = saves(rec)
+  await page.getByRole('button', { name: /저장 및 다음/ }).click(); await page.waitForTimeout(2000)
+  note('mobile 저장 및 다음: inventory_count_save POSTs', saves(rec) - s0)
+  await shot(page, 'G2-390-after-save')
+  const after = await page.locator('main').innerText()
+  ok('STEP4/5 mobile: B1 saved via the compare panel → all 3 counted (완료 3 / 3)', /완료 3 \/ 3|3 \/ 3/.test(after) || after.includes('완료 3'), after.replace(/\n/g, ' | ').slice(0, 260))
+  ok('STEP4 mobile count view: no horizontal overflow; console clean; no production', (await overflowX(page)) <= 0 && rec.errors.length === 0 && rec.console.filter(c => c.t === 'error').length === 0 && rec.prod.length === 0, { ox: await overflowX(page), c: rec.console.slice(0, 3) })
+  await ctx.close()
+}
+
+// ═══ STEP5: 학생 입력 완료 상태 + 목록의 미확정 표시 ═══
+{
+  const { ctx, page, rec } = await session(browser, { w: 1440, h: 900 })
+  await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' }); await studentLogin(page)
+  await page.goto(BASE + '/inventory', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: /실사 이어서 진행/ }).waitFor({ timeout: 20000 }); await page.waitForTimeout(1200)
+  const m = await page.locator('main').innerText()
+  await shot(page, 'G2-1440-all-counted-main')
+  ok('STEP5 all 3 bottles counted → progress "3 / 3개 완료 (100%)" (student input finished)', m.includes('3 / 3개 완료 (100%)'), m.slice(m.indexOf('전체 진행률'), m.indexOf('전체 진행률') + 60))
+  note('STEP5 wording check (student main page while all counted, session still active)', m.slice(m.indexOf('📊'), m.indexOf('📊') + 400).replace(/\n/g, ' | '))
+  await page.goto(`${BASE}/reagents/list?q=QA-FINAL%20Inventory`, { waitUntil: 'domcontentloaded' })
+  await page.getByText(/^검색결과/).first().waitFor({ timeout: 30000 }); await page.waitForTimeout(1500)
+  const banner = await page.getByRole('status').filter({ hasText: '재고실사' }).innerText().catch(() => '')
+  ok('STEP5 Reagent List shows the pending-count banner: "재고실사 … 진행 중 — 실사에서 확인된 3개 Lot … 파란 배경(미확정)"', banner.includes('진행 중') && banner.includes('3개 Lot') && banner.includes('파란 배경(미확정)') && banner.includes('실제 재고 장부는 관리자가'), banner)
+  const blue = await page.evaluate(() => [...document.querySelectorAll('td')].filter(td => getComputedStyle(td).backgroundColor === 'rgb(221, 235, 255)').map(td => td.textContent.trim()))
+  ok('STEP5 pending (unconfirmed) values use the existing blue cell background (#DDEBFF)', blue.length >= 1, blue.slice(0, 6))
+  await shot(page, 'G2-1440-list-pending')
+  const txt = await page.locator('main').innerText()
+  note('STEP5 list text for reagent A (should show pending stock 90% while ledger is still 100%)', txt.slice(txt.indexOf('Inventory reagent A'), txt.indexOf('Inventory reagent A') + 160).replace(/\n/g, ' | '))
+  ok('console clean / no production', rec.errors.length === 0 && rec.console.filter(c => c.t === 'error').length === 0 && rec.prod.length === 0)
+  await ctx.close()
+}
+await browser.close()
+summary()

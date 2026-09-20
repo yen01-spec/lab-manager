@@ -95,7 +95,7 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   await shot(page, `E-${tag}-bulkedit`)
   const sum = async () => (await page.getByText(/^검색결과/).first().innerText()).replace(/\s+/g, ' ')
   const s0 = await sum()
-  ok(`[${tag}] STEP21 BulkEdit: search bar + location filter + "검색결과 N개 시약 · M개 Lot" + A–Z, no overflow`, /검색결과 \d+개 시약 · \d+개 Lot/.test(s0) && (await page.getByPlaceholder(/시약명\(국문·영문\)/).first().isVisible()) && (await page.getByRole('group', { name: '실험실 필터' }).count()) === 1 && (await overflowX(page)) <= 0, s0)
+  ok(`[${tag}] STEP21 BulkEdit: search bar + location filter + "검색결과 N개 시약 · M개 Lot" + A–Z, no overflow`, /검색결과 \d+개 시약 · \d+개 Lot/.test(s0) && (await page.getByPlaceholder(/시약명.*(국문|CAS)/).first().isVisible()) && (await page.getByRole('group', { name: '실험실 필터' }).count()) === 1 && (await overflowX(page)) <= 0, s0)
   ok(`[${tag}] STEP21 same look as Reagent List (shared search bar/filter/summary components)`, (await page.getByRole('button', { name: '검색', exact: true }).count()) === 1)
   // A–Z jump
   if (mobile) { await page.getByRole('button', { name: '알파벳으로 이동' }).click(); await page.getByRole('dialog', { name: '알파벳 바로가기' }).getByRole('button', { name: 'M', exact: true }).click() }
@@ -104,7 +104,7 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   const mTop = await page.evaluate(() => document.querySelector('[data-bulk-letter="M"]').getBoundingClientRect().top)
   ok(`[${tag}] STEP21-A A–Z jump "M" lands the M group near the top (${Math.round(mTop)}px)`, mTop >= 40 && mTop < 300, mTop)
   // B/D 검색 + 자동완성
-  const box = page.getByPlaceholder(/시약명\(국문·영문\)/).first()
+  const box = page.getByPlaceholder(/시약명.*(국문|CAS)/).first()
   await page.mouse.move(2, 2)
   await box.fill('아세톤'); await page.getByTestId('reagent-suggest-popover').getByRole('option').first().waitFor({ timeout: 8000 })
   await page.getByTestId('reagent-suggest-popover').getByRole('option').first().click(); await page.waitForTimeout(700)

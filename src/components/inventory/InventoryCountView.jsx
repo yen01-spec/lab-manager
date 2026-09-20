@@ -125,13 +125,21 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     return true
   }
 
+  // Enter 로 저장하면 곧이어 포커스가 다음 행으로 옮겨지며 이전 칸의 onBlur 가 같은 값을 또 저장하려 한다 —
+  // 같은 병에 같은 값이 이미 저장 중이면 두 번째 호출은 건너뛴다(중복 RPC 방지).
+  const FIELD_ARIA = { purity: '순도', cas_no: 'CAS No.', company: '회사', cat_no: 'Cat No.', lot_no: 'Lot No.', category: '성상', volume: '규격', unit: '단위' }
+  const savingValueRef = useRef({})
   async function saveStock(lot, value) {
     const numVal = Number(value)
     if (isNaN(numVal) || numVal < 0) return
+    if (savingValueRef.current[lot.id] === numVal) return
+    // 이미 그 값으로 저장돼 있으면(저장이 끝난 뒤 도착한 blur 포함) 다시 보내지 않는다.
+    if (counts[lot.id]?.actual_sealed != null && Number(counts[lot.id]?.actual_stock) === numVal) return
+    savingValueRef.current[lot.id] = numVal
     setSaving(prev => ({ ...prev, [lot.id]: true }))
     const existing = counts[lot.id]
     const bookSealed = existing?.book_sealed ?? lot.sealed_count
-    await saveCount(lot, { actual_stock: numVal, actual_sealed: bookSealed })
+    try { await saveCount(lot, { actual_stock: numVal, actual_sealed: bookSealed }) } finally { delete savingValueRef.current[lot.id] }
     setSaving(prev => ({ ...prev, [lot.id]: false }))
   }
 
@@ -492,6 +500,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
       <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
         <input
           ref={el => inputRefs.current[`${field}_${lot.id}`] = el}
+          aria-label={FIELD_ARIA[field]}
           defaultValue={current}
           placeholder={bookVal}
           onBlur={e => saveFn(lot, field, e.target.value !== '' ? e.target.value : bookVal)}
@@ -591,13 +600,13 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
                 </div>
               </div>
               <div><label style={labelStyle}>위치 *</label>
-                <select value={newEntryForm.location_id} onChange={e => setNewEntryForm({ ...newEntryForm, location_id: e.target.value })} style={{ ...inputStyle, minHeight: '44px' }}>
+                <select aria-label="위치" value={newEntryForm.location_id} onChange={e => setNewEntryForm({ ...newEntryForm, location_id: e.target.value })} style={{ ...inputStyle, minHeight: '44px' }}>
                   <option value="">선택하세요</option>
                   {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
                 </select></div>
               <div>
                 <label style={labelStyle}>잔량(%)</label>
-                <input type="range" min="0" max="100" step="10" value={newEntryForm.current_stock}
+                <input type="range" min="0" max="100" step="10" aria-label="잔량(%)" value={newEntryForm.current_stock}
                   onChange={e => setNewEntryForm({ ...newEntryForm, current_stock: e.target.value })}
                   style={{ width: '100%', accentColor: '#1565C0' }} />
                 <div style={{ fontSize: '13px', fontWeight: '700', color: C.navy, textAlign: 'center' }}>{newEntryForm.current_stock}%</div>
@@ -719,8 +728,8 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
                     </div>
                   </div>
                   <div>
-                    <label style={labelStyle}>위치</label>
-                    <select value={count?.staged_location_id ?? compareLot.location_id ?? ''} onChange={e => changeLocation(compareLot, e.target.value)}
+                    <label htmlFor="cmp-location" style={labelStyle}>위치</label>
+                    <select id="cmp-location" value={count?.staged_location_id ?? compareLot.location_id ?? ''} onChange={e => changeLocation(compareLot, e.target.value)}
                       style={{ ...inputStyle, minHeight: '44px', ...diffCellStyle(locTouched, locDiffers) }}>
                       <option value="">(위치 없음)</option>
                       {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
@@ -729,7 +738,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
                   <div>
                     <label style={labelStyle}>잔량(%)</label>
                     <div style={{ padding: '10px 12px', borderRadius: '10px', ...diffCellStyle(count?.actual_stock != null, count?.actual_stock != null && count.actual_stock !== bookStock) }}>
-                      <input key={compareLot.id} ref={comparePanelInputRef} type="range" min="0" max="100" step="10"
+                      <input key={compareLot.id} ref={comparePanelInputRef} type="range" min="0" max="100" step="10" aria-label="잔량(%)"
                         defaultValue={count?.actual_stock ?? bookStock}
                         onInput={e => setSliderDisplay(Number(e.target.value))}
                         style={{ width: '100%', accentColor: '#1565C0' }} />
@@ -944,7 +953,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
                   </div>
                   <div>
                     <div style={{ fontSize: '11px', color: C.muted }}>위치 *</div>
-                    <select value={newEntryForm.location_id} onChange={e => setNewEntryForm({ ...newEntryForm, location_id: e.target.value })}
+                    <select aria-label="위치" value={newEntryForm.location_id} onChange={e => setNewEntryForm({ ...newEntryForm, location_id: e.target.value })}
                       style={{ ...inputStyle, padding: '5px 8px', marginTop: '2px', fontSize: '13px' }}>
                       <option value="">선택하세요</option>
                       {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
@@ -952,7 +961,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
                   </div>
                   <div>
                     <div style={{ fontSize: '11px', color: C.muted }}>잔량(%)</div>
-                    <input type="range" min="0" max="100" step="10" value={newEntryForm.current_stock}
+                    <input type="range" min="0" max="100" step="10" aria-label="잔량(%)" value={newEntryForm.current_stock}
                       onChange={e => setNewEntryForm({ ...newEntryForm, current_stock: e.target.value })}
                       style={{ width: '90px', marginTop: '4px', accentColor: '#1565C0' }} />
                     <div style={{ fontSize: '12px', fontWeight: '700', color: C.navy, textAlign: 'center' }}>{newEntryForm.current_stock}%</div>
@@ -975,7 +984,8 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
 
               // 시약명/CAS/회사도 실측값처럼 담당자가 직접 확인해서 고칠 수 있는 입력칸으로 표시(단, "-" 텍스트가 아니라 네모 입력칸)
               function panelMasterField(field, width, scope = 'reagent') {
-                if (!compareLot) return <input disabled placeholder="-" style={{ ...disabledBoxStyle, width: `${width}px` }} />
+                const fieldLabel = { name: '화학물질명', purity: '순도', cas_no: 'CAS No.', cat_no: 'Cat No.', lot_no: 'Lot No.', category: '성상', volume: '규격' }[field]
+                if (!compareLot) return <input disabled aria-label={fieldLabel} placeholder="-" style={{ ...disabledBoxStyle, width: `${width}px` }} />
                 const isLot = scope === 'lot'
                 const b = isLot ? (count?.book_lot_fields || {}) : book
                 const st = isLot ? (count?.staged_lot_fields || {}) : staged
@@ -995,7 +1005,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
                   )
                 }
                 return (
-                  <input key={`${compareLot.id}_${field}`} defaultValue={current} placeholder={bookVal}
+                  <input key={`${compareLot.id}_${field}`} defaultValue={current} placeholder={bookVal} aria-label={fieldLabel}
                     onBlur={e => saveFn(compareLot, field, e.target.value !== '' ? e.target.value : bookVal)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveFn(compareLot, field, e.target.value !== '' ? e.target.value : bookVal) } }}
                     style={{ ...inputStyle, width: `${width}px`, padding: '5px 8px', marginTop: '2px', fontSize: '13px', ...diffCellStyle(touched, differs) }} />
@@ -1039,14 +1049,14 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
                         const locBookId = counts[compareLot.id]?.book_location_id ?? compareLot.location_id ?? ''
                         const locDiffers = locTouched && counts[compareLot.id].staged_location_id !== locBookId
                         return (
-                          <select value={counts[compareLot.id]?.staged_location_id ?? compareLot.location_id ?? ''} onChange={e => changeLocation(compareLot, e.target.value)}
+                          <select aria-label="위치" value={counts[compareLot.id]?.staged_location_id ?? compareLot.location_id ?? ''} onChange={e => changeLocation(compareLot, e.target.value)}
                             style={{ ...inputStyle, width: '140px', padding: '5px 8px', marginTop: '2px', fontSize: '13px', ...diffCellStyle(locTouched, locDiffers) }}>
                             <option value="">(위치 없음)</option>
                             {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
                           </select>
                         )
                       })() : (
-                        <select disabled style={{ ...disabledBoxStyle, width: '140px' }}><option>-</option></select>
+                        <select disabled aria-label="위치" style={{ ...disabledBoxStyle, width: '140px' }}><option>-</option></select>
                       )}
                     </div>
                     <div>
@@ -1056,7 +1066,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
                           width: '100px', marginTop: '2px', padding: '4px 8px', borderRadius: '8px',
                           ...diffCellStyle(count?.actual_stock != null, count?.actual_stock != null && count.actual_stock !== bookStock),
                         }}>
-                          <input key={compareLot.id} ref={comparePanelInputRef} type="range" min="0" max="100" step="10"
+                          <input key={compareLot.id} ref={comparePanelInputRef} type="range" min="0" max="100" step="10" aria-label="잔량(%)"
                             defaultValue={count?.actual_stock ?? bookStock}
                             onInput={e => setSliderDisplay(Number(e.target.value))}
                             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); completeButtonRef.current?.focus() } }}
@@ -1064,17 +1074,17 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
                           <div style={{ fontSize: '12px', fontWeight: '700', color: C.navy, textAlign: 'center' }}>{sliderDisplay ?? (count?.actual_stock ?? bookStock)}%</div>
                         </div>
                       ) : (
-                        <input disabled placeholder="-" style={{ ...disabledBoxStyle, width: '80px' }} />
+                        <input disabled aria-label="잔량(%)" placeholder="-" style={{ ...disabledBoxStyle, width: '80px' }} />
                       )}
                     </div>
                     <div>
                       <div style={{ fontSize: '11px', color: C.muted }}>비고</div>
                       {compareLot ? (
-                        <input defaultValue={count?.abnormal_note || ''} placeholder="메모"
+                        <input aria-label="비고" defaultValue={count?.abnormal_note || ''} placeholder="메모"
                           onBlur={e => saveAbnormalNote(compareLot, e.target.value)}
                           style={{ ...inputStyle, width: '140px', padding: '5px 8px', marginTop: '2px', fontSize: '12px' }} />
                       ) : (
-                        <input disabled placeholder="-" style={{ ...disabledBoxStyle, width: '140px' }} />
+                        <input disabled aria-label="비고" placeholder="-" style={{ ...disabledBoxStyle, width: '140px' }} />
                       )}
                     </div>
                   </div>
@@ -1115,7 +1125,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
               ))}
             </div>
             {Object.keys(sessionLocationGroups).length > 0 && (
-              <select value={locationFilter} onChange={e => { setLocationFilter(e.target.value); setCapStart(0) }}
+              <select aria-label="위치 필터" value={locationFilter} onChange={e => { setLocationFilter(e.target.value); setCapStart(0) }}
                 style={{ ...inputStyle, width: 'auto', maxWidth: '190px' }}>
                 <option value="">📍 전체 위치</option>
                 {Object.entries(sessionLocationGroups).map(([room, locMap]) => (
@@ -1246,6 +1256,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                             <input
                               ref={el => inputRefs.current[`name_${lot.id}`] = el}
+                              aria-label="화학물질명"
                               defaultValue={nameTouched ? count.staged_reagent_fields.name : nameBookVal}
                               placeholder={nameBookVal}
                               onBlur={e => saveReagentField(lot, 'name', e.target.value !== '' ? e.target.value : nameBookVal)}
@@ -1277,7 +1288,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
                             const locBookId = counts[lot.id]?.book_location_id ?? lot.location_id ?? ''
                             const locDiffers = locTouched && counts[lot.id].staged_location_id !== locBookId
                             return (
-                              <select value={counts[lot.id]?.staged_location_id ?? lot.location_id ?? ''} onChange={e => changeLocation(lot, e.target.value)}
+                              <select aria-label="위치" value={counts[lot.id]?.staged_location_id ?? lot.location_id ?? ''} onChange={e => changeLocation(lot, e.target.value)}
                                 style={{ fontSize: '11px', padding: '4px 6px', borderRadius: '6px', maxWidth: '130px', ...diffCellStyle(locTouched, locDiffers) }}>
                                 <option value="">(위치 없음)</option>
                                 {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
@@ -1289,7 +1300,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
                           <input
                             key={`stock_${lot.id}_${actualStock ?? 'x'}`}
                             ref={el => inputRefs.current[`stock_${lot.id}`] = el}
-                            type="number" min="0" max="100"
+                            type="number" min="0" max="100" aria-label="실사 잔량(%)"
                             defaultValue={actualStock ?? bookStock}
                             placeholder={String(bookStock)}
                             onBlur={e => saveStock(lot, e.target.value !== '' ? e.target.value : bookStock)}
@@ -1307,7 +1318,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
                         <td style={{ ...tdStyle, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                           <input
                             ref={el => inputRefs.current[`abnormal_${lot.id}`] = el}
-                            type="text" defaultValue={count?.abnormal_note || ''} placeholder="메모"
+                            type="text" aria-label="비고" defaultValue={count?.abnormal_note || ''} placeholder="메모"
                             onBlur={e => saveAbnormalNote(lot, e.target.value)}
                             onKeyDown={e => {
                               if (e.key === 'Enter') {

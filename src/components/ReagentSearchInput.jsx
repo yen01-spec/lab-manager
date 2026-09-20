@@ -2,6 +2,7 @@ import { useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useStat
 import { createPortal } from 'react-dom'
 import { C, inputStyle as baseInputStyle } from '../design'
 import { useReagentAutocomplete } from '../hooks/useReagentAutocomplete'
+import { useBreakpoint } from '../hooks/useBreakpoint'
 import { highlightParts } from '../lib/reagentSearch'
 import { computePlacement } from '../lib/popoverPlacement'
 
@@ -27,13 +28,19 @@ export function ReagentOptionBody({ item, term }) {
   )
 }
 
+export const PLACEHOLDER_FULL = '시약명(국문·영문) 또는 CAS No.로 검색...'
+export const PLACEHOLDER_SHORT = '시약명 또는 CAS 검색'
+
 export default function ReagentSearchInput({
-  value, onChange, onSelect, onEnter, placeholder = '시약명(국문·영문) 또는 CAS No.로 검색...', ariaLabel,
+  value, onChange, onSelect, onEnter, placeholder: placeholderProp, ariaLabel,
   items, getFields, renderOption, showLocation = false, disabled = false, autoFocus = false,
   inputStyle, inputRef, className, id, emptyAction, limit, onFocus, onKeyDownExtra,
 }) {
   const uid = useId()
   const listId = `${uid}-list`
+  // 기본 placeholder 만 화면 폭에 맞춘다: 좁은 화면(검색 버튼 옆)에서는 긴 문구가 잘려 보이므로 짧은 문구. 접근성 이름은 항상 전체 설명.
+  const { isMobile } = useBreakpoint()
+  const placeholder = placeholderProp ?? (isMobile ? PLACEHOLDER_SHORT : PLACEHOLDER_FULL)
   const localRef = useRef(null)
   useImperativeHandle(inputRef, () => localRef.current, [])   // 부모에서 focus()/blur() 할 수 있게 input 요소를 노출
   const [open, setOpen] = useState(false)
@@ -128,7 +135,7 @@ export default function ReagentSearchInput({
     <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
       <input
         ref={localRef} id={id} type="text" role="combobox" autoComplete="off" spellCheck={false} className={className}
-        aria-label={ariaLabel || placeholder} aria-autocomplete="list" aria-expanded={expanded} aria-haspopup="listbox"
+        aria-label={ariaLabel || (placeholderProp === undefined ? PLACEHOLDER_FULL : placeholderProp)} aria-autocomplete="list" aria-expanded={expanded} aria-haspopup="listbox"
         aria-controls={expanded ? listId : undefined} aria-activedescendant={activeId}
         value={value} disabled={disabled} autoFocus={autoFocus} placeholder={placeholder}
         onChange={e => { onChange(e.target.value); setActive(-1); setOpen(true) }}

@@ -38,7 +38,7 @@ const optTexts = async page => (await opts(page).allInnerTexts()).map(t => t.rep
 
 // ── surface 정의 ───────────────────────────────────────────────────────────
 const SURFACES = [
-  { key: 'reagent-list', path: '/reagents/list', ph: /시약명\(국문·영문\) 또는 CAS/,
+  { key: 'reagent-list', path: '/reagents/list', ph: /시약명.*CAS/,
     afterSelect: async page => { await page.waitForURL(/\/reagents\/r-0020/, { timeout: 8000 }); return true },
     afterEnter: async page => { await page.waitForFunction(() => new URL(location.href).searchParams.get('q') === 'acet', null, { timeout: 8000 }); return true } },
   { key: 'home', path: '/', ph: /예\) Acetone/,
@@ -47,7 +47,7 @@ const SURFACES = [
   { key: 'purchase-request', path: '/purchase-request', ph: /화학물질명 또는 CAS/,
     afterSelect: async page => { await page.waitForFunction(() => [...document.querySelectorAll('input')].some(i => i.value === '64-19-7'), null, { timeout: 5000 }); return true },
     afterEnter: null },
-  { key: 'bulk-edit', path: '/reagents/bulk-edit', ph: /시약명\(국문·영문\) 또는 CAS/,
+  { key: 'bulk-edit', path: '/reagents/bulk-edit', ph: /시약명.*CAS/,
     afterSelect: async page => { await page.waitForTimeout(900); const t = await page.locator('main').innerText(); return t.includes('Acetic acid') && !t.includes('Acetone') && /1개 시약/.test(t) },
     afterEnter: async page => { await page.waitForTimeout(900); const t = await page.locator('main').innerText(); return t.includes('Acetic acid') && t.includes('Acetone') } },
   { key: 'register-modal', path: '/reagents/list', ph: /Acetone — 이미 있는 시약이면/, prep: async page => { await page.getByRole('button', { name: /신규 시약 등록/ }).click(); await page.getByText('시약명 *').waitFor({ timeout: 8000 }) },

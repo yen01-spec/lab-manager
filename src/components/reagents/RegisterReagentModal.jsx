@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { C, inputStyle, labelStyle } from '../../design'
 import CompanyPicker from '../CompanyPicker'
 import LotNoInput from './LotNoInput'
@@ -17,6 +18,8 @@ export default function RegisterReagentModal({
   onPickDuplicate, onClearDuplicate,
   onSubmitInlineLogin, onSubmitNewReagent, onSubmitMade, onClose,
 }) {
+  const uid = useId()
+  const fid = (k) => `${uid}-${k}`   // 보이는 <label htmlFor> ↔ 입력칸 id 로 실제 연결(스크린리더/axe)
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
       background: 'rgba(26,42,94,0.55)', zIndex: 400,
@@ -36,20 +39,20 @@ export default function RegisterReagentModal({
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={labelStyle}>학번</label>
-                <input value={inlineLoginForm.student_id}
+                <label htmlFor={fid('login-id')} style={labelStyle}>학번</label>
+                <input id={fid('login-id')} value={inlineLoginForm.student_id}
                   onChange={e => { setInlineLoginForm({ ...inlineLoginForm, student_id: e.target.value }); setInlineLoginError('') }}
                   placeholder="예) 202112345" style={inputStyle} />
               </div>
               <div>
-                <label style={labelStyle}>생년월일</label>
-                <input value={inlineLoginForm.birth_date}
+                <label htmlFor={fid('login-birth')} style={labelStyle}>생년월일</label>
+                <input id={fid('login-birth')} value={inlineLoginForm.birth_date}
                   onChange={e => { setInlineLoginForm({ ...inlineLoginForm, birth_date: e.target.value }); setInlineLoginError('') }}
                   placeholder="YYYY-MM-DD" style={inputStyle} />
               </div>
               <div>
-                <label style={labelStyle}>이름</label>
-                <input value={inlineLoginForm.name}
+                <label htmlFor={fid('login-name')} style={labelStyle}>이름</label>
+                <input id={fid('login-name')} value={inlineLoginForm.name}
                   onChange={e => { setInlineLoginForm({ ...inlineLoginForm, name: e.target.value }); setInlineLoginError('') }}
                   placeholder="예) 이OO" style={inputStyle} />
               </div>
@@ -83,12 +86,12 @@ export default function RegisterReagentModal({
             <p style={{ margin: '0 0 18px', color: C.muted, fontSize: '12px' }}>구매해서 새로 들여온 시약을 등록해요. 등록 즉시 목록에 반영되고, 관리자가 최종 확인하기 전까지는 "검토대기"로 표시돼요.</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={labelStyle}>시약명 *</label>
+                <label htmlFor={fid('name')} style={labelStyle}>시약명 *</label>
                 {/* 이미 등록된 시약이면 추천에서 골라 새 Lot(병)만 추가 — 새 이름은 그대로 자유 입력 */}
                 <ReagentSearchInput value={newReagentForm.name}
                   onChange={v => setNewReagentForm({ ...newReagentForm, name: v, reagent_id: null })}
                   onSelect={onPickDuplicate}
-                  placeholder="예) Acetone — 이미 있는 시약이면 추천에서 고르세요" ariaLabel="시약명" />
+                  placeholder="예) Acetone — 이미 있는 시약이면 추천에서 고르세요" id={fid('name')} ariaLabel="시약명" />
                 {newReagentForm.reagent_id && (
                   <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', padding: '8px 10px' }}>
@@ -102,56 +105,56 @@ export default function RegisterReagentModal({
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <div>
-                  <label style={labelStyle}>CAS No.</label>
-                  <input value={newReagentForm.cas_no} disabled={!!newReagentForm.reagent_id} onChange={e => setNewReagentForm({ ...newReagentForm, cas_no: e.target.value })}
+                  <label htmlFor={fid('cas')} style={labelStyle}>CAS No.</label>
+                  <input id={fid('cas')} value={newReagentForm.cas_no} disabled={!!newReagentForm.reagent_id} onChange={e => setNewReagentForm({ ...newReagentForm, cas_no: e.target.value })}
                     style={{ ...inputStyle, background: newReagentForm.reagent_id ? C.bg : C.white }} />
                 </div>
                 <div>
-                  <label style={labelStyle}>제조사</label>
-                  <CompanyPicker value={newReagentForm.company} disabled={!!newReagentForm.reagent_id} onChange={v => setNewReagentForm({ ...newReagentForm, company: v })}
+                  <label htmlFor={fid('company')} style={labelStyle}>제조사</label>
+                  <CompanyPicker id={fid('company')} value={newReagentForm.company} disabled={!!newReagentForm.reagent_id} onChange={v => setNewReagentForm({ ...newReagentForm, company: v })}
                     style={{ background: newReagentForm.reagent_id ? C.bg : C.white }} />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                 <div>
-                  <label style={labelStyle}>성상</label>
-                  <input value={newReagentForm.category} disabled={!!newReagentForm.reagent_id} onChange={e => setNewReagentForm({ ...newReagentForm, category: e.target.value })} placeholder="액체/고체"
+                  <label htmlFor={fid('category')} style={labelStyle}>성상</label>
+                  <input id={fid('category')} value={newReagentForm.category} disabled={!!newReagentForm.reagent_id} onChange={e => setNewReagentForm({ ...newReagentForm, category: e.target.value })} placeholder="액체/고체"
                     style={{ ...inputStyle, background: newReagentForm.reagent_id ? C.bg : C.white }} />
                 </div>
                 <div>
-                  <label style={labelStyle}>용량</label>
-                  <input value={newReagentForm.volume} disabled={!!newReagentForm.reagent_id} onChange={e => setNewReagentForm({ ...newReagentForm, volume: e.target.value })} placeholder="500"
+                  <label htmlFor={fid('volume')} style={labelStyle}>용량</label>
+                  <input id={fid('volume')} value={newReagentForm.volume} disabled={!!newReagentForm.reagent_id} onChange={e => setNewReagentForm({ ...newReagentForm, volume: e.target.value })} placeholder="500"
                     style={{ ...inputStyle, background: newReagentForm.reagent_id ? C.bg : C.white }} />
                 </div>
                 <div>
-                  <label style={labelStyle}>단위</label>
-                  <input value={newReagentForm.unit} disabled={!!newReagentForm.reagent_id} onChange={e => setNewReagentForm({ ...newReagentForm, unit: e.target.value })} placeholder="mL"
+                  <label htmlFor={fid('unit')} style={labelStyle}>단위</label>
+                  <input id={fid('unit')} value={newReagentForm.unit} disabled={!!newReagentForm.reagent_id} onChange={e => setNewReagentForm({ ...newReagentForm, unit: e.target.value })} placeholder="mL"
                     style={{ ...inputStyle, background: newReagentForm.reagent_id ? C.bg : C.white }} />
                 </div>
               </div>
               <div>
-                <label style={labelStyle}>Cat No.</label>
-                <input value={newReagentForm.cat_no} onChange={e => setNewReagentForm({ ...newReagentForm, cat_no: e.target.value })} style={inputStyle} />
+                <label htmlFor={fid('cat')} style={labelStyle}>Cat No.</label>
+                <input id={fid('cat')} value={newReagentForm.cat_no} onChange={e => setNewReagentForm({ ...newReagentForm, cat_no: e.target.value })} style={inputStyle} />
               </div>
               <LotNoInput
                 value={{ lotNo: newReagentForm.lot_no, noLotReason: newReagentForm.noLotReason }}
                 onChange={v => setNewReagentForm({ ...newReagentForm, lot_no: v.lotNo, noLotReason: v.noLotReason })}
                 compact />
               <div>
-                <label style={labelStyle}>보관 위치 *</label>
-                <select value={newReagentForm.location_id} onChange={e => setNewReagentForm({ ...newReagentForm, location_id: e.target.value })} style={inputStyle}>
+                <label htmlFor={fid('loc')} style={labelStyle}>보관 위치 *</label>
+                <select id={fid('loc')} value={newReagentForm.location_id} onChange={e => setNewReagentForm({ ...newReagentForm, location_id: e.target.value })} style={inputStyle}>
                   <option value="">선택하세요</option>
                   {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
                 </select>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <div>
-                  <label style={labelStyle}>미개봉 수량</label>
-                  <input type="number" min="0" value={newReagentForm.sealed_count} onChange={e => setNewReagentForm({ ...newReagentForm, sealed_count: e.target.value })} style={inputStyle} />
+                  <label htmlFor={fid('sealed')} style={labelStyle}>미개봉 수량</label>
+                  <input id={fid('sealed')} type="number" min="0" value={newReagentForm.sealed_count} onChange={e => setNewReagentForm({ ...newReagentForm, sealed_count: e.target.value })} style={inputStyle} />
                 </div>
                 <div>
-                  <label style={labelStyle}>잔량(%)</label>
-                  <input type="number" min="0" max="100" value={newReagentForm.current_stock} onChange={e => setNewReagentForm({ ...newReagentForm, current_stock: e.target.value })} style={inputStyle} />
+                  <label htmlFor={fid('stock')} style={labelStyle}>잔량(%)</label>
+                  <input id={fid('stock')} type="number" min="0" max="100" value={newReagentForm.current_stock} onChange={e => setNewReagentForm({ ...newReagentForm, current_stock: e.target.value })} style={inputStyle} />
                 </div>
               </div>
             </div>
@@ -168,30 +171,30 @@ export default function RegisterReagentModal({
             <p style={{ margin: '0 0 18px', color: C.muted, fontSize: '12px' }}>구매 시약과 달리 CAS·회사 정보가 없어요. 필요한 정보만 입력하세요. 등록 즉시 목록에 반영되고, 관리자가 최종 확인하기 전까지는 "검토대기"로 표시돼요.</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={labelStyle}>제조한 시약명 *</label>
-                <input value={madeForm.name} onChange={e => setMadeForm({ ...madeForm, name: e.target.value })} placeholder="예) pH 7.0 인산완충용액" style={inputStyle} />
+                <label htmlFor={fid('m-name')} style={labelStyle}>제조한 시약명 *</label>
+                <input id={fid('m-name')} value={madeForm.name} onChange={e => setMadeForm({ ...madeForm, name: e.target.value })} placeholder="예) pH 7.0 인산완충용액" style={inputStyle} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
                 <div>
-                  <label style={labelStyle}>용량</label>
-                  <input value={madeForm.volume} onChange={e => setMadeForm({ ...madeForm, volume: e.target.value })} placeholder="예: 500" style={inputStyle} />
+                  <label htmlFor={fid('m-volume')} style={labelStyle}>용량</label>
+                  <input id={fid('m-volume')} value={madeForm.volume} onChange={e => setMadeForm({ ...madeForm, volume: e.target.value })} placeholder="예: 500" style={inputStyle} />
                 </div>
                 <div>
-                  <label style={labelStyle}>단위</label>
-                  <input value={madeForm.unit} onChange={e => setMadeForm({ ...madeForm, unit: e.target.value })} placeholder="mL" style={inputStyle} />
+                  <label htmlFor={fid('m-unit')} style={labelStyle}>단위</label>
+                  <input id={fid('m-unit')} value={madeForm.unit} onChange={e => setMadeForm({ ...madeForm, unit: e.target.value })} placeholder="mL" style={inputStyle} />
                 </div>
               </div>
               <div>
-                <label style={labelStyle}>제조일</label>
-                <input type="date" value={madeForm.made_date} onChange={e => setMadeForm({ ...madeForm, made_date: e.target.value })} style={inputStyle} />
+                <label htmlFor={fid('m-date')} style={labelStyle}>제조일</label>
+                <input id={fid('m-date')} type="date" value={madeForm.made_date} onChange={e => setMadeForm({ ...madeForm, made_date: e.target.value })} style={inputStyle} />
               </div>
               <div>
-                <label style={labelStyle}>용도</label>
-                <input value={madeForm.made_purpose} onChange={e => setMadeForm({ ...madeForm, made_purpose: e.target.value })} placeholder="예: 분광광도계 실험용 완충용액" style={inputStyle} />
+                <label htmlFor={fid('m-purpose')} style={labelStyle}>용도</label>
+                <input id={fid('m-purpose')} value={madeForm.made_purpose} onChange={e => setMadeForm({ ...madeForm, made_purpose: e.target.value })} placeholder="예: 분광광도계 실험용 완충용액" style={inputStyle} />
               </div>
               <div>
-                <label style={labelStyle}>보관 위치 *</label>
-                <select value={madeForm.location_id} onChange={e => setMadeForm({ ...madeForm, location_id: e.target.value })} style={inputStyle}>
+                <label htmlFor={fid('m-loc')} style={labelStyle}>보관 위치 *</label>
+                <select id={fid('m-loc')} value={madeForm.location_id} onChange={e => setMadeForm({ ...madeForm, location_id: e.target.value })} style={inputStyle}>
                   <option value="">선택하세요</option>
                   {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
                 </select>

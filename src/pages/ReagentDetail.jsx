@@ -1160,24 +1160,24 @@ export default function ReagentDetail() {
                 value={{ lotNo: addLotForm.lot_no, noLotReason: addLotForm.noLotReason }}
                 onChange={v => setAddLotForm({ ...addLotForm, lot_no: v.lotNo, noLotReason: v.noLotReason })}
                 compact />
-              <div><label style={labelStyle}>Cat No.</label>
-                <input value={addLotForm.cat_no} onChange={e => setAddLotForm({ ...addLotForm, cat_no: e.target.value })} style={inputStyle} /></div>
+              <div><label htmlFor="addlot-cat" style={labelStyle}>Cat No.</label>
+                <input id="addlot-cat" value={addLotForm.cat_no} onChange={e => setAddLotForm({ ...addLotForm, cat_no: e.target.value })} style={inputStyle} /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div><label style={labelStyle}>미개봉 병 수</label>
-                  <input type="number" min="0" value={addLotForm.sealed_count} onChange={e => setAddLotForm({ ...addLotForm, sealed_count: e.target.value })} style={inputStyle} /></div>
-                <div><label style={labelStyle}>개봉 병 잔량(%)</label>
-                  <input type="number" min="0" max="100" value={addLotForm.current_stock} onChange={e => setAddLotForm({ ...addLotForm, current_stock: e.target.value })} style={inputStyle} /></div>
+                <div><label htmlFor="addlot-sealed" style={labelStyle}>미개봉 병 수</label>
+                  <input id="addlot-sealed" type="number" min="0" value={addLotForm.sealed_count} onChange={e => setAddLotForm({ ...addLotForm, sealed_count: e.target.value })} style={inputStyle} /></div>
+                <div><label htmlFor="addlot-stock" style={labelStyle}>개봉 병 잔량(%)</label>
+                  <input id="addlot-stock" type="number" min="0" max="100" value={addLotForm.current_stock} onChange={e => setAddLotForm({ ...addLotForm, current_stock: e.target.value })} style={inputStyle} /></div>
               </div>
-              <div><label style={labelStyle}>보관 위치 *</label>
-                <select value={addLotForm.location_id} onChange={e => setAddLotForm({ ...addLotForm, location_id: e.target.value })} style={inputStyle}>
+              <div><label htmlFor="addlot-loc" style={labelStyle}>보관 위치 *</label>
+                <select id="addlot-loc" value={addLotForm.location_id} onChange={e => setAddLotForm({ ...addLotForm, location_id: e.target.value })} style={inputStyle}>
                   <option value="">선택하세요</option>
                   {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
                 </select></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div><label style={labelStyle}>입고일</label>
-                  <input type="date" value={addLotForm.received_date} onChange={e => setAddLotForm({ ...addLotForm, received_date: e.target.value })} style={inputStyle} /></div>
-                <div><label style={labelStyle}>유효기간</label>
-                  <input type="date" value={addLotForm.expiry_date} onChange={e => setAddLotForm({ ...addLotForm, expiry_date: e.target.value })} style={inputStyle} /></div>
+                <div><label htmlFor="addlot-received" style={labelStyle}>입고일</label>
+                  <input id="addlot-received" type="date" value={addLotForm.received_date} onChange={e => setAddLotForm({ ...addLotForm, received_date: e.target.value })} style={inputStyle} /></div>
+                <div><label htmlFor="addlot-expiry" style={labelStyle}>유효기간</label>
+                  <input id="addlot-expiry" type="date" value={addLotForm.expiry_date} onChange={e => setAddLotForm({ ...addLotForm, expiry_date: e.target.value })} style={inputStyle} /></div>
               </div>
             </div>
             <div style={{ fontSize: '11.5px', color: student ? C.muted : '#C13B3F', marginTop: '10px' }}>

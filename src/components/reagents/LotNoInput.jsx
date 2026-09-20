@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { C, inputStyle, labelStyle } from '../../design'
 import { NO_LOT_REASONS, internalLotPrefix } from '../../lib/lotNo'
 
@@ -6,12 +7,14 @@ import { NO_LOT_REASONS, internalLotPrefix } from '../../lib/lotNo'
 // 체크박스를 켜면 입력칸이 비활성화되고, 저장 시 내부 관리번호(KNU-날짜-순번)가 자동 부여된다.
 export default function LotNoInput({ value, onChange, label = '제조사 Lot No.', compact = false }) {
   const { lotNo = '', noLotReason = '' } = value || {}
+  const inputId = useId()
   const toggleReason = (key) => onChange({ lotNo: '', noLotReason: noLotReason === key ? '' : key })
 
   return (
     <div>
-      {label && <label style={labelStyle}>{label}</label>}
+      {label && <label htmlFor={inputId} style={labelStyle}>{label}</label>}
       <input
+        id={inputId}
         value={noLotReason ? '' : lotNo}
         disabled={!!noLotReason}
         onChange={e => onChange({ lotNo: e.target.value, noLotReason: '' })}

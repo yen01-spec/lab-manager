@@ -32,7 +32,7 @@ export const BRANDS = [
 // 팝업이 잘렸다. 좁은 화면(320px)에서는 화면 폭에 맞춰 줄어들고, 아래 공간이 모자라면 위로 열리며, 넘치면 내부 스크롤.
 const POPUP_WIDTH = 320
 
-export default function CompanyPicker({ value, onChange, onPick, onBlur, onKeyDown, inputRef, placeholder, style, disabled, ariaLabel = '제조사' }) {
+export default function CompanyPicker({ value, onChange, onPick, onBlur, onKeyDown, inputRef, placeholder, style, disabled, ariaLabel, id }) {
   const [open, setOpen] = useState(false)
   const [place, setPlace] = useState(null)
   const boxRef = useRef(null)
@@ -116,7 +116,7 @@ export default function CompanyPicker({ value, onChange, onPick, onBlur, onKeyDo
         onFocus={() => { if (!skipFocusOpen.current) setOpen(true) }}
         onClick={() => setOpen(true)}
         onBlur={onBlur}
-        aria-label={ariaLabel} aria-keyshortcuts="ArrowDown"
+        id={id} aria-label={ariaLabel || (id ? undefined : '제조사')} aria-keyshortcuts="ArrowDown"
         onKeyDown={e => {
           if (e.key === 'Escape' && open) setOpen(false)
           if (e.key === 'ArrowDown' && !disabled) { e.preventDefault(); setOpen(true); setTimeout(() => logoButtons()[0]?.focus(), 30) }

@@ -78,7 +78,7 @@ for (const [w, h] of VIEWPORTS) {
   ok(`[${tag}] back to 전체: counts restored, hidden note gone`, (await summary(page)).lots === s0.lots && (await page.getByText(/현재 목록 밖에 있어요/).count()) === 0)
 
   // ── 검색: autocomplete(추천 선택) + Enter ──
-  const box = page.getByPlaceholder(/시약명\(국문·영문\) 또는 CAS/).first()
+  const box = page.getByPlaceholder(/시약명.*CAS/).first()
   await box.fill('아세트'); await page.waitForTimeout(500)
   const popupOk = await page.getByTestId('reagent-suggest-popover').isVisible()
   await page.getByRole('option').first().click(); await settle(page)

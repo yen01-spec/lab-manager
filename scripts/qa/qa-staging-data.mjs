@@ -74,6 +74,44 @@ if (mode === 'seed') {
   mkdirSync(new URL('.', 'file:///' + STATE.replace(/\\/g, '/')).pathname.replace(/^\//, ''), { recursive: true })
   writeFileSync(STATE, JSON.stringify({ tag: TAG, t0, admin: { email, password: PW, user_id: au.user.id }, student: stu, locations: locs.map(l => l.id), reagentCount: ids.length, lotCount: lrows.length }, null, 2))
   console.log(`seeded: reagents=${ids.length} lots=${lrows.length} locations=${locs.length}; QA admin + QA student created (credentials in state file)`)
+} else if (mode === 'seed-final') {
+  // 최종 갭 QA — 감사(audit) 행과 FK 로 엮이는 흐름(실사 최종 반영 / 요청 승인)용 최소 데이터. 이 데이터는 clean 으로 지우지 않는다(FK).
+  if (existsSync(STATE)) throw new Error('이미 seed 되어 있습니다(상태 파일 존재).')
+  const FTAG = 'QA-FINAL-' + new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const t0 = new Date().toISOString()
+  const locs = must(await s.from('locations').insert([
+    { room: 'QA-FINAL-실사실', detail: null }, { room: 'QA-FINAL-위치A', detail: null }, { room: 'QA-FINAL-위치B', detail: null },
+  ]).select('id, room'), 'locations')
+  const L = { inv: locs[0].id, a: locs[1].id, b: locs[2].id }
+  const defs = [
+    { key: 'invA', name: 'QA-FINAL Inventory reagent A', name_ko: '큐에이 실사 시약 A', cas_no: '9100-01-1', company: 'QA Co', purity: '90%', category: '액체', volume: 100, unit: 'mL', lots: [['invA1', L.inv, 1, 100, 'QA-INV-A1'], ['invA2', L.inv, 0, 50, 'QA-INV-A2']] },
+    { key: 'invB', name: 'QA-FINAL Inventory reagent B', name_ko: '큐에이 실사 시약 B', cas_no: '9100-02-2', company: 'QA Co', category: '고체', volume: 50, unit: 'g', lots: [['invB1', L.inv, 1, 100, 'QA-INV-B1']] },
+    { key: 'move', name: 'QA-FINAL Move reagent', name_ko: '큐에이 이동 시약', cas_no: '9100-03-3', company: 'QA Co', category: '액체', volume: 100, unit: 'mL', lots: [['move1', L.a, 1, 100, 'QA-MOVE-1']] },
+    { key: 'info', name: 'QA-FINAL Info reagent', name_ko: '큐에이 정보 원본', cas_no: '9100-04-4', company: 'QA Co', purity: '90%', category: '액체', volume: 100, unit: 'mL', lots: [['info1', L.a, 1, 100, 'QA-INFO-1']] },
+    { key: 'disp', name: 'QA-FINAL Dispose reagent', name_ko: '큐에이 폐기 시약', cas_no: '9100-05-5', company: 'QA Co', category: '액체', volume: 100, unit: 'mL', lots: [['disp1', L.b, 1, 100, 'QA-DISP-1'], ['disp2', L.b, 1, 100, 'QA-DISP-2']] },
+  ]
+  const ids = {}, lotIds = {}
+  for (const d of defs) {
+    const r = must(await s.from('reagents').insert({ name: d.name, name_ko: d.name_ko, cas_no: d.cas_no, company: d.company, purity: d.purity ?? null, category: d.category, volume: d.volume, unit: d.unit, reagent_type: 'purchased', status: 'active', notes: FTAG, sort_letter: 'Q' }).select('id').single(), 'reagent ' + d.key)
+    ids[d.key] = r.id
+    for (const [lk, loc, sealed, stock, no] of d.lots) lotIds[lk] = must(await s.from('reagent_lots').insert({ reagent_id: r.id, location_id: loc, status: 'active', sealed_count: sealed, current_stock: stock, lot_no: no, cat_no: 'QA-CAT', received_date: '2026-01-15', lot_source: 'manual' }).select('id').single(), 'lot ' + lk).id
+  }
+  const stu = { student_id: 'QA-STU-9101', name: 'QA 최종학생', birth: '2000-01-01' }
+  must(await s.from('students').insert({ student_id: stu.student_id, name: stu.name, birth_date: stu.birth }), 'student')
+  const PW = 'Qa!' + randomBytes(9).toString('hex')
+  const email = `qa-final-admin-${randomBytes(3).toString('hex')}@staging.test`
+  const au = must(await s.auth.admin.createUser({ email, password: PW, email_confirm: true }), 'admin auth')
+  must(await s.from('admin_users').insert({ user_id: au.user.id, active: true, note: FTAG }), 'admin_users')
+  mkdirSync(dirname(STATE), { recursive: true })
+  writeFileSync(STATE, JSON.stringify({ tag: FTAG, final: true, t0, admin: { email, password: PW, user_id: au.user.id }, student: stu, locations: L, reagents: ids, lots: lotIds }, null, 2))
+  console.log('seeded final QA data: reagents=' + defs.length + ' lots=' + Object.keys(lotIds).length + ' locations=3 (state file has ids; credentials only there)')
+} else if (mode === 'clean-final') {
+  // 감사 행(요청/이력/실사/로그)과 FK 로 연결된 QA 데이터는 지우지 않는다. 지울 수 있는 것 = QA 관리자 계정(Auth + admin_users).
+  const st = JSON.parse(readFileSync(STATE, 'utf-8'))
+  await s.from('admin_users').delete().eq('user_id', st.admin.user_id)
+  const r = await s.auth.admin.deleteUser(st.admin.user_id)
+  console.log('QA admin account removed:', r.error ? r.error.message : 'ok')
+  writeFileSync(STATE + '.cleaned', new Date().toISOString())
 } else if (mode === 'clean') {
   const st = JSON.parse(readFileSync(STATE, 'utf-8'))
   const rIds = []

@@ -51,7 +51,7 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   const tRoom = await page.locator('main').innerText()
   ok(`[${tag}] STEP7 batch AND room (QA-5호관 102): only matched reagents located there (Iron/… excluded)`, nRoom <= 4 && (await page.getByTestId('batch-bar').count()) === 1, { nRoom })
   await page.getByRole('group', { name: '실험실 필터' }).getByRole('button', { name: '전체', exact: true }).click(); await page.waitForTimeout(1200); await waitList(page)
-  await page.getByPlaceholder(/시약명\(국문·영문\) 또는 CAS/).first().fill('blue'); await page.getByPlaceholder(/시약명\(국문·영문\) 또는 CAS/).first().press('Enter'); await page.waitForTimeout(1500); await waitList(page)
+  await page.getByPlaceholder(/시약명.*CAS/).first().fill('blue'); await page.getByPlaceholder(/시약명.*CAS/).first().press('Enter'); await page.waitForTimeout(1500); await waitList(page)
   const tq = await page.locator('main').innerText()
   ok(`[${tag}] batch AND general q ("blue"): Bromothymol blue + Thymol blue only`, (await resultCount(page)) === 2 && tq.includes('Thymol blue') && !tq.includes('Acetic acid') && new URL(page.url()).searchParams.get('q') === 'blue', await resultCount(page))
   await page.getByRole('button', { name: /특별관리물질만 보기/ }).click(); await page.waitForTimeout(800)

@@ -4,7 +4,7 @@ import { browserLaunch, session, ok, note, summary, shot, overflowX, crumbText, 
 const headed = process.env.QA_HEADED === '1'
 const browser = await browserLaunch(headed, headed ? 150 : 0)
 const SUGGEST = page => page.getByTestId('reagent-suggest-popover')
-const box = page => page.getByPlaceholder(/시약명\(국문·영문\) 또는 CAS/).first()
+const box = page => page.getByPlaceholder(/시약명.*CAS/).first()
 
 for (const [w, h] of [[1440, 900], [1366, 768], [390, 844], [360, 800]]) {
   const tag = `${w}x${h}`, mobile = w < 768

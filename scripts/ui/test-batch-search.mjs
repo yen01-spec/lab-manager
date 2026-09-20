@@ -106,7 +106,7 @@ const overflowX = page => page.evaluate(() => document.documentElement.scrollWid
   ok('F. batch + room filter (AND): fewer/equal results, batch chip stays', nRoom <= 6 && (await page.getByTestId('batch-bar').count()) === 1 && new URL(page.url()).searchParams.get('room') === '5호관 101', nRoom)
   await page.getByRole('button', { name: '전체', exact: true }).first().click(); await page.waitForTimeout(700)
   ok('back to all rooms: batch result restored', (await resultCount(page)) === 6)
-  const search = page.getByPlaceholder(/시약명\(국문·영문\) 또는 CAS/).first()
+  const search = page.getByPlaceholder(/시약명.*CAS/).first()
   await page.mouse.move(2, 2)
   await search.fill('acid'); await page.waitForTimeout(400); await search.press('Enter'); await page.waitForTimeout(900)
   const tq = await mainText(page)
@@ -232,7 +232,7 @@ for (const [w, h] of [[320, 568], [360, 800], [390, 844], [430, 932], [1366, 768
 }
 {
   const { ctx, page } = await open(1440, 900)
-  const box = page.getByPlaceholder(/시약명\(국문·영문\) 또는 CAS/).first()
+  const box = page.getByPlaceholder(/시약명.*CAS/).first()
   await page.mouse.move(2, 2)
   await box.fill('브로모티몰블루(BTB)'); await page.waitForTimeout(500)
   const opts = await page.getByRole('option').allInnerTexts()

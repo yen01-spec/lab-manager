@@ -43,6 +43,13 @@ export default function Inventory() {
   }
 
   const progressPct = progress.total > 0 ? Math.round(progress.done / progress.total * 100) : 0
+  // 모든 Lot 입력이 끝난 상태(아직 세션은 active) — "입력 완료"이지 "실사 완료"가 아니다. 장부는 관리자가 검토(실사 완료 처리) → DB 최종 반영을 해야 바뀐다.
+  const allCounted = activeSession?.status === 'active' && progress.total > 0 && progress.done === progress.total
+  const allCountedNote = allCounted && (
+    <div data-testid="all-counted-note" style={{ background: '#E6F5EE', border: '1px solid #A7DCC2', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#14633F', lineHeight: 1.6 }}>
+      <strong>✅ 모든 Lot 입력이 끝났어요.</strong> 아직 실사가 끝난 것은 아니에요 — 관리자가 <b>실사 완료 처리(검토)</b>와 <b>DB 최종 반영</b>을 해야 실제 재고가 바뀌고, 그때까지 시약목록에는 실사값이 미확정(파란 배경)으로 보여요. 고칠 게 있으면 그 전까지 다시 입력할 수 있어요.
+    </div>
+  )
 
   if (view === 'count') return (
     <InventoryCountView
@@ -94,6 +101,7 @@ export default function Inventory() {
                     <div style={{ height: '100%', borderRadius: '5px', background: progressPct === 100 ? '#38A169' : C.navy, width: `${progressPct}%`, transition: 'width 0.3s' }} />
                   </div>
                 </div>
+                {allCountedNote}
                 {student ? (
                   <button onClick={enterCounting} style={{ ...btnPrimary, width: '100%', padding: '14px', fontSize: '15px', minHeight: '44px' }}>
                     {myCountedCount > 0 ? '📝 실사 이어서 진행' : '📝 실사 입력 시작'}
@@ -133,8 +141,8 @@ export default function Inventory() {
               extra={isAdmin && (
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   {activeSession.status === 'paused' && <button onClick={resumeSession} disabled={busy} style={{ ...btnPrimary, background: '#1565C0' }}>▶ 재개</button>}
-                  {activeSession.status === 'active' && <button onClick={pauseSession} disabled={busy} style={{ ...btnGhost, color: '#E65100', borderColor: '#E65100', opacity: busy ? 0.6 : 1 }}>⏸ 일시중단</button>}
-                  <button onClick={cancelSession} disabled={busy} style={{ ...btnGhost, color: C.danger, borderColor: C.danger }}>🗑️ 실사 취소</button>
+                  {activeSession.status === 'active' && <button onClick={pauseSession} disabled={busy} style={{ ...btnGhost, color: '#BF360C', borderColor: '#BF360C', opacity: busy ? 0.6 : 1 }}>⏸ 일시중단</button>}
+                  <button onClick={cancelSession} disabled={busy} style={{ ...btnGhost, color: C.dangerDark, borderColor: C.dangerDark }}>🗑️ 실사 취소</button>
                   {activeSession.status === 'active' && (
                     <button onClick={completeSession} disabled={busy} style={{ ...btnPrimary, background: '#1565C0', minWidth: '150px', textAlign: 'center' }}>✅ 실사 완료 처리</button>
                   )}
@@ -176,6 +184,7 @@ export default function Inventory() {
                   실제 재고 장부는 {isAdmin ? '"DB 최종 반영"을 누르면' : '관리자가 최종 반영하면'} 바뀝니다.
                 </div>
               )}
+              {activeSession.status === 'active' && allCountedNote}
               {activeSession.status !== 'active' ? null : (
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                   {student ? (
