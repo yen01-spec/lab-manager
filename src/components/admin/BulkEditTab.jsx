@@ -6,6 +6,8 @@ import BulkDisposalModal from '../reagents/BulkDisposalModal'
 import { adminMoveLots, adminDisposeLots } from '../../lib/adminReview'
 import { useAdminSession } from '../../hooks/useAdminSession'
 import AdminAuthBanner from './AdminAuthBanner'
+import ReagentSearchInput from '../ReagentSearchInput'
+import { compareReagentNames, reagentOrFilter } from '../../lib/reagentSearch'
 
 // ══════════════════════════════════════════════
 //  시약 일괄정리 — src/pages/BulkEdit.jsx(/reagents/bulk-edit).
@@ -22,6 +24,7 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
   const [pendingDisposals, setPendingDisposals] = useState([]) // disposal_requests(status=pending)
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
+  const [pickedReagentId, setPickedReagentId] = useState(null)   // 자동추천에서 고른 시약(있으면 그 시약만)
   const [roomFilter, setRoomFilter] = useState('')
   const [checkedLotIds, setCheckedLotIds] = useState(new Set())
   const [showMoveModal, setShowMoveModal] = useState(false)
@@ -35,20 +38,24 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
 
   useEffect(() => { fetchAll() }, [])
 
-  async function fetchAll() {
+  // over: 방금 바꾼 값을 setState 반영 전에 바로 적용할 때({ search, reagentId })
+  async function fetchAll(over = {}) {
+    const term = (over.search !== undefined ? over.search : search).trim()
+    const reagentId = over.reagentId !== undefined ? over.reagentId : pickedReagentId
     setLoading(true)
     let query = supabase.from('reagents')
       .select('id, name, company, reagent_lots(id, status, sealed_count, current_stock, location_id, lot_no)')
       .neq('status', 'archived')
-      .order('name')
       .range(0, 2999)
-    if (search.trim()) query = query.ilike('name', `%${search.trim()}%`)
+    // 시약목록과 같은 검색 규칙(영문명/국문명/CAS). 추천에서 고른 시약이 있으면 그 시약(과 Lot)만.
+    if (reagentId) query = query.eq('id', reagentId)
+    else if (term) query = query.or(reagentOrFilter(term))
     const [{ data }, { data: moves }, { data: disposals }] = await Promise.all([
       query,
       supabase.from('location_requests').select('*').eq('status', 'pending'),
       supabase.from('disposal_requests').select('*').eq('status', 'pending'),
     ])
-    let list = (data || []).map(r => ({ ...r, _activeLots: (r.reagent_lots || []).filter(l => l.status === 'active') }))
+    let list = [...(data || [])].sort(compareReagentNames).map(r => ({ ...r, _activeLots: (r.reagent_lots || []).filter(l => l.status === 'active') }))
     if (roomFilter) {
       const roomLocIds = new Set(locations.filter(l => l.room === roomFilter).map(l => l.id))
       list = list.map(r => ({ ...r, _activeLots: r._activeLots.filter(l => roomLocIds.has(l.location_id)) }))
@@ -171,13 +178,19 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
       )}
       {isAdmin && <AdminAuthBanner session={adminSession} purpose="일괄 위치이동/폐기를 처리" />}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchAll()}
-          placeholder="시약명 검색" style={{ ...inputStyle, maxWidth: '200px' }} />
+        <div style={{ flex: '1 1 260px', maxWidth: 420, minWidth: 0, display: 'flex' }}>
+          <ReagentSearchInput
+            value={search}
+            onChange={v => { setSearch(v); setPickedReagentId(null) }}
+            onSelect={r => { setSearch(r.name); setPickedReagentId(r.id); fetchAll({ search: r.name, reagentId: r.id }) }}
+            onEnter={() => { setPickedReagentId(null); fetchAll({ search, reagentId: null }) }}
+            placeholder="시약명(국문·영문) 또는 CAS No.로 검색..." />
+        </div>
         <select aria-label="실험실 필터" value={roomFilter} onChange={e => setRoomFilter(e.target.value)} style={{ ...inputStyle, maxWidth: '160px' }}>
           <option value="">전체 실험실</option>
           {rooms.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
-        <button onClick={fetchAll} style={{ ...btnGhost, padding: '8px 16px' }}>필터 적용</button>
+        <button onClick={() => fetchAll()} style={{ ...btnGhost, padding: '8px 16px' }}>필터 적용</button>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px',

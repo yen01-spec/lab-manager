@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
+import ReagentSearchInput from '../ReagentSearchInput'
 import { C, btnPrimary, btnExcel } from '../../design'
 import PillNav from '../PillNav'
 import ResourceReagentCard from './ResourceReagentCard'
@@ -129,10 +130,10 @@ export default function ResourceReagentList({
 
       {searchMode && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && setCommitted(search)}
-            placeholder="시약명(국문·영문) 또는 CAS로 검색 후 Enter"
-            style={{ flex: 1, padding: '8px 12px', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} />
+          <ReagentSearchInput value={search} onChange={setSearch}
+            onSelect={r => { setSearch(r.name); setCommitted(r.name) }}
+            onEnter={() => setCommitted(search)}
+            placeholder="시약명(국문·영문) 또는 CAS No.로 검색..." />
           <button onClick={() => setCommitted(search)} style={{ ...btnPrimary, padding: '8px 16px' }}>검색</button>
         </div>
       )}

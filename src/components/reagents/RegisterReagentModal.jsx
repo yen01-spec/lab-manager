@@ -1,6 +1,7 @@
 import { C, inputStyle, labelStyle } from '../../design'
 import CompanyPicker from '../CompanyPicker'
 import LotNoInput from './LotNoInput'
+import ReagentSearchInput from '../ReagentSearchInput'
 
 // 신규 시약 등록 모달 — "신규 시약 등록"/"직접 제조 시약 등록" 두 탭을 하나의 모달에서 전환.
 // 로그인이 안 되어 있으면 같은 모달 안에서 인라인 로그인 확인 → 성공 시 원래 등록을 이어서 제출.
@@ -13,7 +14,7 @@ export default function RegisterReagentModal({
   locations,
   showInlineLogin, inlineLoginForm, setInlineLoginForm, inlineLoginError, setInlineLoginError,
   inlineLoginLoading, setPendingRegisterTab, setShowInlineLogin,
-  dupCandidates, onSearchDuplicates, onPickDuplicate, onClearDuplicate,
+  onPickDuplicate, onClearDuplicate,
   onSubmitInlineLogin, onSubmitNewReagent, onSubmitMade, onClose,
 }) {
   return (
@@ -83,27 +84,11 @@ export default function RegisterReagentModal({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={labelStyle}>시약명 *</label>
-                <input value={newReagentForm.name}
-                  onChange={e => setNewReagentForm({ ...newReagentForm, name: e.target.value, reagent_id: null })}
-                  onBlur={onSearchDuplicates} placeholder="예) Acetone" style={inputStyle} />
-                {dupCandidates?.length > 0 && (
-                  <div style={{ marginTop: '8px', border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
-                    <div style={{ padding: '6px 10px', fontSize: '11px', color: '#92400E', background: '#FFF8E7' }}>
-                      이미 등록된 시약이 있어요 — 같은 제품이면 골라서 새 Lot(병)만 추가하세요.
-                    </div>
-                    {dupCandidates.map(c => (
-                      <div key={c.id} onClick={() => onPickDuplicate(c)}
-                        style={{ padding: '8px 10px', cursor: 'pointer', borderTop: `1px solid ${C.border}`, fontSize: '12.5px' }}
-                        onMouseEnter={e => e.currentTarget.style.background = C.bg}
-                        onMouseLeave={e => e.currentTarget.style.background = C.white}>
-                        <div style={{ fontWeight: '600', color: C.navy }}>{c.name}</div>
-                        <div style={{ color: C.muted, fontSize: '11.5px', marginTop: '2px' }}>
-                          {[c.company, c.cas_no, c.volume ? `${c.volume}${c.unit || ''}` : null, c.category].filter(Boolean).join(' · ') || '-'}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* 이미 등록된 시약이면 추천에서 골라 새 Lot(병)만 추가 — 새 이름은 그대로 자유 입력 */}
+                <ReagentSearchInput value={newReagentForm.name}
+                  onChange={v => setNewReagentForm({ ...newReagentForm, name: v, reagent_id: null })}
+                  onSelect={onPickDuplicate}
+                  placeholder="예) Acetone — 이미 있는 시약이면 추천에서 고르세요" ariaLabel="시약명" />
                 {newReagentForm.reagent_id && (
                   <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     background: '#F0FFF4', border: '1px solid #9AE6B4', borderRadius: '8px', padding: '8px 10px' }}>

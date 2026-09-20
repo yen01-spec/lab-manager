@@ -103,6 +103,11 @@ ref 상수는 `scripts/supabase-refs.mjs` 한 곳에만 있다.
 - 폐기/위치 이동 요청은 lot_id 필수, 제출 RPC 는 병 행에서 시약/Lot/기존 위치를 서버가 확정. 폐기 수량 개념 제거(승인 = 그 병 1개 즉시 폐기). 승인 직전 재검증(상태/시약 일치/현재 위치=요청 시점 위치).
 - migration: 20260923090000_bottle_unit_requests.sql (production 미적용, Gate 런북 10번째). 테스트: scripts/staging/test-bottle-unit.mjs, scripts/ui/test-bottle-admin-review.mjs.
 
+## 시약 검색 자동추천 통일 (2026-09-23)
+- 정본: `src/components/ReagentSearchInput.jsx`(combobox) + `src/hooks/useReagentAutocomplete.js` + `src/lib/reagentSearch.js`(검색 규칙·공용 시약 인덱스). 영문명/국문명/CAS 검색, 최대 10개, 빈 입력은 추천 숨김, 추천창은 body 포털 + viewport 충돌 처리(모달/표에 잘리지 않음), ARIA combobox/listbox/option.
+- 데이터: 시약 인덱스(id/이름/국문명/CAS/제조사/분류/순도/용량)를 앱 전체에서 1회만 로드해 메모리에서 검색(키 입력마다 서버 조회 없음, 5분 TTL, 등록 시 invalidate). 재고실사는 `items`(이번 실사 배정 Lot)로 범위를 제한 — 추천이 권한 범위를 넓히지 않는다.
+- 자유 입력 유지: 구매요청서 물품명(free text)·시약 등록 새 이름·BulkLookup(여러 줄 붙여넣기)·공지/안전 제목 검색은 시약 선택이 아니므로 강제하지 않음. 테스트: scripts/ui/test-reagent-search-input.mjs.
+
 ## 묶음 행 가드 / 사용중·여분 판정 / 백업·복원 (2026-09-23, staging 전용)
 - **묶음 행 가드**: reagent_lots 1행 = 병 1개가 전제. `sealed_count > 1` 행은 병 단위 작업(폐기·위치 이동 신청/승인, 일괄 이동·폐기, 개별 이동, 사용완료·분실 표시)을 서버가 fail-closed 로 거부한다: "여러 병이 하나의 Lot 행에 묶여 있어 병 단위 작업을 할 수 없습니다. 병별 Lot 행으로 분리 후 처리해주세요." 수량 수정(admin_lot_update)은 분리 경로라 막지 않는다. production 실측 sealed_count > 1 = 0건(재검증 2026-09-20). 화면에서도 선택 불가로 표시한다.
 - **사용중/여분**(DB 저장 없음, 재배치 작업표에서 계산): 같은 시약 활성 병 중 잔량 최소 = 사용중(미개봉=100%, 후보 중 개봉 병 우선), 나머지 = 여분. 그래도 동률이면 "현장 확인 필요" — 입고일·병 ID 는 판정에 쓰지 않는다(표시/정렬 전용). 관리자가 병별 역할을 직접 지정 가능. 현장 확인 필요가 있으면 집계는 "잠정값"으로 UI/Excel 에 표시.

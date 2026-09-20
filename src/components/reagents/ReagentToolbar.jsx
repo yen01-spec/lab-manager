@@ -1,6 +1,6 @@
 import { memo, useState } from 'react'
 import { C, inputStyle, btnPrimary, btnExcel } from '../../design'
-import ReagentAutocomplete from '../ReagentAutocomplete'
+import ReagentSearchInput from '../ReagentSearchInput'
 
 // 상단 검색창 + 일괄검색/신규등록/엑셀 버튼 줄.
 // 검색 입력값(draft)은 이 컴포넌트가 들고 있고, Enter나 "검색" 버튼을 눌렀을 때만
@@ -29,7 +29,7 @@ function ReagentToolbar({
       display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '16px',
     }}>
       <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '200px' }}>
-        <ReagentAutocomplete
+        <ReagentSearchInput
           value={draft}
           onChange={setDraft}
           onSelect={onSearchSelect}

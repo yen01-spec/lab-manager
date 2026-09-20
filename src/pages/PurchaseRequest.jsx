@@ -6,7 +6,7 @@ import { supabase } from '../supabase'
 import { getSessionToken } from '../lib/session'
 import { C, PageBanner, Card, inputStyle, labelStyle, btnPrimary, btnGhost, btnExcel, thStyle, tdStyle } from '../design'
 import { exportPurchaseRequestForm } from '../exportUtils'
-import ReagentAutocomplete from '../components/ReagentAutocomplete'
+import ReagentSearchInput from '../components/ReagentSearchInput'
 import CompanyPicker from '../components/CompanyPicker'
 
 let uidCounter = 0
@@ -267,7 +267,7 @@ export default function PurchaseRequest() {
               <div style={{ fontSize: '11.5px', color: C.muted, marginBottom: '10px' }}>필수 항목</div>
               <div style={fieldGridStyle}>
                 <Field label="화학물질명" required>
-                  <ReagentAutocomplete
+                  <ReagentSearchInput
                     value={reagentDraft.name}
                     onChange={v => updateReagentDraft('name', v)}
                     onSelect={selectReagentOption}

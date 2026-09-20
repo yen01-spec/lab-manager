@@ -80,7 +80,7 @@ for (const vp of VIEWPORTS[mode].filter(v => !only || `${v.w}x${v.h}` === only))
 
   // English search
   await test(`${label} | English search + scroll + Back`, async () => {
-    await page.fill('textarea[placeholder*="시약명"]', 'chloride')
+    await page.fill('input[role="combobox"][placeholder*="시약명"]', 'chloride')
     await page.keyboard.press('Enter')
     await page.waitForFunction(() => location.search.includes('q=chloride'))
     await page.waitForTimeout(700)
@@ -88,25 +88,25 @@ for (const vp of VIEWPORTS[mode].filter(v => !only || `${v.w}x${v.h}` === only))
     return { count: await resultCount(page), url: new URL(page.url()).search }
   })
   await roundTrip('English search "chloride"', 'button', 3000, async () => {
-    eq(await page.inputValue('textarea[placeholder*="시약명"]'), 'chloride', '검색창 값 복원')
+    eq(await page.inputValue('input[role="combobox"][placeholder*="시약명"]'), 'chloride', '검색창 값 복원')
   })
   await roundTrip('English search "chloride"', 'browser', 2500)
 
   // Korean search
   await test(`${label} | Korean search`, async () => {
-    await page.fill('textarea[placeholder*="시약명"]', '아세트산염')
+    await page.fill('input[role="combobox"][placeholder*="시약명"]', '아세트산염')
     await page.keyboard.press('Enter')
     await page.waitForFunction(() => decodeURIComponent(location.search).includes('q=아세트산염'))
     await page.waitForTimeout(700); await waitList(page)
     return { count: await resultCount(page) }
   })
   await roundTrip('Korean search', 'browser', 1500, async () => {
-    eq(await page.inputValue('textarea[placeholder*="시약명"]'), '아세트산염', '검색창 값 복원')
+    eq(await page.inputValue('input[role="combobox"][placeholder*="시약명"]'), '아세트산염', '검색창 값 복원')
   })
 
   // CAS search
   await test(`${label} | CAS search`, async () => {
-    await page.fill('textarea[placeholder*="시약명"]', '71-43-2')
+    await page.fill('input[role="combobox"][placeholder*="시약명"]', '71-43-2')
     await page.keyboard.press('Enter')
     await page.waitForFunction(() => location.search.includes('q=71-43-2'))
     await page.waitForTimeout(700); await waitList(page)

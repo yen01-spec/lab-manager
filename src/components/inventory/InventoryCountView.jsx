@@ -7,6 +7,8 @@ import { computeSortLetter } from '../../lib/sortLetter'
 import { useBusyAction } from '../../hooks/useBusyAction'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import CompanyPicker from '../CompanyPicker'
+import ReagentSearchInput, { ReagentOptionBody } from '../ReagentSearchInput'
+import { suggestFrom } from '../../lib/reagentSearch'
 import StagedCompanyField from './StagedCompanyField'
 import ActionModal from './ActionModal'
 import NewRegistrationSummary from './NewRegistrationSummary'
@@ -14,6 +16,9 @@ import NewRegistrationSummary from './NewRegistrationSummary'
 // ════════════════════════════════════════════════════════════
 //  실사 입력 화면 (학생/관리자 공용)
 // ════════════════════════════════════════════════════════════
+// 재고실사 검색 필드: 이번 실사에 배정된 Lot 안에서만(범위를 넓히지 않음) 시약명(영/국)·CAS·Lot No. 로 찾는다.
+const getLotFields = (lot) => ({ name: lot.reagents?.name, name_ko: lot.reagents?.name_ko, cas_no: lot.reagents?.cas_no, extra: [lot.lot_no] })
+
 export default function InventoryCountView({ session, myName, student, isAdmin, onBack }) {
   const { isMobile } = useBreakpoint()
   const [lots, setLots] = useState([])
@@ -26,7 +31,6 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
   const [sliderDisplay, setSliderDisplay] = useState(null) // ← 상단 패널 잔량 슬라이더의 현재 값(퍼센트 표시용)
   const [compareCandidates, setCompareCandidates] = useState([]) // ← 같은 이름의 Lot이 여러 개라 특정 못했을 때 고를 후보들
   const [savedMsg, setSavedMsg] = useState(false)      // ← "✓ 수정되었습니다" 인라인 메시지
-  const [searchOpen, setSearchOpen] = useState(false)  // ← 검색창 아래 후보 드롭다운 열림 여부
   // 모바일 목록 화면은 "완료/미완료" 두 탭만 쓰므로(PC의 '전체' 탭 없음) 처음부터 미완료로 시작.
   const [filter, setFilter] = useState(isMobile ? 'undone' : 'all')
   const [locationFilter, setLocationFilter] = useState('')
@@ -44,7 +48,6 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
   const inputRefs = useRef({})
   const rowRefs = useRef({})       // ← 알파벳 인덱스용 행 ref
   const searchInputRef = useRef(null)
-  const searchBoxRef = useRef(null)   // ← 후보 드롭다운 바깥 클릭 감지용
   const comparePanelInputRef = useRef(null)
   const completeButtonRef = useRef(null)
   const searchDebounceRef = useRef(null)
@@ -66,15 +69,6 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     ;(data || []).forEach(d => { map[d.lot_id] = { reason: d.reason } })
     setDisposalByLot(map)
   }
-
-  // 검색 후보 드롭다운 바깥을 클릭하면 닫음
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target)) setSearchOpen(false)
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
 
   async function fetchLocations() {
     const { data } = await supabase.from('locations').select('*').order('room')
@@ -99,7 +93,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     const idChunks = []
     for (let i = 0; i < lotIds.length; i += 500) idChunks.push(lotIds.slice(i, i + 500))
     const chunkResults = await Promise.all(idChunks.map(chunk => supabase.from('reagent_lots')
-      .select('id, reagent_id, location_id, lot_no, cat_no, sealed_count, current_stock, reagents(id, name, cas_no, company, category, hazard, volume, unit, purity), locations(room, detail)')
+      .select('id, reagent_id, location_id, lot_no, cat_no, sealed_count, current_stock, reagents(id, name, name_ko, cas_no, company, category, hazard, volume, unit, purity), locations(room, detail)')
       .in('id', chunk)))
     const lotData = chunkResults.flatMap(r => r.data || [])
     if (lotData) {
@@ -248,7 +242,6 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
   async function startNewEntry() {
     setCompareLot(null)
     setCompareCandidates([])
-    setSearchOpen(false)
     const term = search.trim()
     const { data: matches } = await supabase.from('reagents')
       .select('id, name, cas_no, company, category, volume, unit, purity')
@@ -318,7 +311,6 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
   function handleSearchEnter() {
     const term = search.trim().toLowerCase()
     if (!term) return
-    setSearchOpen(false)
     const matches = locationScopedLots.filter(l =>
       (l.reagents?.name || '').toLowerCase() === term
       || (l.reagents?.cas_no || '').toLowerCase() === term
@@ -330,7 +322,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
       // 같은 시약명인데 Lot이 여러 개라 특정할 수 없음 — 어떤 Lot을 고치는 건지 사용자가 직접 고르게 함
       setCompareLot(null)
       setCompareCandidates(matches)
-    } else if (dropdownLots.length === 0) {
+    } else if (suggestFrom(locationScopedLots, search, getLotFields, 1).length === 0) {
       // 부분일치조차 전혀 없음 — 기존 목록에 없는 시약이므로 바로 신규 입력 모드로
       startNewEntry()
     }
@@ -340,7 +332,6 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     setCompareCandidates([])
     setCompareLot(lot)
     setNewEntryMode(false)
-    setSearchOpen(false)
     const c = counts[lot.id]
     setSliderDisplay(c?.actual_stock ?? c?.book_stock ?? lot.current_stock)
     // 모바일에서는 이 ref가 화면 아래쪽 잔량 슬라이더라 자동 포커스하면 브라우저가
@@ -361,7 +352,6 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     setSearch('')
     setDebouncedSearch('')
     setCompareLot(null)
-    setSearchOpen(false)
     setTimeout(() => searchInputRef.current?.focus(), 0)
   }
 
@@ -402,15 +392,6 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
   // 위치 필터가 걸려 있으면 검색도 그 범위 안에서만 — 지금 서 있는 시약장과 무관한 결과가 뜨지 않게
   const locationScopedLots = locationFilter ? lots.filter(l => l.location_id === locationFilter) : lots
 
-  // 검색창 아래 후보 드롭다운 — 전체 시약 DB가 아니라 이번 실사에 배정된(하단 목록과 같은 범위) Lot 중에서만 찾음
-  const dropdownLots = search.trim()
-    ? locationScopedLots.filter(l => {
-        const term = search.trim().toLowerCase()
-        return (l.reagents?.name || '').toLowerCase().includes(term)
-          || (l.reagents?.cas_no || '').toLowerCase().includes(term)
-          || (l.lot_no || '').toLowerCase().includes(term)
-      }).slice(0, 15)
-    : []
 
   // 실제로 병을 무작위로 꺼내며 라벨의 시약명/CAS/Lot 번호 중 뭐가 보이든 그걸로 바로 찾을 수 있어야 하므로
   // 목록 필터링도 셋 다 대상으로 함(디바운스된 검색어 기준, 위치 필터 범위 안에서).
@@ -444,6 +425,23 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
     : 0
 
   // 상태 배지: 일치(장부=실측, 초록) / 미입력(회색) / 차이있음(장부≠실측, 빨강)
+  function onSearchChange(v) { setSearch(v); setCompareLot(null); setCompareCandidates([]); setNewEntryMode(false) }
+  // 병(Lot) 단위 추천 항목 — 같은 lot_no 의 병이 여러 개여도 각각 별도 행(reagent_lots.id)으로 보인다.
+  function renderLotOption(lot, { term }) {
+    const s = STATUS_BADGE[rowStatus(lot)]
+    return (
+      <>
+        <ReagentOptionBody item={{ name: lot.reagents?.name, name_ko: lot.reagents?.name_ko, cas_no: lot.reagents?.cas_no, company: lot.reagents?.company }} term={term} />
+        <div style={{ fontSize: '11px', color: C.muted, textAlign: 'right', flexShrink: 0 }}>
+          <div>Lot {lot.lot_no || '(번호 없음)'}</div>
+          <div>{lot.locations?.room || '-'}{lot.locations?.detail ? ` · ${lot.locations.detail}` : ''}</div>
+          <span style={{ display: 'inline-block', marginTop: 2, fontSize: '11px', padding: '2px 9px', borderRadius: '12px', fontWeight: '700', background: s.bg, color: s.color }}>{s.label}</span>
+        </div>
+      </>
+    )
+  }
+  const emptyAction = { label: '"' + search.trim() + '" 기존 목록에 없습니다 — 눌러서 신규 등록하기', onClick: () => startNewEntry() }
+
   function rowStatus(lot) {
     const count = counts[lot.id]
     const isDone = count?.actual_stock != null
@@ -784,42 +782,20 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
             </div>
           </div>
 
-          <div ref={searchBoxRef} style={{ position: 'relative', marginBottom: '14px' }}>
-            <input
-              ref={searchInputRef}
+          <div style={{ display: 'flex', marginBottom: '14px' }}>
+            <ReagentSearchInput
               value={search}
-              onChange={e => { setSearch(e.target.value); setCompareLot(null); setCompareCandidates([]); setNewEntryMode(false); setSearchOpen(true) }}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSearchEnter(); e.target.blur() } }}
-              placeholder="시약명 / CAS / Lot No. 검색"
-              style={{ ...inputStyle, minHeight: '44px', fontSize: '14px' }}
-            />
-            {searchOpen && search.trim() && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200,
-                background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: '320px', overflowY: 'auto',
-              }}>
-                {dropdownLots.length > 0 ? dropdownLots.map(lot => {
-                  const s = STATUS_BADGE[rowStatus(lot)]
-                  return (
-                    <div key={lot.id} onClick={() => openComparePanel(lot)}
-                      style={{ padding: '12px 14px', cursor: 'pointer', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '44px' }}>
-                      <div>
-                        <div style={{ fontSize: '13.5px', fontWeight: '600', color: C.navy }}>{lot.reagents?.name}</div>
-                        <div style={{ fontSize: '11px', color: C.muted }}>
-                          Lot {lot.lot_no || '(번호 없음)'} · {lot.locations?.room || '-'}{lot.locations?.detail ? ` · ${lot.locations.detail}` : ''}
-                        </div>
-                      </div>
-                      <span style={{ fontSize: '11px', padding: '2px 9px', borderRadius: '12px', fontWeight: '700', background: s.bg, color: s.color }}>{s.label}</span>
-                    </div>
-                  )
-                }) : (
-                  <div onClick={startNewEntry} style={{ padding: '14px', cursor: 'pointer', fontSize: '13px', color: '#92400E', minHeight: '44px' }}>
-                    "{search.trim()}" 기존 목록에 없습니다 — 눌러서 신규 등록하기
-                  </div>
-                )}
-              </div>
-            )}
+              onChange={onSearchChange}
+              onSelect={openComparePanel}
+              onEnter={() => { handleSearchEnter(); searchInputRef.current?.blur() }}
+              items={locationScopedLots}
+              getFields={getLotFields}
+              renderOption={renderLotOption}
+              emptyAction={emptyAction}
+              limit={15}
+              inputRef={searchInputRef}
+              placeholder="시약명(국문·영문) / CAS / Lot No. 검색"
+              inputStyle={{ minHeight: '44px', fontSize: '14px' }} />
           </div>
 
           <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
@@ -883,48 +859,19 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
 
         {/* ── ① 검색 & 대조/수정 영역 (상단) ── */}
         <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '14px 16px', marginBottom: '16px' }}>
-          <div ref={searchBoxRef} style={{ position: 'relative' }}>
-            <input
-              ref={searchInputRef}
-              value={search}
-              onChange={e => { setSearch(e.target.value); setCompareLot(null); setCompareCandidates([]); setNewEntryMode(false); setSearchOpen(true) }}
-              onFocus={() => { if (search.trim()) setSearchOpen(true) }}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSearchEnter() } }}
-              placeholder="시약명 / CAS / Lot No. 검색 후 Enter"
-              style={{ ...inputStyle, fontSize: '14px', padding: '9px 12px' }}
-            />
-            {searchOpen && search.trim() && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200,
-                background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: '320px', overflowY: 'auto',
-              }}>
-                {dropdownLots.length > 0 ? dropdownLots.map(lot => {
-                  const s = STATUS_BADGE[rowStatus(lot)]
-                  return (
-                    <div key={lot.id} onClick={() => openComparePanel(lot)}
-                      style={{ padding: '9px 14px', cursor: 'pointer', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                      onMouseEnter={e => e.currentTarget.style.background = C.bg}
-                      onMouseLeave={e => e.currentTarget.style.background = C.white}>
-                      <div>
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: C.navy }}>{lot.reagents?.name}</div>
-                        <div style={{ fontSize: '11px', color: C.muted }}>
-                          Lot {lot.lot_no || '(번호 없음)'} · {lot.locations?.room || '-'}{lot.locations?.detail ? ` · ${lot.locations.detail}` : ''}
-                        </div>
-                      </div>
-                      <span style={{ fontSize: '11px', padding: '2px 9px', borderRadius: '12px', fontWeight: '700', background: s.bg, color: s.color }}>{s.label}</span>
-                    </div>
-                  )
-                }) : (
-                  <div onClick={startNewEntry} style={{ padding: '12px 14px', cursor: 'pointer', fontSize: '13px', color: '#92400E' }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#FFF8E7'}
-                    onMouseLeave={e => e.currentTarget.style.background = C.white}>
-                    "{search.trim()}" 기존 목록에 없습니다 — 클릭해서 신규 등록하기
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <ReagentSearchInput
+            value={search}
+            onChange={onSearchChange}
+            onSelect={openComparePanel}
+            onEnter={handleSearchEnter}
+            items={locationScopedLots}
+            getFields={getLotFields}
+            renderOption={renderLotOption}
+            emptyAction={emptyAction}
+            limit={15}
+            inputRef={searchInputRef}
+            placeholder="시약명(국문·영문) / CAS / Lot No. 검색 후 Enter"
+            inputStyle={{ fontSize: '14px', padding: '9px 12px' }} />
           {savedMsg && <div style={{ fontSize: '12px', color: '#2E7D32', marginTop: '8px' }}>✓ 수정되었습니다 · 다음 시약으로 이동</div>}
 
           <div style={{ borderTop: `1px solid ${C.border}`, marginTop: '12px', paddingTop: '12px' }}>
@@ -1184,7 +1131,7 @@ export default function InventoryCountView({ session, myName, student, isAdmin, 
           {searchTerm && (
             <span style={{ fontSize: '12px', color: C.muted }}>
               "{debouncedSearch.trim()}" 검색 결과 <b style={{ color: C.blue }}>{filteredLots.length}건</b>{' '}
-              <button onClick={() => { setSearch(''); setDebouncedSearch(''); setCompareLot(null); setCompareCandidates([]); setNewEntryMode(false); setSearchOpen(false) }}
+              <button onClick={() => { setSearch(''); setDebouncedSearch(''); setCompareLot(null); setCompareCandidates([]); setNewEntryMode(false) }}
                 style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: '12px', textDecoration: 'underline' }}>✕ 초기화</button>
             </span>
           )}

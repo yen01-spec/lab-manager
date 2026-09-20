@@ -77,15 +77,15 @@ export async function installMock(context, reagents, stats = { requests: [], rea
     if (path.endsWith('/rest/v1/locations')) return json(LOCATIONS)
     if (path.endsWith('/rest/v1/reagent_lots')) {
       const inList = (p.get('location_id') || '').match(/^in\.\((.*)\)$/)
-      if (p.get('select') === 'reagent_id' && inList) {
+      if (/^reagent_id(, ?location_id)?$/.test(p.get('select') || '') && inList) {
         const ids = new Set(inList[1].split(','))
-        const rows = reagents.flatMap(r => r.reagent_lots.filter(l => ids.has(l.location_id) && l.status === 'active').map(() => ({ reagent_id: r.id })))
+        const rows = reagents.flatMap(r => r.reagent_lots.filter(l => ids.has(l.location_id) && l.status === 'active').map(l => ({ reagent_id: r.id, location_id: l.location_id })))
         return json(rows)
       }
       const inId = (p.get('id') || '').match(/^in\.\((.*)\)$/)
       if (inId) {
         const ids = new Set(inId[1].split(','))
-        return json(reagents.flatMap(r => r.reagent_lots.filter(l => ids.has(l.id)).map(l => ({ ...l, reagent_id: r.id, reagents: { id: r.id, name: r.name, cas_no: r.cas_no, company: r.company, category: r.category, hazard: null, volume: r.volume, unit: r.unit, purity: r.purity }, locations: { room: '5호관 101', detail: null } }))))
+        return json(reagents.flatMap(r => r.reagent_lots.filter(l => ids.has(l.id)).map(l => ({ ...l, reagent_id: r.id, reagents: { id: r.id, name: r.name, name_ko: r.name_ko, cas_no: r.cas_no, company: r.company, category: r.category, hazard: null, volume: r.volume, unit: r.unit, purity: r.purity }, locations: { room: '5호관 101', detail: null } }))))
       }
       const inR = (p.get('reagent_id') || '').match(/^in\.\((.*)\)$/)
       if (inR) {
@@ -113,7 +113,10 @@ export async function installMock(context, reagents, stats = { requests: [], rea
       }
       const inIds = (p.get('id') || '').match(/^in\.\((.*)\)$/)
       if (inIds) { const s = new Set(inIds[1].split(',')); rows = rows.filter(r => s.has(r.id)) }
-      return json(rows, 200, { 'content-range': `0-${Math.max(rows.length - 1, 0)}/${rows.length}` })
+      const total = rows.length
+      // supabase-js .range(a, b) 는 offset/limit 쿼리로 전달된다 — 실제 PostgREST 처럼 잘라서 응답(1000행 페이징 검증)
+      if (p.get('limit') !== null) { const off = Number(p.get('offset') || 0); rows = rows.slice(off, off + Number(p.get('limit'))) }
+      return json(rows, 200, { 'content-range': `0-${Math.max(rows.length - 1, 0)}/${total}` })
     }
     if (req.method() === 'GET') return json(wantsObject ? {} : [])
     return json(null, 200)

@@ -17,6 +17,7 @@ import ReagentToolbar from '../components/reagents/ReagentToolbar'
 import ReagentFilters from '../components/reagents/ReagentFilters'
 import BulkLookupModal from '../components/reagents/BulkLookupModal'
 import RegisterReagentModal from '../components/reagents/RegisterReagentModal'
+import { invalidateReagentIndex } from '../lib/reagentSearch'
 import PickedListModal from '../components/reagents/PickedListModal'
 
 // 검색어·위치/유해분류/위험물유별/특별관리·CAS 필터는 URL 쿼리에 있다(useReagentListParams) — 상세
@@ -81,7 +82,6 @@ export default function ReagentList() {
   // 시약명을 입력하고 칸을 벗어나면(blur) 카탈로그에서 같은 이름을 찾아 후보로 보여줌 —
   // 이미 있는 시약을 모르고 또 새로 등록하는 걸 막기 위함(재고실사/관리자 시약추가에
   // 이미 있는 "기존 시약에 Lot 추가" 흐름을 신규 시약 등록 모달에도 동일하게 적용).
-  const [dupCandidates, setDupCandidates] = useState([])
   const [madeForm, setMadeForm] = useState({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
   // 등록하기를 눌렀는데 로그인이 안 되어 있으면, 별도 로그인 버튼으로 보내는 대신
   // 이 모달 안에서 바로 학번/생년월일/이름을 확인 → 맞으면 로그인 처리와 동시에
@@ -223,30 +223,20 @@ export default function ReagentList() {
     })
     if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
     alert('직접 제조 시약이 등록됐어요! 관리자가 최종 확인하기 전까지는 목록에 "검토대기"로 표시돼요.')
+    invalidateReagentIndex()
     setShowRegisterModal(false)
     setMadeForm({ name: '', volume: '', unit: '', made_date: new Date().toISOString().split('T')[0], made_purpose: '', location_id: '' })
     fetchResults()
   }
 
-  // 시약명을 입력하고 칸을 벗어나면 카탈로그에서 같은 이름을 찾아 후보로 보여줌 —
-  // "이미 있는 시약인데 모르고 또 등록"하는 걸 막기 위함(재고실사/관리자 시약추가와
-  // 동일한 패턴). 후보를 고르면 나머지 필드가 그 시약 값으로 채워지고 잠기며,
-  // 제출 시 reagents를 또 만들지 않고 그 시약에 새 Lot만 붙인다.
-  async function searchDuplicateReagents() {
-    const term = newReagentForm.name.trim()
-    if (!term) { setDupCandidates([]); return }
-    const { data } = await supabase.from('reagents')
-      .select('id, name, cas_no, company, category, volume, unit, purity')
-      .ilike('name', `%${term}%`).neq('status', 'archived').limit(5)
-    setDupCandidates(data || [])
-  }
+  // 시약명 입력 중 자동추천(ReagentSearchInput)에서 이미 있는 시약을 고르면 나머지 필드가 그 시약 값으로 채워지고 잠기며,
+  // 제출 시 reagents를 또 만들지 않고 그 시약에 새 Lot만 붙인다. (새 이름은 그대로 자유 입력)
   function pickDuplicateReagent(r) {
     setNewReagentForm(prev => ({
       ...prev, name: r.name, cas_no: r.cas_no || '', company: r.company || '',
       category: r.category || '', volume: r.volume != null ? String(r.volume) : '', unit: r.unit || '',
       reagent_id: r.id,
     }))
-    setDupCandidates([])
   }
   function clearDuplicateMatch() {
     setNewReagentForm(prev => ({ ...prev, reagent_id: null }))
@@ -272,9 +262,9 @@ export default function ReagentList() {
     if (error) { alert('등록 중 오류가 발생했습니다: ' + error.message); return }
     const genNote = reg.lot_source?.startsWith('generated') ? `\n내부 관리번호: ${reg.lot_no}` : ''
     alert((newReagentForm.reagent_id ? '기존 시약에 새 Lot이 등록됐어요! 관리자가 최종 확인하기 전까지는 "검토대기"로 표시돼요.' : '신규 시약이 등록됐어요! 관리자가 최종 확인하기 전까지는 목록에 "검토대기"로 표시돼요.') + genNote)
+    invalidateReagentIndex()
     setShowRegisterModal(false)
     setNewReagentForm({ name: '', cas_no: '', company: '', category: '', volume: '', unit: '', cat_no: '', lot_no: '', noLotReason: '', location_id: '', sealed_count: '1', current_stock: '100', reagent_id: null })
-    setDupCandidates([])
     fetchResults()
   }
 
@@ -533,7 +523,6 @@ export default function ReagentList() {
           showInlineLogin={showInlineLogin} inlineLoginForm={inlineLoginForm} setInlineLoginForm={setInlineLoginForm}
           inlineLoginError={inlineLoginError} setInlineLoginError={setInlineLoginError}
           inlineLoginLoading={inlineLoginLoading} setPendingRegisterTab={setPendingRegisterTab} setShowInlineLogin={setShowInlineLogin}
-          dupCandidates={dupCandidates} onSearchDuplicates={searchDuplicateReagents}
           onPickDuplicate={pickDuplicateReagent} onClearDuplicate={clearDuplicateMatch}
           onSubmitInlineLogin={submitInlineLogin} onSubmitNewReagent={submitNewReagent} onSubmitMade={submitMade}
           onClose={() => setShowRegisterModal(false)}

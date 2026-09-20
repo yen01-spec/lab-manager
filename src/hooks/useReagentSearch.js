@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { reagentOrFilter } from '../lib/reagentSearch'
 import { supabase } from '../supabase'
 import { fetchAllPages } from '../lib/fetchAllPages'
 import { getHazardCategory } from '../lib/hazardCategory'
@@ -163,8 +164,7 @@ export function useReagentSearch({ search = '', roomFilter = '', detailFilter = 
       .neq('status', 'archived')
     // 국문명(name_ko)·영문명(name)·CAS 통합 검색 — "에탄올" / "Ethanol" / "64-17-5" 모두 매칭
     if (search.trim()) {
-      const t = search.trim()
-      query = query.or(`name.ilike.%${t}%,name_ko.ilike.%${t}%,cas_no.ilike.%${t}%`)
+      query = query.or(reagentOrFilter(search))   // 자동추천과 같은 검색 규칙(lib/reagentSearch)
     }
     // detailFilter(특정 위치 하나) > roomFilter(그 방에 속한 모든 위치) > 전체(필터 없음) 순.
     const activeLocationIds = detailFilter
