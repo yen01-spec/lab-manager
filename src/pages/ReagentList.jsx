@@ -19,6 +19,7 @@ import BulkLookupModal from '../components/reagents/BulkLookupModal'
 import RegisterReagentModal from '../components/reagents/RegisterReagentModal'
 import { invalidateReagentIndex } from '../lib/reagentSearch'
 import PickedListModal from '../components/reagents/PickedListModal'
+import { ResultSummary, Count, ListState } from '../components/reagents/ReagentListChrome'
 
 // 검색어·위치/유해분류/위험물유별/특별관리·CAS 필터는 URL 쿼리에 있다(useReagentListParams) — 상세
 // 페이지에서 뒤로가기 하면 같은 URL로 돌아와 그대로 복원된다. 자료 탭 딥링크 ?preset=special|hazard|fire는
@@ -440,10 +441,9 @@ export default function ReagentList() {
 
         {/* 필터를 조작한 시선이 바로 이어지도록, 결과 개수를 필터 바로 아래·표 바로 위에 표시.
             홈 화면 "전체 시약 N종"과 기준을 맞추기 위해 제조사/순도 무시하고 이름만으로 센다. */}
-        <div style={{ margin: '0 0 12px', fontSize: '14px', color: C.text }}>
-          검색결과 <strong style={{ color: C.navy }}>{groupedResultCount.toLocaleString()}개</strong>
-          <span style={{ color: C.muted, fontSize: '12.5px' }}> (전체 {totalCount.toLocaleString()}개)</span>
-        </div>
+        <ResultSummary total={`(전체 ${totalCount.toLocaleString()}개)`}>
+          검색결과 <Count n={groupedResultCount} unit="개" />
+        </ResultSummary>
 
         {overlayInfo && (
           <div role="status" style={{ margin: '0 0 12px', padding: '9px 14px', borderRadius: '8px', background: '#EEF5FF', border: '1px solid #B9D2F5', color: '#1F4E96', fontSize: '12.5px', lineHeight: 1.6 }}>
@@ -483,10 +483,9 @@ export default function ReagentList() {
 
         {/* 결과 목록 */}
         {displayResults.length === 0
-          ? <div style={{ textAlign: 'center', padding: '60px 0', color: C.muted, fontSize: '13px' }}>
-              {loading ? '시약 목록을 불러오는 중…'
-                : results.length > 0 ? '조건에 맞는 시약이 없습니다. 필터를 조정해 보세요.' : '조건에 맞는 시약이 없습니다.'}
-            </div>
+          ? <ListState loading={loading}>
+              {results.length > 0 ? '조건에 맞는 시약이 없습니다. 필터를 조정해 보세요.' : '조건에 맞는 시약이 없습니다.'}
+            </ListState>
           : isMobile ? (
             // 모바일 — PC의 minWidth:900px 표는 휴대폰에서 계속 가로 스크롤이 생겨 카드형 목록으로 대체
             // (카드 탭 = 상세페이지, 체크박스 = 선택목록 담기). 카드는 가상 스크롤로 화면에 보이는 것만 그린다.

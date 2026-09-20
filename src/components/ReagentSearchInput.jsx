@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { C, inputStyle as baseInputStyle } from '../design'
 import { useReagentAutocomplete } from '../hooks/useReagentAutocomplete'
 import { highlightParts } from '../lib/reagentSearch'
+import { computePlacement } from '../lib/popoverPlacement'
 
 // 앱 전체 "시약 찾기/선택" 검색창의 정본(자동추천 combobox).
 //  · 영문명/국문명/CAS 검색(lib/reagentSearch 규칙), 최대 10개 추천, 빈 입력에서는 추천 숨김.
@@ -11,8 +12,6 @@ import { highlightParts } from '../lib/reagentSearch'
 //  · 추천창은 body 로 포털 렌더 + viewport 충돌 감지(아래 공간 부족하면 위로, 좌우 화면 밖 방지) →
 //    부모의 overflow(모달/표/스크롤 영역)에 잘리지 않는다.
 //  · items 를 주면 그 목록 안에서만 추천한다(재고실사 등 범위가 제한된 화면 — 범위를 넓히지 않는다).
-const MARGIN = 8
-
 export function ReagentOptionBody({ item, term }) {
   const hl = (text) => highlightParts(text, term).map((p, i) => (p.hit
     ? <mark key={i} style={{ background: 'transparent', color: C.blue, fontWeight: 800 }}>{p.text}</mark>
@@ -26,23 +25,6 @@ export function ReagentOptionBody({ item, term }) {
       </div>
     </div>
   )
-}
-
-function computePlacement(rect) {
-  const vv = window.visualViewport
-  const vw = vv?.width ?? window.innerWidth
-  const vTop = vv?.offsetTop ?? 0
-  const vLeft = vv?.offsetLeft ?? 0
-  const vh = vv?.height ?? window.innerHeight
-  const width = Math.min(Math.max(rect.width, 280), vw - MARGIN * 2)
-  const left = Math.min(Math.max(rect.left, vLeft + MARGIN), vLeft + vw - width - MARGIN)
-  const below = vTop + vh - rect.bottom - MARGIN
-  const above = rect.top - vTop - MARGIN
-  const placeBelow = below >= 220 || below >= above
-  const maxHeight = Math.max(120, Math.min(360, placeBelow ? below : above))
-  return placeBelow
-    ? { left, width, top: rect.bottom + 4, maxHeight, placeBelow }
-    : { left, width, bottom: window.innerHeight - rect.top + 4, maxHeight, placeBelow }
 }
 
 export default function ReagentSearchInput({

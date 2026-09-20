@@ -6,6 +6,7 @@ import ReagentGroupRow from './ReagentGroupRow'
 import AlphabetIndex from './AlphabetIndex'
 import { useVirtualListRestore } from '../../hooks/useVirtualListRestore'
 import { groupReagentsByName, normalizeReagentName } from '../../lib/nameGroup'
+import { groupByLetter } from '../../lib/reagentLetters'
 
 // data(=검색·필터 결과)를 화면에 세로로 쌓이는 "시각 행" 평탄 배열로 만든다.
 //   - letter : 알파벳 구분 헤더
@@ -16,16 +17,10 @@ import { groupReagentsByName, normalizeReagentName } from '../../lib/nameGroup'
 // 전부 다시 만들고 재조정해서 200ms 이상 멈췄음(→ "응답 없음"). 이제 가상 스크롤로
 // 화면에 보이는 ~40행만 DOM에 존재한다.
 function buildVisualRows(data) {
-  const groups = {}
-  for (const r of data) {
-    // AlphabetIndex.jsx와 동일: sort_letter(화학명 접두어 무시한 정렬 기준) 우선.
-    const letter = (r.sort_letter || r.name[0]).toUpperCase()
-    ;(groups[letter] ||= []).push(r)
-  }
   const rows = []
-  for (const letter of Object.keys(groups).sort()) {
+  for (const { letter, items } of groupByLetter(data)) {
     rows.push({ kind: 'letter', key: 'L:' + letter, letter })
-    for (const members of groupReagentsByName(groups[letter])) {
+    for (const members of groupReagentsByName(items)) {
       if (members.length === 1) {
         rows.push({ kind: 'single', key: members[0].id, r: members[0] })
       } else {

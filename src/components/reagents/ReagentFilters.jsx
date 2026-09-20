@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { C } from '../../design'
 import { FIRE_CLASSES } from '../../lib/hazardCategory'
+import LocationFilter from './LocationFilter'
 
 const COL_ITEMS = [
   ['casNo', 'CAS'], ['company', '제조사'], ['volume', '규격'], ['stock', '재고'],
@@ -53,41 +54,8 @@ function ReagentFilters({
 
   return (
     <>
-      {/* 위치 필터: 방(room) 밑줄 탭 + 세부위치가 있는 방이면 알약 버튼으로 한 단계 더 좁힘 */}
-      <div style={{
-        background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px',
-        padding: '0 16px', boxShadow: '0 1px 3px rgba(16,24,40,.06)', marginBottom: '16px',
-      }}>
-        <div style={{ display: 'flex', gap: '4px', borderBottom: `1px solid ${C.border}`, overflowX: 'auto', overflowY: 'hidden' }}>
-          {['', ...rooms].map(room => (
-            <button key={room || '전체'} onClick={() => { setRoomFilter(room); setDetailFilter('') }} style={{
-              padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer',
-              fontSize: '13px', fontFamily: 'inherit', fontWeight: roomFilter === room ? 700 : 500,
-              color: roomFilter === room ? C.blueDark : C.muted,
-              borderBottom: roomFilter === room ? `2px solid ${C.blue}` : '2px solid transparent',
-              marginBottom: '-1px', whiteSpace: 'nowrap',
-            }}>{room || '전체'}</button>
-          ))}
-        </div>
-        {roomFilter && locations.some(l => l.room === roomFilter && l.detail) && (
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', padding: '10px 0' }}>
-            <button onClick={() => setDetailFilter('')} style={{
-              padding: '4px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
-              border: `1px solid ${!detailFilter ? C.navy : C.border}`,
-              background: !detailFilter ? C.navy : C.white,
-              color: !detailFilter ? '#fff' : C.text, fontWeight: !detailFilter ? '700' : '400',
-            }}>전체 {roomFilter}</button>
-            {locations.filter(l => l.room === roomFilter && l.detail).map(loc => (
-              <button key={loc.id} onClick={() => setDetailFilter(loc.id)} style={{
-                padding: '4px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
-                border: `1px solid ${detailFilter === loc.id ? C.navy : C.border}`,
-                background: detailFilter === loc.id ? C.navy : C.white,
-                color: detailFilter === loc.id ? '#fff' : C.text, fontWeight: detailFilter === loc.id ? '700' : '400',
-              }}>{loc.detail}</button>
-            ))}
-          </div>
-        )}
-      </div>
+      <LocationFilter rooms={rooms} roomFilter={roomFilter} setRoomFilter={setRoomFilter}
+        detailFilter={detailFilter} setDetailFilter={setDetailFilter} locations={locations} />
 
       {/* 표시 열 선택 — 기본은 "시약명·순도(고정)"만 보이고, 버튼을 눌러야 나머지 체크 목록이 열림 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>

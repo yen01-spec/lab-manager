@@ -1,6 +1,6 @@
-import { memo, useState } from 'react'
-import { C, inputStyle, btnPrimary, btnExcel } from '../../design'
-import ReagentSearchInput from '../ReagentSearchInput'
+import { memo } from 'react'
+import { C, btnExcel } from '../../design'
+import ReagentSearchBar from './ReagentSearchBar'
 
 // 상단 검색창 + 일괄검색/신규등록/엑셀 버튼 줄.
 // 검색 입력값(draft)은 이 컴포넌트가 들고 있고, Enter나 "검색" 버튼을 눌렀을 때만
@@ -13,31 +13,8 @@ function ReagentToolbar({
   onOpenBulkLookup, onOpenRegister,
   isAdmin, hasResults, onExportExcel,
 }) {
-  // 타이핑은 이 draft만 갱신하고 상위(무거운 목록 페이지)는 건드리지 않는다.
-  // Enter/검색 버튼에서만 onSubmitSearch로 확정.
-  const [draft, setDraft] = useState(initialSearch)
-  // 확정된 검색어(URL의 q)가 밖에서 바뀌면(뒤로가기·홈에서 재검색 등) 입력창도 따라간다 — 렌더 중 상태 보정 패턴.
-  const [syncedSearch, setSyncedSearch] = useState(initialSearch)
-  if (syncedSearch !== initialSearch) { setSyncedSearch(initialSearch); setDraft(initialSearch) }
-
-  const submit = () => onSubmitSearch(draft.trim())
-
   return (
-    <div style={{
-      background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px',
-      padding: '12px 16px', boxShadow: '0 1px 3px rgba(16,24,40,.06)',
-      display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '16px',
-    }}>
-      <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '200px' }}>
-        <ReagentSearchInput
-          value={draft}
-          onChange={setDraft}
-          onSelect={onSearchSelect}
-          onEnter={submit}
-          placeholder="시약명(국문·영문) 또는 CAS No.로 검색..."
-          inputStyle={{ ...inputStyle, width: '100%' }} />
-        <button onClick={submit} style={{ ...btnPrimary, padding: '9px 20px', flexShrink: 0 }}>검색</button>
-      </div>
+    <ReagentSearchBar value={initialSearch} onSubmit={onSubmitSearch} onSelect={onSearchSelect}>
       <button onClick={onOpenBulkLookup} style={{
         background: C.white, color: C.text, border: `1px solid ${C.border}`,
         padding: '9px 18px', borderRadius: '6px', cursor: 'pointer',
@@ -51,7 +28,7 @@ function ReagentToolbar({
       {isAdmin && hasResults && (
         <button onClick={onExportExcel} style={{ ...btnExcel, flexShrink: 0 }}>📊 Excel로 내보내기</button>
       )}
-    </div>
+    </ReagentSearchBar>
   )
 }
 
