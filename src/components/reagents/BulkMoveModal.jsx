@@ -16,7 +16,7 @@ export default function BulkMoveModal({
         background: C.white, borderRadius: '14px', padding: '28px',
         width: '420px', maxWidth: '92vw', boxShadow: '0 24px 64px rgba(26,42,94,0.25)',
       }}>
-        <h3 style={{ margin: '0 0 4px', color: C.navy }}>📍 위치 이동</h3>
+        <h3 style={{ margin: '0 0 4px', color: C.navy }}>📍 위치 변경</h3>
         <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{checkedCount}개 시약 선택됨</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div>

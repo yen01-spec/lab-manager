@@ -59,9 +59,9 @@ async function reset() {
     { id: L.E, reagent_id: RID, lot_no: 'REV-E', sealed_count: 1, current_stock: 10, location_id: LOC1, status: 'active' },
   ]), 'lots insert')
 }
-const newChange = async (field, val, extra = {}) => must(await service.from('reagent_change_requests').insert({ reagent_id: RID, requested_by: 'REQ', requested_by_student_id: 'TEST-STU-0001', field_name: field, old_value: 'x', new_value: val, ...extra }).select().single(), 'seed change')
-const newLoc = async (lotId, to, extra = {}) => must(await service.from('location_requests').insert({ reagent_id: RID, lot_id: lotId, reagent_name: 'TEST Batch1 Reagent', from_location_id: LOC1, from_location_name: 'REV-ROOM-1 - shelf A', to_location_id: to, to_location_name: 'REV-ROOM-2', requested_by: 'REQ', ...extra }).select().single(), 'seed loc')
-const newDisp = async (lotId, qty, status = 'pending', extra = {}) => must(await service.from('disposal_requests').insert({ reagent_id: RID, lot_id: lotId, reagent_name: 'TEST Batch1 Reagent', lot_no: 'x', quantity: qty, reason: 'why', requested_by: 'REQ', status, ...extra }).select().single(), 'seed disp')
+const newChange = async (field, val, extra = {}) => (await service.from('reagent_change_requests').delete().eq('reagent_id', extra.reagent_id ?? RID).eq('field_name', field).eq('status', 'pending'), must(await service.from('reagent_change_requests').insert({ reagent_id: RID, requested_by: 'REQ', requested_by_student_id: 'TEST-STU-0001', field_name: field, old_value: 'x', new_value: val, ...extra }).select().single(), 'seed change'))
+const newLoc = async (lotId, to, extra = {}) => (lotId && await service.from('location_requests').delete().eq('lot_id', lotId).eq('status', 'pending'), must(await service.from('location_requests').insert({ reagent_id: RID, lot_id: lotId, reagent_name: 'TEST Batch1 Reagent', from_location_id: LOC1, from_location_name: 'REV-ROOM-1 - shelf A', to_location_id: to, to_location_name: 'REV-ROOM-2', requested_by: 'REQ', ...extra }).select().single(), 'seed loc'))
+const newDisp = async (lotId, qty, status = 'pending', extra = {}) => (status === 'pending' && await service.from('disposal_requests').delete().eq('lot_id', lotId).eq('status', 'pending'), must(await service.from('disposal_requests').insert({ reagent_id: RID, lot_id: lotId, reagent_name: 'TEST Batch1 Reagent', lot_no: 'x', quantity: qty, reason: 'why', requested_by: 'REQ', status, ...extra }).select().single(), 'seed disp'))
 const lot = async (id) => must(await service.from('reagent_lots').select('*').eq('id', id).single(), 'lot')
 const req = async (t, id) => must(await service.from(t).select('*').eq('id', id).single(), 'req')
 
@@ -97,7 +97,7 @@ await test('change: admin approve applies field + request + audit (approver = se
   const reagent = must(await service.from('reagents').select('company,last_confirmed_at').eq('id', RID).single(), 'reagent')
   eq(reagent.company, 'NEWCO', '시약 변경')
   ok(reagent.last_confirmed_at, 'last_confirmed_at 갱신')
-  const logs = must(await service.from('admin_logs').select('*').eq('action', '변경 요청 승인'), 'logs')
+  const logs = must(await service.from('admin_logs').select('*').eq('action', '시약정보 수정 승인'), 'logs')
   ok(logs.length >= 1 && logs[0].admin_name === 'REV-TEST-ADMIN', 'admin_logs 기록')
 })
 await test('change: admin reject leaves reagent untouched', async () => {
@@ -129,7 +129,7 @@ await test('change: concurrent review — exactly one succeeds', async () => {
   const rs = await Promise.all([1, 2, 3, 4].map(() => adminC.rpc('reagent_change_request_review', { p_request_id: r.id, p_decision: 'approve' })))
   const okN = rs.filter(x => !x.error).length
   eq(okN, 1, '성공 횟수')
-  const logs = must(await service.from('admin_logs').select('id').eq('action', '변경 요청 승인').like('description', '%CONC%'), 'logs')
+  const logs = must(await service.from('admin_logs').select('id').eq('action', '시약정보 수정 승인').like('description', '%CONC%'), 'logs')
   eq(logs.length, 1, 'audit 1건')
 })
 await test('change: invalid request id / invalid decision', async () => {
@@ -183,66 +183,69 @@ await test('location: concurrent approve — exactly one succeeds, one history r
 })
 
 // ── disposal request ─────────────────────────────────────────────────────
-await test('disposal: approve (status only) then complete(전체) disposes lot', async () => {
+// 업무 규칙: 관리자 "승인" = 즉시 실제 폐기 완료(2단계 없음). 반려 = 실제 변화 0.
+await test('disposal: approve = IMMEDIATE real disposal (full lot), single step', async () => {
   const r = await newDisp(L.A, '전체')
-  must(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'approve' }), 'approve')
-  eq((await lot(L.A)).status, 'active', 'approve만으로는 Lot 불변')
-  must(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'complete' }), 'complete')
+  const out = must(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'approve' }), 'approve')
+  eq([out.status, out.disposal], ['disposed', 'full'], '승인 결과')
   const l = await lot(L.A)
   eq([l.status, l.sealed_count, l.current_stock], ['disposed', 0, 0], 'Lot 폐기')
   ok(l.disposal_date, 'disposal_date')
   const rr = await req('disposal_requests', r.id)
-  eq([rr.status, rr.approved_by], ['disposed', 'REV-TEST-ADMIN'], '요청 행'); ok(rr.disposed_at, 'disposed_at')
+  eq([rr.status, rr.approved_by], ['disposed', 'REV-TEST-ADMIN'], '요청 행'); ok(rr.disposed_at && rr.approved_at, 'timestamps')
+  denied(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'complete' }), '2차 complete 액션은 더 이상 없음')
 })
-await test('disposal: complete(1병) decrements sealed; fully-gone lot -> disposed', async () => {
-  const r = await newDisp(L.C, '1')
-  must(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'approve' }), 'approve')
-  must(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'complete' }), 'complete')
-  const l = await lot(L.C)
-  eq([l.sealed_count, l.status], [2, 'active'], '3병→2병, 아직 active')
-  const r2 = await newDisp(L.B, '1')
-  must(await adminC.rpc('disposal_request_review', { p_request_id: r2.id, p_action: 'approve' }), 'approve')
-  must(await adminC.rpc('disposal_request_review', { p_request_id: r2.id, p_action: 'complete' }), 'complete')
-  const l2 = await lot(L.B)
-  eq([l2.sealed_count, l2.current_stock, l2.status], [0, 0, 'disposed'], 'stock 0 + sealed 0 => disposed')
+await test('disposal: quantity rule — integer n < sealed(>1) decrements only n; single bottle => whole lot disposed', async () => {
+  const r = await newDisp(L.C, '1')                       // C: sealed 3
+  const o1 = must(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'approve' }), 'partial')
+  eq(o1.disposal, 'partial', 'partial'); let l = await lot(L.C)
+  eq([l.sealed_count, l.status], [2, 'active'], '3병→2병, Lot 유지')
+  eq((await req('disposal_requests', r.id)).status, 'disposed', '요청은 폐기 완료')
+  const r2 = await newDisp(L.B, '1')                      // B: sealed 1, stock 0
+  must(await adminC.rpc('disposal_request_review', { p_request_id: r2.id, p_action: 'approve' }), 'single')
+  l = await lot(L.B); eq([l.sealed_count, l.current_stock, l.status], [0, 0, 'disposed'], '단일 병은 전체 폐기')
+  await service.from('reagent_lots').update({ status: 'active', sealed_count: 1, current_stock: 55 }).eq('id', L.D)
+  const r3 = await newDisp(L.D, '1')                      // D: 개봉병(sealed 1, stock 55) — 예전 complete 는 여기서 폐기가 안 됐음
+  must(await adminC.rpc('disposal_request_review', { p_request_id: r3.id, p_action: 'approve' }), 'opened')
+  eq((await lot(L.D)).status, 'disposed', '개봉병도 승인 시 폐기 완료')
 })
-await test('disposal: complete on non-approved blocked; double complete blocked', async () => {
-  const r = await newDisp(L.D, '전체')
-  denied(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'complete' }), 'pending complete')
-  must(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'approve' }), 'approve')
-  denied(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'approve' }), 'double approve')
-  must(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'complete' }), 'complete')
-  denied(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'complete' }), 'double complete')
-})
-await test('disposal: approve_and_zero_lot / dispose_lot / reject preserve legacy semantics', async () => {
+await test('disposal: reject = zero change to lot; reprocess / legacy action names blocked', async () => {
   await service.from('reagent_lots').update({ status: 'active', sealed_count: 2, current_stock: 40 }).eq('id', L.E)
   const r = await newDisp(L.E, '1')
-  must(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'approve_and_zero_lot' }), 'zero')
-  let l = await lot(L.E)
-  eq([l.sealed_count, l.current_stock, l.status], [0, 0, 'active'], 'Home 승인: 0/0, status 유지')
-  eq((await req('disposal_requests', r.id)).status, 'approved', 'approved')
-  await service.from('reagent_lots').update({ status: 'active', sealed_count: 2, current_stock: 40 }).eq('id', L.E)
-  const r2 = await newDisp(L.E, '1')
-  must(await adminC.rpc('disposal_request_review', { p_request_id: r2.id, p_action: 'dispose_lot' }), 'dispose_lot')
-  l = await lot(L.E)
-  eq(l.status, 'disposed', 'Detail 폐기 확정')
-  eq((await req('disposal_requests', r2.id)).status, 'disposed', 'disposed')
-  const r3 = await newDisp(L.D, '1')
-  must(await adminC.rpc('disposal_request_review', { p_request_id: r3.id, p_action: 'reject', p_reason: 'r' }), 'reject')
-  eq((await req('disposal_requests', r3.id)).status, 'rejected', 'rejected')
+  must(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'reject', p_reason: '사유 확인 필요' }), 'reject')
+  const l = await lot(L.E)
+  eq([l.status, l.sealed_count, l.current_stock], ['active', 2, 40], 'Lot 불변')
+  const rr = await req('disposal_requests', r.id)
+  eq([rr.status, rr.review_note], ['rejected', '사유 확인 필요'], '반려 + 사유 저장')
+  denied(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'approve' }), 'approve after reject')
+  for (const legacy of ['complete', 'approve_and_zero_lot', 'dispose_lot']) {
+    const r2 = await newDisp(L.E, '1')
+    denied(await adminC.rpc('disposal_request_review', { p_request_id: r2.id, p_action: legacy }), `legacy ${legacy}`)
+    eq((await req('disposal_requests', r2.id)).status, 'pending', 'pending 유지')
+    await service.from('disposal_requests').delete().eq('id', r2.id)
+  }
 })
-await test('disposal: missing lot => error + rollback; concurrent complete => exactly one', async () => {
-  const r = await newDisp('00000000-0000-0000-0000-0000000000ff', '전체', 'approved')
-  denied(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'complete' }), 'missing lot')
-  eq((await req('disposal_requests', r.id)).status, 'approved', '롤백 후 approved')
+await test('disposal: already-disposed lot => error + rollback; legacy approved row is finished by one approve; missing lot rolls back', async () => {
+  const r = await newDisp(L.A, '1')                        // A 는 이미 disposed
+  denied(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'approve' }), 'already disposed lot')
+  eq((await req('disposal_requests', r.id)).status, 'pending', '롤백 후 pending')
+  await service.from('reagent_lots').update({ status: 'active', sealed_count: 1, current_stock: 10 }).eq('id', L.E)
+  const legacy = await newDisp(L.E, '전체', 'approved')
+  must(await adminC.rpc('disposal_request_review', { p_request_id: legacy.id, p_action: 'approve' }), 'finish legacy')
+  eq([(await req('disposal_requests', legacy.id)).status, (await lot(L.E)).status], ['disposed', 'disposed'], '잔재 마무리')
+  const miss = await newDisp('00000000-0000-0000-0000-0000000000ff', '전체')
+  denied(await adminC.rpc('disposal_request_review', { p_request_id: miss.id, p_action: 'approve' }), 'missing lot')
+  eq((await req('disposal_requests', miss.id)).status, 'pending', '롤백 후 pending')
+})
+await test('disposal: concurrent approve => exactly one success, one decrement', async () => {
   await service.from('reagent_lots').update({ status: 'active', sealed_count: 5, current_stock: 50 }).eq('id', L.A)
-  const r2 = await newDisp(L.A, '1', 'approved')
-  const rs = await Promise.all([1, 2, 3, 4].map(() => adminC.rpc('disposal_request_review', { p_request_id: r2.id, p_action: 'complete' })))
+  const r = await newDisp(L.A, '1')
+  const rs = await Promise.all([1, 2, 3, 4].map(() => adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'approve' })))
   eq(rs.filter(x => !x.error).length, 1, '성공 횟수')
   eq((await lot(L.A)).sealed_count, 4, '1병만 차감')
 })
 await test('disposal: unknown action rejected', async () => {
-  const r = await newDisp(L.D, '1')
+  const r = await newDisp(L.C, '1')
   denied(await adminC.rpc('disposal_request_review', { p_request_id: r.id, p_action: 'nuke' }), 'bad action')
 })
 

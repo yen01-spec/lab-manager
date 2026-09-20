@@ -10,8 +10,8 @@
 ## B. 적용 전 점검 (READ ONLY)
 1. `node scripts/guard-production-target.mjs` (단독 실행, exit 0)
 2. 백업: 재고 Excel 백업 + `scripts/production-inventory-backup.mjs`.
-3. `supabase db push --linked --dry-run` → 대기 중 마이그레이션이 정확히 아래 목록인지 확인(순서 중요):
-   `20260916090000_harden_student_auth` → `20260916100000_student_session_tokens` → `20260916110000_secure_request_submissions` → `20260920090000_secure_admin_reviews` → `20260920100000_least_privilege_acl` → `20260920110000_retire_student_admin_pin` → `20260920120000_inventory_workflow` → `20260920130000_reagent_domain_rpcs`
+3. `supabase db push --linked --dry-run` → 대기 중 마이그레이션(9개)이 정확히 아래 목록인지 확인(순서 중요):
+   `20260916090000_harden_student_auth` → `20260916100000_student_session_tokens` → `20260916110000_secure_request_submissions` → `20260920090000_secure_admin_reviews` → `20260920100000_least_privilege_acl` → `20260920110000_retire_student_admin_pin` → `20260920120000_inventory_workflow` → `20260920130000_reagent_domain_rpcs` → `20260922090000_request_unification`
 4. `scripts/production-preflight-*.sql`, `scripts/production-check-*.sql` 재실행(읽기 전용)으로 컬럼/제약이 예상과 같은지 확인. 특히 `reagent_lots` 에 `KNU-YYYYMMDD-NNN` 형식 중복이 없는지(유일 인덱스 생성 전제 — 2026-09-20 확인 시 0건).
 
 ## C. 적용

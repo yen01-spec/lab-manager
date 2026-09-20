@@ -42,9 +42,9 @@ export default function DashboardTab({ onGoTab }) {
   useEffect(() => { fetchLists() }, [days])
 
   const pendingItems = [
-    { key: 'change', label: '정보 변경 요청', value: counts.change, tab: 'req-change' },
+    { key: 'change', label: '시약정보 수정 요청', value: counts.change, tab: 'req-change' },
     { key: 'disposal', label: '폐기 요청', value: counts.disposal, tab: 'req-disposal' },
-    { key: 'location', label: '위치 이동 요청', value: counts.location, tab: 'req-move' },
+    { key: 'location', label: '위치 변경 요청', value: counts.location, tab: 'req-move' },
     { key: 'purchase', label: '구매 요청', value: counts.purchase, tab: 'purchase' },
   ]
   const checkItems = [

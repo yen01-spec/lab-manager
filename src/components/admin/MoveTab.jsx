@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../supabase'
 import { C, Card, btnPrimary, thStyle, tdStyle } from '../../design'
 import { reviewLocationRequest } from '../../lib/adminReview'
+import { requestStatusLabel, requestStatusColorFor } from '../../lib/requestStatus'
 import { useAdminSession } from '../../hooks/useAdminSession'
 import AdminAuthBanner from './AdminAuthBanner'
 
@@ -32,28 +33,31 @@ export default function MoveTab() {
 
   async function decide(req, decision, confirmMsg) {
     if (busy) return
-    if (!window.confirm(confirmMsg)) return
+    let reason = null
+    if (decision === 'approve') { if (!window.confirm(confirmMsg)) return }
+    else {
+      reason = window.prompt('반려 사유 (선택 — 신청한 사람에게 보여요)', '')
+      if (reason === null) return
+    }
     setBusy(true)
-    try { await reviewLocationRequest(req.id, decision) } catch (e) { alert(e.message) }
+    try { await reviewLocationRequest(req.id, decision, reason || null) } catch (e) { alert(e.message) }
     setBusy(false)
     fetchRequests(); fetchHistory()
   }
-  const approveRequest = req => decide(req, 'approve', `"${req.reagent_name}" 위치 이동을 승인하시겠습니까?\n${req.from_location_name} → ${req.to_location_name}`)
-  const rejectRequest = req => decide(req, 'reject', `"${req.reagent_name}" 위치 이동 신청을 반려하시겠습니까?`)
+  const approveRequest = req => decide(req, 'approve', `"${req.reagent_name}" 위치 변경을 승인하시겠습니까?\n${req.from_location_name} → ${req.to_location_name}`)
+  const rejectRequest = req => decide(req, 'reject', `"${req.reagent_name}" 위치 변경 신청을 반려하시겠습니까?`)
 
   const filteredReqs = reqFilter === 'all' ? requests : requests.filter(r => r.status === reqFilter)
   const reqCounts = { all: requests.length, pending: 0, approved: 0, rejected: 0 }
   requests.forEach(r => { if (reqCounts[r.status] !== undefined) reqCounts[r.status]++ })
-  const statusColor = { pending: '#E8A020', approved: '#38A169', rejected: C.danger }
-  const statusLabel = { pending: '대기중', approved: '승인됨', rejected: '반려' }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-      <Card title="📬 위치 이동 신청 목록" sub="학생 신청 승인/반려">
+      <Card title="📬 위치 변경 신청 목록" sub="학생 신청 승인/반려">
         <AdminAuthBanner session={session} purpose="위치 이동 신청을 처리" />
         <div style={{ display: 'flex', gap: '6px', marginBottom: '16px' }}>
-          {[['all', '전체'], ['pending', '대기중'], ['approved', '승인됨'], ['rejected', '반려']].map(([key, label]) => (
+          {[['all', '전체'], ['pending', '위치 변경 요청 대기'], ['approved', '위치 변경 완료'], ['rejected', '위치 변경 반려']].map(([key, label]) => (
             <button key={key} onClick={() => setReqFilter(key)} style={{
               padding: '5px 14px', borderRadius: '16px', border: 'none', cursor: 'pointer',
               background: reqFilter === key ? C.navy : C.bg,
@@ -67,9 +71,9 @@ export default function MoveTab() {
           : filteredReqs.map(req => (
             <div key={req.id} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px 16px', marginBottom: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                <span style={{ background: statusColor[req.status] + '22', color: statusColor[req.status],
+                <span style={{ background: requestStatusColorFor('location', req.status).bg, color: requestStatusColorFor('location', req.status).fg,
                   fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px' }}>
-                  {statusLabel[req.status]}
+                  {requestStatusLabel('location', req.status, 'admin')}
                 </span>
                 <span style={{ fontWeight: '700', color: C.navy }}>{req.reagent_name}</span>
                 <span style={{ color: C.muted, fontSize: '12px', marginLeft: 'auto' }}>{req.requested_by} · {new Date(req.created_at).toLocaleDateString()}</span>
@@ -86,7 +90,7 @@ export default function MoveTab() {
                     style={{ ...btnPrimary, background: C.danger, padding: '5px 14px', fontSize: '12px' }}>✗ 반려</button>
                 </div>
               )}
-              {req.approved_by && <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px' }}>승인자: {req.approved_by}</div>}
+              {req.approved_by && <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px' }}>{req.status === 'rejected' ? '반려자' : '승인자'}: {req.approved_by}{req.review_note ? ` · 반려 사유: ${req.review_note}` : ''}</div>}
             </div>
           ))}
       </Card>

@@ -6,6 +6,7 @@ import ReagentAutocomplete from '../components/ReagentAutocomplete'
 import AdminAuthBanner from '../components/admin/AdminAuthBanner'
 import { useAdminSession } from '../hooks/useAdminSession'
 import { reviewChangeRequest, reviewDisposalRequest, reviewLocationRequest } from '../lib/adminReview'
+import { requestStatusLabel } from '../lib/requestStatus'
 
 const QUICK_MENU = [
   { to: '/reagents/list',    label: '시약 검색',   sub: '위치·잔량 바로 확인',     icon: 'science'   },
@@ -54,7 +55,7 @@ export default function Home() {
   async function fetchPendingRequests() {
     const [{ data: changes }, { data: disposals }, { data: locs }] = await Promise.all([
       supabase.from('reagent_change_requests').select('*, reagents(name)').eq('status', 'pending').order('created_at', { ascending: false }).limit(10),
-      supabase.from('disposal_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false }).limit(10),
+      supabase.from('disposal_requests').select('*').in('status', ['pending', 'approved']).order('created_at', { ascending: false }).limit(10),
       supabase.from('location_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false }).limit(10),
     ])
     const combined = [
@@ -65,12 +66,12 @@ export default function Home() {
       })),
       ...(disposals || []).map(d => ({
         type: 'disposal', id: d.id, reagent_id: d.reagent_id, reagent_name: d.reagent_name,
-        detail: `폐기 신청: ${d.reason || '-'}`,
+        detail: `폐기 사유: ${d.reason || '-'}`,
         requested_by: d.requested_by, created_at: d.created_at, raw: d,
       })),
       ...(locs || []).map(l => ({
         type: 'location', id: l.id, reagent_id: l.reagent_id, reagent_name: l.reagent_name,
-        detail: `위치 이동: ${l.from_location_name || '미지정'} → ${l.to_location_name}`,
+        detail: `위치 변경: ${l.from_location_name || '미지정'} → ${l.to_location_name}`,
         requested_by: l.requested_by, created_at: l.created_at, raw: l,
       })),
     ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -78,29 +79,25 @@ export default function Home() {
     setStats(prev => ({ ...prev, totalPending: combined.length }))
   }
 
-  // 승인/반려는 Supabase Auth 관리자 세션 + 서버 RPC로만 처리된다(승인자·변경내용은 서버가 확정).
-  async function approveItem(item) {
+  // 승인/반려는 Supabase Auth 관리자 세션 + 서버 review RPC 로만 처리된다(승인자·변경내용은 서버가 확정).
+  // 3종(시약정보 수정/위치 변경/폐기)이 같은 의미: 승인 = 실제 반영(폐기는 즉시 폐기 완료), 반려 = 실제 변화 0.
+  async function reviewItem(item, decision) {
+    let reason = null
+    if (decision === 'reject') {
+      reason = window.prompt('반려 사유 (선택 — 신청한 사람에게 보여요)', '')
+      if (reason === null) return
+    } else if (item.type === 'disposal' && !window.confirm('승인하면 즉시 폐기 완료 처리됩니다. 계속할까요?')) return
     setBusyId(item.id)
     try {
-      if (item.type === 'change') await reviewChangeRequest(item.id, 'approve')
-      // 홈 대기목록의 폐기 "승인"은 기존과 같이 Lot 잔량을 0으로 만든다(관리자>폐기관리의 2단계와 의미가 다름 — 별도 업무 결정 대상).
-      else if (item.type === 'disposal') await reviewDisposalRequest(item.id, 'approve_and_zero_lot')
-      else await reviewLocationRequest(item.id, 'approve')
+      if (item.type === 'change') await reviewChangeRequest(item.id, decision, reason || null)
+      else if (item.type === 'disposal') await reviewDisposalRequest(item.id, decision, reason || null)
+      else await reviewLocationRequest(item.id, decision, reason || null)
     } catch (e) { alert(e.message) }
     await fetchPendingRequests()
     setBusyId(null)
   }
-
-  async function rejectItem(item) {
-    setBusyId(item.id)
-    try {
-      if (item.type === 'change') await reviewChangeRequest(item.id, 'reject')
-      else if (item.type === 'disposal') await reviewDisposalRequest(item.id, 'reject')
-      else await reviewLocationRequest(item.id, 'reject')
-    } catch (e) { alert(e.message) }
-    await fetchPendingRequests()
-    setBusyId(null)
-  }
+  const approveItem = item => reviewItem(item, 'approve')
+  const rejectItem = item => reviewItem(item, 'reject')
 
   async function fetchStats() {
     const today = new Date().toISOString().split('T')[0]
@@ -268,11 +265,13 @@ export default function Home() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {pendingRequests.map((item, i) => {
+                const kindOf = { change: 'change', disposal: 'disposal', location: 'location' }[item.type]
                 const typeMeta = {
-                  change: { icon: '📝', label: '수정요청' },
-                  disposal: { icon: '🗑️', label: '폐기신청' },
-                  location: { icon: '📍', label: '위치이동' },
+                  change: { icon: '✏️' },
+                  disposal: { icon: '🗑️' },
+                  location: { icon: '📍' },
                 }[item.type]
+                typeMeta.label = requestStatusLabel(kindOf, 'pending', 'admin')
                 const busy = busyId === item.id
                 return (
                   <div key={`${item.type}_${item.id}`} style={{
@@ -298,7 +297,7 @@ export default function Home() {
                         <button onClick={() => approveItem(item)} disabled={busy || !adminSession.authed} style={{
                           padding: '5px 10px', borderRadius: 6, border: 'none', background: C.blue,
                           color: '#fff', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, opacity: busy || !adminSession.authed ? 0.5 : 1,
-                        }}>{busy ? '처리중...' : '승인'}</button>
+                        }}>{busy ? '처리중...' : (item.type === 'disposal' ? '승인·폐기' : '승인')}</button>
                       </div>
                     )}
                   </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../supabase'
 import { C, Card, btnPrimary } from '../../design'
 import { reviewChangeRequest } from '../../lib/adminReview'
+import { requestStatusLabel, requestStatusColorFor } from '../../lib/requestStatus'
 import { useAdminSession } from '../../hooks/useAdminSession'
 import AdminAuthBanner from './AdminAuthBanner'
 
@@ -25,12 +26,15 @@ export default function ChangeRequestTab() {
 
   async function decide(req, decision) {
     if (busy) return
-    const msg = decision === 'approve'
-      ? `"${req.reagents?.name}"의 ${req.field_name}을 "${req.new_value}"로 변경하시겠습니까?`
-      : '변경 요청을 반려하시겠습니까?'
-    if (!window.confirm(msg)) return
+    let reason = null
+    if (decision === 'approve') {
+      if (!window.confirm(`"${req.reagents?.name}"의 ${req.field_name}을 "${req.new_value}"로 변경하시겠습니까?`)) return
+    } else {
+      reason = window.prompt('반려 사유 (선택 — 신청한 사람에게 보여요)', '')
+      if (reason === null) return
+    }
     setBusy(true)
-    try { await reviewChangeRequest(req.id, decision) } catch (e) { alert(e.message) }
+    try { await reviewChangeRequest(req.id, decision, reason || null) } catch (e) { alert(e.message) }
     setBusy(false)
     fetchRequests()
   }
@@ -47,7 +51,7 @@ export default function ChangeRequestTab() {
       <AdminAuthBanner session={session} purpose="변경 요청을 승인/반려" />
 
       <div style={{ display: 'flex', gap: '6px', marginBottom: '20px' }}>
-        {[['all', '전체'], ['pending', '대기중'], ['approved', '승인됨'], ['rejected', '반려']].map(([key, label]) => (
+        {[['all', '전체'], ['pending', '수정 요청 대기'], ['approved', '수정 완료'], ['rejected', '수정 반려']].map(([key, label]) => (
           <button key={key} onClick={() => setFilter(key)} style={{
             padding: '5px 14px', borderRadius: '16px', border: 'none', cursor: 'pointer',
             background: filter === key ? C.navy : C.bg, color: filter === key ? '#fff' : C.text,
@@ -62,10 +66,9 @@ export default function ChangeRequestTab() {
           <div key={req.id} style={{ border: `1px solid ${C.border}`, borderRadius: '10px', padding: '16px', marginBottom: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
               <span style={{
-                background: req.status === 'pending' ? '#FFF3E0' : req.status === 'approved' ? '#E8F5E9' : '#FFEBEE',
-                color: req.status === 'pending' ? '#E65100' : req.status === 'approved' ? '#2E7D32' : '#C62828',
+                background: requestStatusColorFor('change', req.status).bg, color: requestStatusColorFor('change', req.status).fg,
                 fontSize: '11px', fontWeight: '700', padding: '2px 10px', borderRadius: '10px',
-              }}>{req.status === 'pending' ? '대기중' : req.status === 'approved' ? '승인됨' : '반려'}</span>
+              }}>{requestStatusLabel('change', req.status, 'admin')}</span>
               <span style={{ fontWeight: '700', color: C.navy, fontSize: '14px' }}>{req.reagents?.name}</span>
               <span style={{ color: C.muted, fontSize: '12px', marginLeft: 'auto' }}>
                 요청자: {req.requested_by} · {new Date(req.created_at).toLocaleDateString()}
@@ -78,7 +81,7 @@ export default function ChangeRequestTab() {
             </div>
             {req.approved_by && (
               <div style={{ fontSize: '12px', color: C.muted, marginBottom: '8px' }}>
-                처리자: {req.approved_by} · {req.approved_at ? new Date(req.approved_at).toLocaleDateString() : ''}
+                처리자: {req.approved_by} · {req.approved_at ? new Date(req.approved_at).toLocaleDateString() : ''}{req.review_note ? ` · 반려 사유: ${req.review_note}` : ''}
               </div>
             )}
             {req.status === 'pending' && (

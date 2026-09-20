@@ -184,7 +184,7 @@ export function PageBanner({ title, sub, breadcrumb = [], extra }) {
     <div style={{
       background: C.white,
       borderBottom: `1px solid ${C.border}`,
-      padding: '0 24px',
+      padding: '0 clamp(16px, 4vw, 24px)',
     }}>
       {/* breadcrumb */}
       <div style={{
@@ -210,10 +210,12 @@ export function PageBanner({ title, sub, breadcrumb = [], extra }) {
         display: 'flex',
         alignItems: 'flex-end',
         justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '10px 16px',
         paddingBottom: '14px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-          <h1 style={{ fontSize: '20px', fontWeight: '700', color: C.navyDeep, letterSpacing: '-0.4px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: '4px 10px', minWidth: 0, maxWidth: '100%' }}>
+          <h1 style={{ fontSize: '20px', fontWeight: '700', color: C.navyDeep, letterSpacing: '-0.4px', overflowWrap: 'anywhere', minWidth: 0 }}>
             {title}
           </h1>
           {sub && (

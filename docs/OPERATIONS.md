@@ -47,6 +47,14 @@ ref 상수는 `scripts/supabase-refs.mjs` 한 곳에만 있다.
 - TRUNCATE/REFERENCES/TRIGGER 는 anon/authenticated 에서 전부 회수. Storage `documents` 버킷: 읽기 공개, 쓰기/수정/삭제 관리자만.
 - 검증: `scripts/staging/test-acl-matrix.mjs` (anon / 일반 Auth / 관리자 JWT 3종으로 테이블·연산별 실측).
 
+## 4-1. 요청 3종(위치 변경 / 시약정보 수정 / 폐기) — 한 가지 의미
+- 학생 신청: `location_request_submit` / `reagent_change_request_submit` / `disposal_request_submit`(세션 토큰) → status `pending`, **실제 master/Lot 불변**. 성공 문구: "위치 변경 / 시약정보 수정 / 폐기 신청이 완료되었습니다."
+- 관리자 처리: `location_request_review` / `reagent_change_request_review` / `disposal_request_review`(Supabase Auth 관리자). 승인 = 실제 반영 + 이력(한 트랜잭션), 반려 = 실제 변화 0 + 반려 사유(`review_note`) 기록.
+- **폐기: 승인 = 즉시 폐기 완료**(`disposed`). 별도 "폐기 완료" 2단계는 없고 review RPC 액션은 `approve`/`reject` 둘뿐. 홈·관리자 폐기 관리·시약 상세가 모두 이 RPC 하나를 쓴다. Lot 폐기 방식: 신청 수량이 정수 n 이고 미개봉 병이 n보다 많이(>1) 있으면 n병만 차감(Lot 유지), 그 외엔 Lot 전체 폐기.
+- 중복 규칙(서버 + 유일 인덱스): 같은 Lot 의 pending 폐기 1개 · 같은 Lot 의 pending 위치변경 1개 · 같은 시약·항목의 pending 수정 1개. 과거 처리 완료/반려 행은 새 신청을 막지 않는다. **종류 간(위치 vs 폐기 등) 교차 제한은 두지 않았다**(업무 규칙 미정) — 한쪽이 먼저 승인되면 다른 쪽은 안전하게 실패(폐기된 Lot 은 이동 불가)하고 관리자가 반려한다.
+- 화면 문구는 `src/lib/requestStatus.js` 한 곳(학생: "…신청 완료 · 관리자 검토 대기", 관리자: "… 요청 대기", 승인 후: "위치 변경 완료 / 시약정보 수정 완료 / 폐기 완료", 반려: "… 반려").
+- 검증: `scripts/staging/test-request-unification.mjs`(14), `scripts/ui/test-detail-requests.mjs`(98).
+
 ## 5. 재고실사 workflow (서버가 강제)
 1. 학생 입력 → `inventory_count_save` RPC → `inventory_counts` 임시저장 (**장부 불변**, 진행 중(active) 세션에서만 저장)
 2. 학생 Lot [완료] → 시약목록에 실사값이 **미확정(파란 셀 배경)** 으로 표시(장부 여전히 불변; 표시용 오버레이)

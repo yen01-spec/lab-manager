@@ -134,7 +134,7 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
           p_to_location_id: moveLocation, p_to_location_name: toLocName, p_notes: null,
         })
       }
-      alert(`Lot ${checkedLotIds.size}개 위치이동 신청 완료! 관리자 승인 후 반영돼요.`)
+      alert(`위치 변경 신청이 완료되었습니다. (Lot ${checkedLotIds.size}개 · 관리자가 승인하면 반영돼요)`)
     }
     setShowMoveModal(false); setMoveLocation(''); setBusy(false)
     fetchAll()
@@ -162,7 +162,7 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
           p_reagent_name: info.reagentName, p_lot_no: info.lotNo, p_quantity: '전체', p_reason: disposalReason,
         })
       }
-      alert(`Lot ${checkedLotIds.size}개 폐기 신청 완료! 관리자 승인 후 반영돼요.`)
+      alert(`폐기 신청이 완료되었습니다. (Lot ${checkedLotIds.size}개 · 관리자가 승인하면 폐기가 완료돼요)`)
     }
     setShowDisposalModal(false); setDisposalReason(''); setBusy(false)
     fetchAll()
@@ -171,7 +171,7 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
   const pendingBg = '#FFF9E6' // 승인 대기중인 Lot 행 배경(연한 노랑)
 
   return (
-    <Card title="🧹 시약 일괄정리" sub={isAdmin ? '보유중인 Lot(병)을 골라서 한 번에 위치 이동/폐기' : '보유중인 Lot(병)을 골라서 위치이동/폐기 신청 (관리자 승인 후 반영)'}>
+    <Card title="🧹 시약 일괄정리" sub={isAdmin ? '보유중인 Lot(병)을 골라서 한 번에 위치 변경/폐기' : '보유중인 Lot(병)을 골라서 위치 변경/폐기 신청 (관리자가 승인하면 반영)'}>
       {!isAdmin && (
         <div style={{ marginBottom: '12px', padding: '10px 14px', background: '#EEF2FB', border: `1px solid ${C.border}`, borderRadius: '8px', fontSize: '12.5px', color: C.navy }}>
           신청하면 목록에 바뀐 내용이 <b style={{ background: pendingBg, padding: '0 4px', borderRadius: '4px' }}>연한 배경색</b>으로 표시돼요. 관리자가 승인해 최종 반영되면 배경색이 사라집니다.
@@ -204,7 +204,7 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
           <button onClick={() => setShowMoveModal(true)} disabled={checkedLotIds.size === 0} style={{
             background: checkedLotIds.size === 0 ? '#F7F7F7' : '#667EEA', color: checkedLotIds.size === 0 ? C.muted : '#fff',
             border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: checkedLotIds.size === 0 ? 'default' : 'pointer', fontSize: '13px', fontWeight: '600',
-          }}>📍 위치 이동{!isAdmin && ' 신청'}</button>
+          }}>📍 위치 변경{!isAdmin && ' 신청'}</button>
           <button onClick={() => setShowDisposalModal(true)} disabled={checkedLotIds.size === 0} style={{
             background: checkedLotIds.size === 0 ? '#F7F7F7' : C.danger, color: checkedLotIds.size === 0 ? C.muted : '#fff',
             border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: checkedLotIds.size === 0 ? 'default' : 'pointer', fontSize: '13px', fontWeight: '600',
@@ -277,7 +277,7 @@ export default function BulkEditTab({ locations, student, isAdmin }) {
       {showMoveModal && (
         <BulkMoveModal checkedCount={checkedLotIds.size} locations={locations}
           bulkMoveLocation={moveLocation} setBulkMoveLocation={setMoveLocation}
-          submitLabel={isAdmin ? '이동하기' : '이동 신청'}
+          submitLabel={isAdmin ? '위치 변경' : '위치 변경 신청'}
           onClose={() => !busy && setShowMoveModal(false)} onSubmit={submitBulkMove} />
       )}
       {showDisposalModal && (

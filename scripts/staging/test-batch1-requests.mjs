@@ -104,7 +104,7 @@ await test('identity spoof check: same call shape, different token -> different 
   })
   if (eA) throw new Error(eA.message)
   const { data: rB, error: eB } = await anon.rpc('reagent_change_request_submit', {
-    p_session_token: tokenB, p_reagent_id: REAGENT_ID, p_field_name: 'company', p_old_value: 'X', p_new_value: 'Z',
+    p_session_token: tokenB, p_reagent_id: REAGENT_ID, p_field_name: 'manager', p_old_value: 'X', p_new_value: 'Z',
   })
   if (eB) throw new Error(eB.message)
   assertEq(rA.requested_by_student_id, 'TEST-STU-0001', 'A actor')

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useOutletContext, useNavigate, useLocation } from 'react-router-dom'
 import { supabase, supabaseAdmin } from '../supabase'
-import { reviewDisposalRequest } from '../lib/adminReview'
+import { reviewDisposalRequest, reviewLocationRequest, reviewChangeRequest, adminDisposeLots } from '../lib/adminReview'
+import { SUBMIT_SUCCESS, REVIEW_RESULT, requestStatusLabel, DUPLICATE_PENDING_MESSAGE, pickRecentRejected } from '../lib/requestStatus'
 import { useBusyAction } from '../hooks/useBusyAction'
+import { useBreakpoint } from '../hooks/useBreakpoint'
 import { useAdminSession } from '../hooks/useAdminSession'
 import AdminAuthBanner from '../components/admin/AdminAuthBanner'
 import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../design'
@@ -45,11 +47,25 @@ function InfoRow({ label, value, sourceBadge }) {
   )
 }
 
+// 관리자 승인/반려 버튼(3종 공통). Supabase 관리자 로그인이 없으면 로그인 배너를 먼저 보여준다.
+function ReviewButtons({ session, busy, onApprove, onReject, approveLabel = '승인' }) {
+  return (
+    <div style={{ marginTop: '8px' }}>
+      <AdminAuthBanner session={session} purpose="신청을 처리" />
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', opacity: session.authed ? 1 : 0.5, pointerEvents: session.authed && !busy ? 'auto' : 'none' }}>
+        <button onClick={onApprove} style={{ flex: '1 1 140px', padding: '9px 0', borderRadius: '7px', border: 'none', background: '#38A169', color: '#fff', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>{approveLabel}</button>
+        <button onClick={onReject} style={{ flex: '1 1 100px', padding: '9px 0', borderRadius: '7px', border: '1px solid #E6E9EF', background: '#fff', color: '#C13B3F', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>반려</button>
+      </div>
+    </div>
+  )
+}
+
 export default function ReagentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const routeLocation = useLocation()
   const adminSession = useAdminSession()
+  const { isMobile } = useBreakpoint()
   const { isAdmin, student } = useOutletContext?.() || {}
 
   const [reagent, setReagent] = useState(null)
@@ -57,7 +73,12 @@ export default function ReagentDetail() {
   const [pendingChanges, setPendingChanges] = useState([])
   const [confirmedByName, setConfirmedByName] = useState('')
   const [registeredByName, setRegisteredByName] = useState('')
-  const [disposalPending, setDisposalPending] = useState(null)
+  const [pendingMoves, setPendingMoves] = useState([])
+  const [pendingDisposals, setPendingDisposals] = useState([])
+  const [recentRejected, setRecentRejected] = useState([])
+  const [notice, setNotice] = useState('')
+  const noticeTimerRef = useRef(null)
+  const [reviewBusy, setReviewBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [uploadingMsds, setUploadingMsds] = useState(false)
   const [activeInventorySession, setActiveInventorySession] = useState(null)
@@ -90,6 +111,13 @@ export default function ReagentDetail() {
   }, [])
 
   useEffect(() => { fetchAll() }, [id])
+  useEffect(() => () => clearTimeout(noticeTimerRef.current), [])
+  // 성공/결과 안내 — 3종 요청이 모두 같은 방식(하단 안내줄)으로 알려준다. "변경되었습니다" 같은 오해 문구는 쓰지 않는다.
+  function showNotice(text) {
+    setNotice(text)
+    clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = setTimeout(() => setNotice(''), 6000)
+  }
   useEffect(() => { supabase.from('locations').select('*').order('room').then(({ data }) => data && setLocations(data)) }, [])
   useEffect(() => {
     supabase.from('inventory_sessions').select('*').in('status', ['active', 'paused']).limit(1)
@@ -102,17 +130,15 @@ export default function ReagentDetail() {
     if (!data) { setLoading(false); return }
     setReagent(data)
     setLots(data.reagent_lots || [])
-    fetchPendingChanges()
+    fetchPendingRequests()
 
-    // DB 조회 3개는 서로 독립적이라 순차로 기다릴 필요 없이 한번에 병렬 실행
-    const [{ data: cs }, { data: rs }, { data: disposal }] = await Promise.all([
+    // DB 조회 2개는 서로 독립적이라 순차로 기다릴 필요 없이 한번에 병렬 실행
+    const [{ data: cs }, { data: rs }] = await Promise.all([
       data.confirmed_by ? supabase.from('students').select('name').eq('student_id', data.confirmed_by).maybeSingle() : Promise.resolve({ data: null }),
       data.registered_by ? supabase.from('students').select('name').eq('student_id', data.registered_by).maybeSingle() : Promise.resolve({ data: null }),
-      supabase.from('disposal_requests').select('*').eq('reagent_id', id).eq('status', 'pending').maybeSingle(),
     ])
     setConfirmedByName(data.confirmed_by ? (cs?.name || data.confirmed_by) : '')
     setRegisteredByName(data.registered_by ? (rs?.name || data.registered_by) : '')
-    setDisposalPending(disposal || null)
     fetchHistory()
     fetchSpecialLogs()
 
@@ -192,10 +218,26 @@ export default function ReagentDetail() {
     }
   }
 
-  async function fetchPendingChanges() {
-    const { data } = await supabase.from('reagent_change_requests')
-      .select('*').eq('reagent_id', id).eq('status', 'pending')
-    setPendingChanges(data || [])
+  // 요청 3종의 "지금 상태"는 항상 DB 기준으로 다시 읽는다(새로고침/재로그인해도 같은 결과, 화면 로컬 상태에 의존 안 함).
+  async function fetchPendingRequests() {
+    const [chg, loc, disp, rejChg, rejLoc, rejDisp] = await Promise.all([
+      supabase.from('reagent_change_requests').select('*').eq('reagent_id', id).eq('status', 'pending'),
+      supabase.from('location_requests').select('*').eq('reagent_id', id).eq('status', 'pending'),
+      // 'approved' 는 예전 2단계 폐기 흐름의 잔재 — 아직 폐기 처리 전이므로 대기 목록에 같이 보인다
+      supabase.from('disposal_requests').select('*').eq('reagent_id', id).in('status', ['pending', 'approved']),
+      supabase.from('reagent_change_requests').select('*').eq('reagent_id', id).eq('status', 'rejected').order('created_at', { ascending: false }).limit(3),
+      supabase.from('location_requests').select('*').eq('reagent_id', id).eq('status', 'rejected').order('created_at', { ascending: false }).limit(3),
+      supabase.from('disposal_requests').select('*').eq('reagent_id', id).eq('status', 'rejected').order('created_at', { ascending: false }).limit(3),
+    ])
+    setPendingChanges(chg.data || [])
+    setPendingMoves(loc.data || [])
+    setPendingDisposals(disp.data || [])
+    const rej = pickRecentRejected([
+      ...(rejChg.data || []).map(r => ({ kind: 'change', r })),
+      ...(rejLoc.data || []).map(r => ({ kind: 'location', r })),
+      ...(rejDisp.data || []).map(r => ({ kind: 'disposal', r })),
+    ])
+    setRecentRejected(rej)
   }
 
   async function fetchSpecialLogs() {
@@ -273,9 +315,9 @@ export default function ReagentDetail() {
         p_session_token: getSessionToken(), p_reagent_id: id, p_field_name: field,
         p_old_value: String(reagent[field] ?? ''), p_new_value: String(value),
       })
-      if (error) { alert(error.message || '수정 신청 중 오류가 발생했어요'); return }
-      alert('수정 신청 완료! 관리자 승인 후 반영됩니다.')
-      fetchPendingChanges()
+      if (error) { alert(error.message || '시약정보 수정 신청 중 오류가 발생했어요'); fetchPendingRequests(); setEditingField(null); return }
+      showNotice(SUBMIT_SUCCESS.change)
+      fetchPendingRequests()
     }
     setEditingField(null)
   }
@@ -339,29 +381,49 @@ export default function ReagentDetail() {
   async function submitDisposalImpl() {
     if (!disposalForm.lot_id) { alert('폐기할 Lot을 선택해주세요'); return }
     if (!disposalForm.reason.trim()) { alert('폐기 사유를 입력해주세요'); return }
-    if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
     const targetLot = lots.find(l => l.id === disposalForm.lot_id)
-    // Phase S-RLS2(B안) — requested_by/requested_by_student_id는 더 이상 client에서 보내지
-    // 않는다. 서버가 session_token으로 직접 신원을 조회해서 기록한다(위조 불가).
+    if (isAdmin) {
+      // 관리자는 요청을 거치지 않고 바로 처리(승인과 같은 결과: 즉시 폐기 완료). 서버 RPC가 이력/로그를 같은 트랜잭션에서 기록.
+      if (!window.confirm(`Lot ${targetLot?.lot_no || '(번호없음)'}을(를) 지금 폐기 처리합니다. 되돌릴 수 없어요. 계속할까요?`)) return
+      try { await adminDisposeLots([disposalForm.lot_id], disposalForm.reason) } catch (e) { alert(e.message); return }
+      showNotice(REVIEW_RESULT.disposal.approve)
+      setShowDisposalModal(false)
+      setDisposalForm({ lot_id: '', quantity: '1', reason: '' })
+      fetchAll()
+      return
+    }
+    if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
+    // requested_by/requested_by_student_id는 client가 보내지 않는다. 서버가 session_token으로 신원을 확정한다.
     const { error } = await supabase.rpc('disposal_request_submit', {
       p_session_token: getSessionToken(),
       p_reagent_id: id, p_lot_id: targetLot?.id || null,
       p_reagent_name: reagent.name, p_lot_no: targetLot?.lot_no || null,
       p_quantity: disposalForm.quantity, p_reason: disposalForm.reason,
     })
-    if (error) { alert(error.message || '폐기 신청 중 오류가 발생했어요'); return }
-    alert('폐기 신청이 완료됐어요!')
+    if (error) { alert(error.message || '폐기 신청 중 오류가 발생했어요'); fetchPendingRequests(); return }
+    showNotice(SUBMIT_SUCCESS.disposal)
     setShowDisposalModal(false)
     setDisposalForm({ lot_id: '', quantity: '1', reason: '' })
     fetchAll()
   }
 
-  // 관리자 폐기 확정/반려 — Supabase Auth 관리자 세션 + 서버 RPC(요청 행/Lot은 서버가 다시 읽어 처리).
-  async function resolveDisposal(action) {
-    if (!disposalPending) return
+  // 관리자 승인/반려 — 위치·수정·폐기 3종이 같은 방식. Supabase Auth 관리자 세션 + 서버 review RPC(요청 행을 서버가 다시 읽어 처리).
+  // 폐기는 승인 = 즉시 폐기 완료(별도 2단계 없음).
+  async function reviewRequest(kind, request, decision) {
+    if (reviewBusy) return
+    let reason = null
+    if (decision === 'reject') {
+      reason = window.prompt('반려 사유 (선택 — 학생에게 보여요)', '')
+      if (reason === null) return
+    } else if (kind === 'disposal' && !window.confirm('승인하면 즉시 폐기 완료 처리됩니다. 계속할까요?')) return
+    setReviewBusy(true)
     try {
-      await reviewDisposalRequest(disposalPending.id, action === 'confirm' ? 'dispose_lot' : 'reject')
-    } catch (e) { alert(e.message); return }
+      if (kind === 'location') await reviewLocationRequest(request.id, decision, reason || null)
+      else if (kind === 'change') await reviewChangeRequest(request.id, decision, reason || null)
+      else await reviewDisposalRequest(request.id, decision, reason || null)
+      showNotice(REVIEW_RESULT[kind][decision])
+    } catch (e) { alert(e.message) }
+    setReviewBusy(false)
     fetchAll()
   }
 
@@ -378,7 +440,7 @@ export default function ReagentDetail() {
     if (isAdmin) {
       const { error } = await supabaseAdmin.rpc('admin_lot_move', { p_lot_id: moveForm.lot_id, p_to_location_id: moveForm.to_location_id, p_notes: moveForm.notes || null })
       if (error) { alert(error.message); return }
-      alert(`✅ 위치 이동 완료!\n${fromLocName} → ${toLocName}`)
+      showNotice(`위치가 변경되었습니다. (${fromLocName} → ${toLocName})`)
       setShowMoveModal(false)
       fetchAll()
     } else {
@@ -388,9 +450,10 @@ export default function ReagentDetail() {
         p_from_location_id: targetLot?.location_id || null, p_from_location_name: fromLocName,
         p_to_location_id: moveForm.to_location_id, p_to_location_name: toLocName, p_notes: moveForm.notes,
       })
-      if (error) { alert(error.message || '위치 이동 신청 중 오류가 발생했어요'); return }
-      alert('위치 이동 신청 완료! 관리자 승인 후 처리됩니다.')
+      if (error) { alert(error.message || '위치 변경 신청 중 오류가 발생했어요'); fetchPendingRequests(); return }
+      showNotice(SUBMIT_SUCCESS.location)
       setShowMoveModal(false)
+      fetchAll()
     }
   }
 
@@ -447,12 +510,18 @@ export default function ReagentDetail() {
   const LOT_STATUS_LABEL = { active: '보유중', used_up: '사용완료', disposed: '폐기', missing: '분실' }
   const LOT_STATUS_COLOR = { active: '#00875A', used_up: C.muted, disposed: C.danger, missing: '#B7791F' }
 
+  const pendingMoveByLot = new Map(pendingMoves.filter(m => m.lot_id).map(m => [m.lot_id, m]))
+  const pendingDisposalByLot = new Map(pendingDisposals.filter(d => d.lot_id).map(d => [d.lot_id, d]))
+  // 학생은 같은 Lot 에 같은 종류 신청이 이미 대기 중이면 다시 신청할 수 없다(서버도 막음). 관리자는 직접 처리하므로 해당 없음.
+  const requestableForMove = isAdmin ? activeLots : activeLots.filter(l => !pendingMoveByLot.has(l.id))
+  const requestableForDisposal = isAdmin ? activeLots : activeLots.filter(l => !pendingDisposalByLot.has(l.id))
+
   function openDisposalModal() {
-    setDisposalForm({ lot_id: activeLots.length === 1 ? activeLots[0].id : '', quantity: '1', reason: '' })
+    setDisposalForm({ lot_id: requestableForDisposal.length === 1 ? requestableForDisposal[0].id : '', quantity: '1', reason: '' })
     setShowDisposalModal(true)
   }
   function openMoveModal() {
-    setMoveForm({ lot_id: activeLots.length === 1 ? activeLots[0].id : '', to_location_id: '', notes: '' })
+    setMoveForm({ lot_id: requestableForMove.length === 1 ? requestableForMove[0].id : '', to_location_id: '', notes: '' })
     setShowMoveModal(true)
   }
 
@@ -469,7 +538,9 @@ export default function ReagentDetail() {
             <button onClick={() => (routeLocation.state?.from === 'list' ? navigate(-1) : navigate('/reagents/list'))}
               style={{ padding: '9px 14px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.white, fontSize: '13px', color: C.navy, fontWeight: '600', cursor: 'pointer' }}>← 목록으로</button>
             <button onClick={() => setShowAddLotModal(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: '1px dashed #C9DAF5', background: '#F9FBFF', fontSize: '13px', color: '#1F4E96', fontWeight: '600', cursor: 'pointer' }}>📦 재고 등록</button>
-            <button onClick={openMoveModal} disabled={activeLots.length === 0} style={{ padding: '9px 16px', borderRadius: '8px', border: `1px solid ${C.border}`, background: activeLots.length === 0 ? '#F7F7F7' : C.white, fontSize: '13px', color: '#586173', cursor: activeLots.length === 0 ? 'default' : 'pointer' }}>📍 위치 이동{!isAdmin && ' 신청'}</button>
+            <button onClick={openMoveModal} disabled={requestableForMove.length === 0}
+              title={activeLots.length > 0 && requestableForMove.length === 0 ? DUPLICATE_PENDING_MESSAGE.location : undefined}
+              style={{ padding: '9px 16px', borderRadius: '8px', border: `1px solid ${C.border}`, background: requestableForMove.length === 0 ? '#F7F7F7' : C.white, fontSize: '13px', color: '#586173', cursor: requestableForMove.length === 0 ? 'default' : 'pointer' }}>📍 {isAdmin ? '위치 변경' : (activeLots.length > 0 && requestableForMove.length === 0 ? '위치 변경 신청 완료' : '위치 변경 신청')}</button>
             {activeInventorySession && (
               <button onClick={() => { if (!student) { alert('로그인 후 이용해주세요'); return } confirmReagent() }} style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: C.blue, fontSize: '13px', color: '#fff', fontWeight: '600', cursor: 'pointer' }}>✓ 정보 맞음 · 확인만 하기</button>
             )}
@@ -489,13 +560,14 @@ export default function ReagentDetail() {
                     padding: '8px 12px', borderRadius: '6px', border: 'none', background: 'none',
                     fontSize: '13px', color: '#586173', cursor: 'pointer', textAlign: 'left', fontWeight: '600',
                   }} onMouseEnter={e => e.currentTarget.style.background = C.bg} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                    ✏️ {editMode ? '수정 완료' : isAdmin ? '정보 수정' : '수정 신청'}
+                    ✏️ {editMode ? (isAdmin ? '정보 수정 마치기' : '수정 신청 마치기') : isAdmin ? '시약정보 수정' : '시약정보 수정 신청'}
                   </button>
-                  <button onClick={() => { openDisposalModal(); setMoreMenuOpen(false) }} disabled={activeLots.length === 0} style={{
+                  <button onClick={() => { openDisposalModal(); setMoreMenuOpen(false) }} disabled={requestableForDisposal.length === 0}
+                    title={activeLots.length > 0 && requestableForDisposal.length === 0 ? DUPLICATE_PENDING_MESSAGE.disposal : undefined} style={{
                     padding: '8px 12px', borderRadius: '6px', border: 'none', background: 'none',
-                    fontSize: '13px', color: activeLots.length === 0 ? C.muted : '#C13B3F', cursor: activeLots.length === 0 ? 'default' : 'pointer', textAlign: 'left', fontWeight: '600',
-                  }} onMouseEnter={e => { if (activeLots.length > 0) e.currentTarget.style.background = '#FDECEC' }} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                    🗑️ 폐기 신청
+                    fontSize: '13px', color: requestableForDisposal.length === 0 ? C.muted : '#C13B3F', cursor: requestableForDisposal.length === 0 ? 'default' : 'pointer', textAlign: 'left', fontWeight: '600',
+                  }} onMouseEnter={e => { if (requestableForDisposal.length > 0) e.currentTarget.style.background = '#FDECEC' }} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                    🗑️ {isAdmin ? '폐기 처리' : (activeLots.length > 0 && requestableForDisposal.length === 0 ? '폐기 신청 완료' : '폐기 신청')}
                   </button>
                   {isAdmin && (
                     <button onClick={() => { setMoreMenuOpen(false); archiveReagent() }} title="활성 재고가 없을 때만 삭제할 수 있어요" style={{
@@ -511,16 +583,16 @@ export default function ReagentDetail() {
           </div>
         }
       />
-      <div style={{ padding: '20px 32px' }}>
+      <div style={{ padding: isMobile ? '16px' : '20px 32px' }}>
 
       {editMode && !isAdmin && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#FBF0DF', border: '1px solid #F0DBAE', borderRadius: '10px', padding: '11px 16px', marginBottom: '18px', fontSize: '12.5px', color: '#8A5A16' }}>
-          ⚠️ 노란 배경으로 표시된 항목은 <b>수정 제안이 대기중</b>이에요. 관리자가 최종반영해야 실제로 바뀝니다. 값을 입력하고 포커스를 옮기면 신청이 접수돼요.
+          ✏️ <b>시약정보 수정 신청 모드</b> — 값을 입력하고 포커스를 옮기면 <b>신청</b>이 접수돼요. 관리자가 승인해야 실제 정보가 바뀌고, 노란 배경 항목은 이미 신청이 접수되어 검토를 기다리는 중이에요.
           {!student && <span> <b>제출하려면 로그인이 필요해요.</b></span>}
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1.4fr 1fr', gap: '20px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
           {/* 재고정보 — 학생이 상세페이지를 열었을 때 가장 먼저 궁금한 건 "어디 있는지,
@@ -549,6 +621,16 @@ export default function ReagentDetail() {
                       {lot.pending_confirm && (
                         <span title="실사 반영됨 · 최종 확정 대기 중" style={{ fontSize: '10px', fontWeight: '700', color: '#1565C0', background: '#E3F2FD', padding: '1px 6px', borderRadius: '8px' }}>검토대기</span>
                       )}
+                      {pendingMoveByLot.has(lot.id) && (
+                        <span title={`요청자: ${pendingMoveByLot.get(lot.id).requested_by || '-'}`} style={{ fontSize: '10px', fontWeight: '700', color: '#B45F06', background: '#FFF3E0', padding: '1px 6px', borderRadius: '8px' }}>
+                          📍 {requestStatusLabel('location', 'pending', isAdmin ? 'admin' : 'student')} → {pendingMoveByLot.get(lot.id).to_location_name}
+                        </span>
+                      )}
+                      {pendingDisposalByLot.has(lot.id) && (
+                        <span title={`요청자: ${pendingDisposalByLot.get(lot.id).requested_by || '-'}`} style={{ fontSize: '10px', fontWeight: '700', color: '#C13B3F', background: '#FDECEC', padding: '1px 6px', borderRadius: '8px' }}>
+                          🗑️ {requestStatusLabel('disposal', pendingDisposalByLot.get(lot.id).status, isAdmin ? 'admin' : 'student')}
+                        </span>
+                      )}
                       {lot.needs_action && (
                         <span title={`2026-2 전수조사 "조치필요" 항목 — ${lot.action_note || '실물 확인이 필요합니다.'}`} style={{ fontSize: '10px', fontWeight: '700', color: '#C13B3F', background: '#FDECEC', padding: '1px 6px', borderRadius: '8px' }}>⚠️ 확인필요</span>
                       )}
@@ -559,7 +641,7 @@ export default function ReagentDetail() {
                         </span>
                       )}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px 20px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr', gap: '14px 20px' }}>
                       <div>
                         <div style={{ fontSize: '11px', color: C.muted, marginBottom: '4px' }}>미개봉 병 수</div>
                         {editingSealed ? (
@@ -608,7 +690,7 @@ export default function ReagentDetail() {
                 <span title="실사 반영됨 · 최종 확정 대기 중" style={{ fontSize: '10px', fontWeight: '700', color: '#1565C0', background: '#E3F2FD', padding: '1px 6px', borderRadius: '8px' }}>검토대기</span>
               )}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px', padding: '18px 20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '14px 20px', padding: '18px 20px' }}>
               {fieldRows.map(([field, label, value, source]) => {
                 const pending = pendingChanges.find(p => p.field_name === field)
                 const isEditing = editMode && editingField === field
@@ -616,7 +698,7 @@ export default function ReagentDetail() {
                   <div key={field} style={{ background: pending ? '#FBF0DF' : 'transparent', borderRadius: '8px', padding: pending ? '8px 10px' : 0, margin: pending ? '-8px -10px' : 0 }}>
                     {pending && (
                       <div style={{ fontSize: '10.5px', color: '#8A5A16', marginBottom: '3px', fontWeight: '600' }}>
-                        {isAdmin ? `${pending.requested_by} 제안 · 대기중` : '수정 제안됨 · 대기중'}
+                        {isAdmin ? `${pending.requested_by} · ${requestStatusLabel('change', 'pending', 'admin')}` : requestStatusLabel('change', 'pending')}
                       </div>
                     )}
                     <div style={{ fontSize: '11px', color: C.muted, marginBottom: '4px' }}>{label}</div>
@@ -633,7 +715,11 @@ export default function ReagentDetail() {
                         style={{ ...inputStyle, padding: '4px 8px', fontSize: '13px' }} />
                     ) : (
                       <div style={{ fontSize: '13.5px', color: C.text, cursor: editMode ? 'text' : 'default' }}
-                        onClick={() => { if (editMode) { setEditingField(field); setEditingValue(value || '') } }}>
+                        onClick={() => {
+                          if (!editMode) return
+                          if (pending && !isAdmin) { showNotice(DUPLICATE_PENDING_MESSAGE.change); return }
+                          setEditingField(field); setEditingValue(value || '')
+                        }}>
                         {value || '-'}
                         {source === 'auto_ghs' && (
                           <span title="국가유해물질정보 자동조회로 채워졌어요" style={{ marginLeft: '6px', fontSize: '9.5px', color: C.muted, background: '#F3F4F6', padding: '1px 6px', borderRadius: '8px' }}>🔎 MSDS 자동조회</span>
@@ -778,40 +864,67 @@ export default function ReagentDetail() {
             </div>
           </div>
 
-          {/* 대기중 변경 */}
+          {/* 요청 3종 — 같은 형식의 대기 카드(관리자: 승인/반려, 학생: 검토 대기 안내). 상태는 항상 DB 기준. */}
           {pendingChanges.length > 0 && (
             <div style={{ ...cardStyle, border: '1px solid #F0DBAE' }}>
-              <div style={{ ...cardHeadStyle, borderBottom: '1px solid #F0DBAE', background: '#FBF0DF', color: '#8A5A16' }}>대기중인 수정 제안 · {pendingChanges.length}건</div>
-              <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ ...cardHeadStyle, borderBottom: '1px solid #F0DBAE', background: '#FBF0DF', color: '#8A5A16' }}>✏️ {requestStatusLabel('change', 'pending', isAdmin ? 'admin' : 'student')} · {pendingChanges.length}건</div>
+              <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {pendingChanges.map(p => (
                   <div key={p.id}>
-                    <div style={{ fontSize: '12.5px', color: C.text }}>{FIELD_LABELS[p.field_name] || p.field_name}: <b>{p.old_value || '-'} → {p.new_value}</b></div>
-                    {isAdmin && <div style={{ fontSize: '11px', color: C.muted }}>제안: {p.requested_by} · {new Date(p.created_at).toLocaleDateString()}</div>}
+                    <div style={{ fontSize: '12.5px', color: C.text, overflowWrap: 'anywhere' }}>{FIELD_LABELS[p.field_name] || p.field_name}: <b>{p.old_value || '-'} → {p.new_value}</b></div>
+                    <div style={{ fontSize: '11px', color: C.muted }}>신청: {p.requested_by} · {new Date(p.created_at).toLocaleDateString()}</div>
+                    {isAdmin && <ReviewButtons session={adminSession} busy={reviewBusy} onApprove={() => reviewRequest('change', p, 'approve')} onReject={() => reviewRequest('change', p, 'reject')} />}
                   </div>
                 ))}
-                {isAdmin && <div style={{ fontSize: '11px', color: C.muted, marginTop: '4px' }}>관리자 메뉴 &gt; 변경 요청에서 승인/반려할 수 있어요.</div>}
+                {!isAdmin && <div style={{ fontSize: '11px', color: C.muted }}>관리자가 승인하면 실제 정보가 바뀌고, 그 전에는 기존 값이 그대로예요.</div>}
               </div>
             </div>
           )}
 
-          {/* 폐기 신청 대기중 */}
-          {disposalPending && (
-            <div style={{ ...cardStyle, border: '1px solid #F3D6D6' }}>
-              <div style={{ ...cardHeadStyle, borderBottom: '1px solid #F3D6D6', background: '#FDECEC', color: '#C13B3F' }}>🗑️ 폐기 신청 대기중</div>
-              <div style={{ padding: '16px 20px' }}>
-                <div style={{ fontSize: '12.5px', color: C.text, marginBottom: '4px' }}>사유: {disposalPending.reason}</div>
-                {isAdmin && <div style={{ fontSize: '11px', color: C.muted, marginBottom: '12px' }}>신청: {disposalPending.requested_by} · {new Date(disposalPending.created_at).toLocaleDateString()}</div>}
-                {isAdmin ? (
-                  <>
-                  <AdminAuthBanner session={adminSession} purpose="폐기 신청을 처리" />
-                  <div style={{ display: 'flex', gap: '8px', opacity: adminSession.authed ? 1 : 0.5, pointerEvents: adminSession.authed ? 'auto' : 'none' }}>
-                    <button onClick={() => resolveDisposal('reject')} style={{ flex: 1, padding: '8px 0', borderRadius: '7px', border: `1px solid ${C.border}`, background: C.white, fontSize: '12px', color: '#586173', cursor: 'pointer' }}>보류</button>
-                    <button onClick={() => resolveDisposal('confirm')} style={{ flex: 1, padding: '8px 0', borderRadius: '7px', border: 'none', background: '#E5484D', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>폐기 확정</button>
+          {pendingMoves.length > 0 && (
+            <div style={{ ...cardStyle, border: '1px solid #F0DBAE' }}>
+              <div style={{ ...cardHeadStyle, borderBottom: '1px solid #F0DBAE', background: '#FBF0DF', color: '#8A5A16' }}>📍 {requestStatusLabel('location', 'pending', isAdmin ? 'admin' : 'student')} · {pendingMoves.length}건</div>
+              <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {pendingMoves.map(m => (
+                  <div key={m.id}>
+                    <div style={{ fontSize: '12.5px', color: C.text, overflowWrap: 'anywhere' }}>{m.from_location_name || '미지정'} → <b>{m.to_location_name}</b>{m.lot_id && lots.find(l => l.id === m.lot_id) ? ` · Lot ${lots.find(l => l.id === m.lot_id).lot_no || '(번호없음)'}` : ''}</div>
+                    <div style={{ fontSize: '11px', color: C.muted }}>신청: {m.requested_by} · {new Date(m.created_at).toLocaleDateString()}{m.notes ? ` · ${m.notes}` : ''}</div>
+                    {isAdmin && <ReviewButtons session={adminSession} busy={reviewBusy} onApprove={() => reviewRequest('location', m, 'approve')} onReject={() => reviewRequest('location', m, 'reject')} />}
                   </div>
-                  </>
-                ) : (
-                  <div style={{ fontSize: '10.5px', color: C.muted }}>관리자만 처리 가능합니다.</div>
-                )}
+                ))}
+                {!isAdmin && <div style={{ fontSize: '11px', color: C.muted }}>관리자가 승인하면 실제 위치가 바뀌고, 그 전에는 기존 위치 그대로예요.</div>}
+              </div>
+            </div>
+          )}
+
+          {pendingDisposals.length > 0 && (
+            <div style={{ ...cardStyle, border: '1px solid #F3D6D6' }}>
+              <div style={{ ...cardHeadStyle, borderBottom: '1px solid #F3D6D6', background: '#FDECEC', color: '#C13B3F' }}>🗑️ {requestStatusLabel('disposal', 'pending', isAdmin ? 'admin' : 'student')} · {pendingDisposals.length}건</div>
+              <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {pendingDisposals.map(d => (
+                  <div key={d.id}>
+                    <div style={{ fontSize: '12.5px', color: C.text, overflowWrap: 'anywhere' }}>{d.lot_no ? `Lot ${d.lot_no} · ` : ''}수량 {d.quantity || '-'} · 사유: {d.reason || '-'}</div>
+                    <div style={{ fontSize: '11px', color: C.muted }}>신청: {d.requested_by} · {new Date(d.created_at).toLocaleDateString()}{d.status === 'approved' ? ' · 이전 방식으로 승인됨(폐기 처리 대기)' : ''}</div>
+                    {isAdmin && <ReviewButtons session={adminSession} busy={reviewBusy} approveLabel="승인 (즉시 폐기 완료)" onApprove={() => reviewRequest('disposal', d, 'approve')} onReject={() => reviewRequest('disposal', d, 'reject')} />}
+                  </div>
+                ))}
+                {!isAdmin && <div style={{ fontSize: '11px', color: C.muted }}>관리자가 승인하면 폐기가 완료되고, 그 전에는 재고가 그대로예요.</div>}
+              </div>
+            </div>
+          )}
+
+          {recentRejected.length > 0 && (
+            <div style={{ ...cardStyle, border: '1px solid #E6E9EF' }}>
+              <div style={{ ...cardHeadStyle, color: C.textSub }}>최근 반려된 신청</div>
+              <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {recentRejected.map(({ kind, r }) => (
+                  <div key={kind + r.id} style={{ fontSize: '12.5px', color: C.text, overflowWrap: 'anywhere' }}>
+                    <b style={{ color: '#C62828' }}>{requestStatusLabel(kind, 'rejected')}</b>
+                    {' — '}{kind === 'location' ? `${r.from_location_name || '미지정'} → ${r.to_location_name}` : kind === 'change' ? `${FIELD_LABELS[r.field_name] || r.field_name}: ${r.new_value}` : `사유: ${r.reason || '-'}`}
+                    {r.review_note && <span style={{ color: C.muted }}> · 반려 사유: {r.review_note}</span>}
+                    <span style={{ color: C.muted }}> · 실제 정보는 그대로예요. 필요하면 다시 신청할 수 있어요.</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -840,12 +953,21 @@ export default function ReagentDetail() {
         </div>
       )}
 
-      {/* 폐기 신청 모달 */}
+      {notice && (
+        <div role="status" style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(76px + env(safe-area-inset-bottom, 0px))', zIndex: 500, background: '#16233E', color: '#fff', padding: '12px 18px', borderRadius: '10px', fontSize: '13.5px', fontWeight: 600, boxShadow: '0 8px 24px rgba(0,0,0,.25)', maxWidth: 'calc(100vw - 32px)', textAlign: 'center' }}>
+          {notice}
+        </div>
+      )}
+
+      {/* 폐기 신청(관리자는 즉시 처리) 모달 */}
       {showDisposalModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,42,94,0.55)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowDisposalModal(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '28px', width: '420px', maxWidth: '92vw' }}>
-            <h3 style={{ margin: '0 0 4px', color: C.navy }}>🗑️ 폐기 신청</h3>
-            <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{reagent.name}</p>
+        <div role="dialog" aria-modal="true" aria-label={isAdmin ? '폐기 처리' : '폐기 신청'} style={{ position: 'fixed', inset: 0, background: 'rgba(26,42,94,0.55)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onClick={() => setShowDisposalModal(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '24px', width: '420px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ margin: '0 0 4px', color: C.navy }}>🗑️ {isAdmin ? '폐기 처리' : '폐기 신청'}</h3>
+            <p style={{ margin: '0 0 6px', color: C.muted, fontSize: '13px', overflowWrap: 'anywhere' }}>{reagent.name}</p>
+            <p style={{ margin: '0 0 16px', color: '#8A5A16', background: '#FBF0DF', borderRadius: '8px', padding: '8px 10px', fontSize: '12px', lineHeight: 1.5 }}>
+              {isAdmin ? '확인하면 즉시 폐기 완료 처리됩니다(되돌릴 수 없어요).' : '신청하면 관리자가 검토합니다. 승인되면 폐기가 완료되고, 그 전에는 재고가 그대로예요.'}
+            </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {activeLots.length > 1 && (
                 <div><label style={labelStyle}>폐기할 Lot *</label>
@@ -853,44 +975,51 @@ export default function ReagentDetail() {
                     <option value="">선택하세요</option>
                     {activeLots.map(l => {
                       const loc = locations.find(x => x.id === l.location_id)
-                      return <option key={l.id} value={l.id}>Lot {l.lot_no || '번호없음'} · {loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '위치미정'} · {l.sealed_count}병/{l.current_stock}%</option>
+                      const pend = !isAdmin && pendingDisposalByLot.has(l.id)
+                      return <option key={l.id} value={l.id} disabled={pend}>Lot {l.lot_no || '번호없음'} · {loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '위치미정'} · {l.sealed_count}병/{l.current_stock}%{pend ? ' (폐기 신청 완료 · 검토 대기)' : ''}</option>
                     })}
                   </select></div>
               )}
-              <div><label style={labelStyle}>수량</label>
-                <input value={disposalForm.quantity} onChange={e => setDisposalForm({ ...disposalForm, quantity: e.target.value })} style={inputStyle} /></div>
+              {!isAdmin && <div><label style={labelStyle}>수량</label>
+                <input value={disposalForm.quantity} onChange={e => setDisposalForm({ ...disposalForm, quantity: e.target.value })} style={inputStyle} /></div>}
               <div><label style={labelStyle}>폐기 사유 *</label>
                 <textarea value={disposalForm.reason} rows={3} onChange={e => setDisposalForm({ ...disposalForm, reason: e.target.value })} style={{ ...inputStyle, resize: 'vertical' }} /></div>
             </div>
-            <div style={{ fontSize: '11.5px', color: student ? C.muted : '#C13B3F', marginTop: '10px' }}>
-              {student ? `신청자: ${student.name}` : '※ 제출하려면 로그인이 필요해요'}
-            </div>
+            {!isAdmin && (
+              <div style={{ fontSize: '11.5px', color: student ? C.muted : '#C13B3F', marginTop: '10px' }}>
+                {student ? `신청자: ${student.name}` : '※ 제출하려면 로그인이 필요해요'}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
               <button onClick={() => setShowDisposalModal(false)} style={{ ...btnGhost, flex: 1 }}>취소</button>
-              <button onClick={submitDisposal} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.danger, color: '#fff', cursor: 'pointer', fontWeight: '700' }}>신청하기</button>
+              <button onClick={submitDisposal} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: C.danger, color: '#fff', cursor: 'pointer', fontWeight: '700' }}>{isAdmin ? '폐기 처리' : '폐기 신청하기'}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 위치 이동 모달 */}
+      {/* 위치 변경 신청(관리자는 즉시 변경) 모달 */}
       {showMoveModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,42,94,0.55)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowMoveModal(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '28px', width: '420px', maxWidth: '92vw' }}>
-            <h3 style={{ margin: '0 0 4px', color: C.navy }}>📍 위치 이동{!isAdmin && ' 신청'}</h3>
-            <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{reagent.name}</p>
+        <div role="dialog" aria-modal="true" aria-label={isAdmin ? '위치 변경' : '위치 변경 신청'} style={{ position: 'fixed', inset: 0, background: 'rgba(26,42,94,0.55)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onClick={() => setShowMoveModal(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '24px', width: '420px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ margin: '0 0 4px', color: C.navy }}>📍 {isAdmin ? '위치 변경' : '위치 변경 신청'}</h3>
+            <p style={{ margin: '0 0 6px', color: C.muted, fontSize: '13px', overflowWrap: 'anywhere' }}>{reagent.name}</p>
+            <p style={{ margin: '0 0 16px', color: '#8A5A16', background: '#FBF0DF', borderRadius: '8px', padding: '8px 10px', fontSize: '12px', lineHeight: 1.5 }}>
+              {isAdmin ? '확인하면 즉시 위치가 변경되고 이력이 기록됩니다.' : '신청하면 관리자가 검토합니다. 승인되면 위치가 변경되고, 그 전에는 기존 위치 그대로예요.'}
+            </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {activeLots.length > 1 && (
-                <div><label style={labelStyle}>이동할 Lot *</label>
+                <div><label style={labelStyle}>위치를 바꿀 Lot *</label>
                   <select value={moveForm.lot_id} onChange={e => setMoveForm({ ...moveForm, lot_id: e.target.value })} style={inputStyle}>
                     <option value="">선택하세요</option>
                     {activeLots.map(l => {
                       const loc = locations.find(x => x.id === l.location_id)
-                      return <option key={l.id} value={l.id}>Lot {l.lot_no || '번호없음'} · {loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '위치미정'}</option>
+                      const pend = !isAdmin && pendingMoveByLot.has(l.id)
+                      return <option key={l.id} value={l.id} disabled={pend}>Lot {l.lot_no || '번호없음'} · {loc ? `${loc.room}${loc.detail ? ' - ' + loc.detail : ''}` : '위치미정'}{pend ? ' (위치 변경 신청 완료 · 검토 대기)' : ''}</option>
                     })}
                   </select></div>
               )}
-              <div><label style={labelStyle}>이동할 위치 *</label>
+              <div><label style={labelStyle}>새 위치 *</label>
                 <select value={moveForm.to_location_id} onChange={e => setMoveForm({ ...moveForm, to_location_id: e.target.value })} style={inputStyle}>
                   <option value="">선택하세요</option>
                   {locations.map(l => <option key={l.id} value={l.id}>{l.room}{l.detail ? ' - ' + l.detail : ''}</option>)}
@@ -898,12 +1027,14 @@ export default function ReagentDetail() {
               <div><label style={labelStyle}>메모</label>
                 <input value={moveForm.notes} onChange={e => setMoveForm({ ...moveForm, notes: e.target.value })} style={inputStyle} /></div>
             </div>
-            <div style={{ fontSize: '11.5px', color: student ? C.muted : '#C13B3F', marginTop: '10px' }}>
-              {student ? `${isAdmin ? '이동자' : '신청자'}: ${student.name}` : '※ 제출하려면 로그인이 필요해요'}
-            </div>
+            {!isAdmin && (
+              <div style={{ fontSize: '11.5px', color: student ? C.muted : '#C13B3F', marginTop: '10px' }}>
+                {student ? `신청자: ${student.name}` : '※ 제출하려면 로그인이 필요해요'}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
               <button onClick={() => setShowMoveModal(false)} style={{ ...btnGhost, flex: 1 }}>취소</button>
-              <button onClick={submitMove} style={{ ...btnPrimary, flex: 1 }}>{isAdmin ? '이동' : '신청하기'}</button>
+              <button onClick={submitMove} style={{ ...btnPrimary, flex: 1 }}>{isAdmin ? '위치 변경' : '위치 변경 신청하기'}</button>
             </div>
           </div>
         </div>
@@ -911,8 +1042,8 @@ export default function ReagentDetail() {
 
       {/* 재고 등록(새 Lot 추가) 모달 */}
       {showAddLotModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,42,94,0.55)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowAddLotModal(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '28px', width: '420px', maxWidth: '92vw' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,42,94,0.55)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onClick={() => setShowAddLotModal(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: C.white, borderRadius: '14px', padding: '24px', width: '420px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 style={{ margin: '0 0 4px', color: C.navy }}>📦 재고 등록</h3>
             <p style={{ margin: '0 0 20px', color: C.muted, fontSize: '13px' }}>{reagent.name} — 새로 구매한 Lot을 추가해요. 시약명·CAS 등은 다시 입력할 필요 없어요.</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>

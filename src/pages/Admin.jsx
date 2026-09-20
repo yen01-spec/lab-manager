@@ -17,9 +17,9 @@ import SettingsTab from '../components/admin/SettingsTab'
 // 섹션 헤더가 있는 사이드바 항목. section이 있으면 그 위에 구분 라벨을 그린다.
 const TABS = [
   { key: 'dashboard', label: '대시보드', icon: '📊' },
-  { key: 'req-change', label: '정보 변경', icon: '📝', section: '요청 처리' },
+  { key: 'req-change', label: '시약정보 수정', icon: '📝', section: '요청 처리' },
   { key: 'req-disposal', label: '폐기', icon: '🗑️' },
-  { key: 'req-move', label: '위치 이동', icon: '📍' },
+  { key: 'req-move', label: '위치 변경', icon: '📍' },
   { key: 'purchase', label: '구매 관리', icon: '🛒', section: '구매' },
   { key: 'data-add', label: '시약 1건 추가', icon: '🧪', section: '시약 데이터' },
   { key: 'data-bulk-add', label: 'Excel 일괄 추가', icon: '📥' },

@@ -12,7 +12,7 @@ export const reviewChangeRequest = (id, decision, reason = null) =>
   call('reagent_change_request_review', { p_request_id: id, p_decision: decision, p_reason: reason })
 export const reviewLocationRequest = (id, decision, reason = null) =>
   call('location_request_review', { p_request_id: id, p_decision: decision, p_reason: reason })
-// action: approve | reject | complete | approve_and_zero_lot | dispose_lot
+// action: approve(= 즉시 폐기 완료) | reject
 export const reviewDisposalRequest = (id, action, reason = null) =>
   call('disposal_request_review', { p_request_id: id, p_action: action, p_reason: reason })
 export const adminMoveLots = (lotIds, toLocationId) =>
