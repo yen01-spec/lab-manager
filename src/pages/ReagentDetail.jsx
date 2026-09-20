@@ -95,6 +95,7 @@ export default function ReagentDetail() {
   const noticeTimerRef = useRef(null)
   const [reviewBusy, setReviewBusy] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')   // 네트워크 실패/시간 초과 — "시약을 찾을 수 없습니다"(없는 시약)와 구분
   const [uploadingMsds, setUploadingMsds] = useState(false)
   const [activeInventorySession, setActiveInventorySession] = useState(null)
 
@@ -168,9 +169,10 @@ export default function ReagentDetail() {
   }, [])
 
   async function fetchAll() {
-    const { data } = await supabase.from('reagents')
+    setLoadError('')
+    const { data, error: loadErr } = await supabase.from('reagents')
       .select('*, locations(*), reagent_lots(*)').eq('id', id).single()
-    if (!data) { setLoading(false); return }
+    if (!data) { if (loadErr && loadErr.code !== 'PGRST116') setLoadError(loadErr.message || '불러오지 못했어요'); setLoading(false); return }
     setReagent(data)
     setLots(data.reagent_lots || [])
     fetchPendingRequests()
@@ -296,7 +298,8 @@ export default function ReagentDetail() {
       supabase.from('disposal_requests').select('*').eq('reagent_id', id).in('status', ['disposed', 'rejected']).order('created_at', { ascending: false }).limit(30),
       supabase.from('reagent_change_requests').select('*').eq('reagent_id', id).eq('status', 'approved').order('created_at', { ascending: false }).limit(30),
       supabase.from('reagent_lots').select('id, lot_no').eq('reagent_id', id),
-      supabase.from('reagent_import_history').select('*').eq('reagent_id', id).order('occurred_at', { ascending: false }).limit(30),
+      // reagent_import_history 는 관리자 전용 테이블(서버 ACL) — 학생/비로그인이 조회하면 항상 401 이라 관리자만, 관리자 JWT 를 가진 supabaseAdmin 클라이언트로 조회한다(anon 클라이언트로 조회하던 예전 코드는 관리자에게도 401 이었다).
+      isAdmin ? supabaseAdmin.from('reagent_import_history').select('*').eq('reagent_id', id).order('occurred_at', { ascending: false }).limit(30) : Promise.resolve({ data: [] }),
     ])
     const lotIds = (reagentLots || []).map(l => l.id)
     const lotNoById = new Map((reagentLots || []).map(l => [l.id, l.lot_no]))
@@ -560,6 +563,13 @@ export default function ReagentDetail() {
   }
 
   if (loading) return <div style={{ padding: '60px', textAlign: 'center', color: C.muted }}>불러오는 중...</div>
+  if (!reagent && loadError) return (
+    <div role="alert" data-testid="detail-load-error" style={{ padding: '60px 16px', textAlign: 'center', color: C.muted }}>
+      <div style={{ color: '#C13B3F', marginBottom: 12 }}>시약 정보를 불러오지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.</div>
+      <button onClick={() => { setLoading(true); fetchAll() }} style={{ ...btnPrimary, minHeight: 44 }}>다시 시도</button>
+      <button onClick={goToList} style={{ ...btnGhost, minHeight: 44, marginLeft: 8 }}>← 시약 목록</button>
+    </div>
+  )
   if (!reagent) return <div style={{ padding: '60px', textAlign: 'center', color: C.muted }}>시약을 찾을 수 없습니다.</div>
 
   const ghsList = getGhsPictograms(reagent.ghs_pictograms || reagent.ghs_live?.pictograms)
@@ -683,10 +693,10 @@ export default function ReagentDetail() {
                 const lotBtn = { fontSize: '12px', borderRadius: '6px', padding: '6px 10px', minHeight: 32, cursor: 'pointer', background: C.white }
                 return (
                   <div key={lot.id} data-lot-id={lot.id} style={{
-                    paddingBottom: lots.length > 1 ? '12px' : 0, borderBottom: lots.length > 1 ? `1px solid ${C.borderRow}` : 'none',
+                    borderBottom: lots.length > 1 ? `1px solid ${C.borderRow}` : 'none',
                     opacity: lot.status === 'active' ? 1 : 0.6,
                     background: lot.pending_confirm ? '#F0F7FF' : 'transparent',
-                    padding: lot.pending_confirm ? '8px' : 0, borderRadius: lot.pending_confirm ? '8px' : 0,
+                    padding: lot.pending_confirm ? '8px' : `0 0 ${lots.length > 1 ? 12 : 0}px`, borderRadius: lot.pending_confirm ? '8px' : 0,
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 8px', marginBottom: '10px' }}>
                       {lots.length > 1 && <span style={{ fontSize: '12px', fontWeight: '700', color: C.muted }}>병 {lotIdx + 1}/{lots.length}</span>}

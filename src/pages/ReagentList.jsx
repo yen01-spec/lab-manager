@@ -47,7 +47,7 @@ export default function ReagentList() {
   } = useReagentListParams()
   const { batch, idSet: batchIds, apply: applyBatch, clear: clearBatchFilter } = useBatchFilter({ flag: batchFlag, setFlag: setBatchFlag })
   const {
-    locations, results, loading, overlayInfo, totalCount, fetchResults,
+    locations, results, loading, loadError, overlayInfo, totalCount, fetchResults,
   } = useReagentSearch({ search, roomFilter, detailFilter })
 
   // 뒤로가기(POP)로 돌아왔을 때만 펼침/표시 열 복원 — 스크롤 위치는 목록(useVirtualListRestore)이 복원.
@@ -430,7 +430,7 @@ export default function ReagentList() {
         />
 
         {batch && (
-          <BatchFilterBar ref={batchBarRef} batch={batch} shownLots={shownLots}
+          <BatchFilterBar ref={batchBarRef} batch={batch} shownLots={loading ? null : shownLots}
             unmatchedOpen={unmatchedOpen} onToggleUnmatched={() => setUnmatchedOpen(v => !v)}
             onEdit={() => setShowBatchModal(true)} onClear={handleBatchClear}
             canDownloadMsds={displayResults.some(r => r.msds_url)} onDownloadMsds={() => downloadMsdsZip(displayResults)} zippingMsds={zippingMsds} />
@@ -481,7 +481,12 @@ export default function ReagentList() {
         {/* 결과 목록 */}
         {displayResults.length === 0
           ? <ListState loading={loading}>
-              {batch && batch.matchedIds.length === 0 ? (
+              {loadError ? (
+                <div role="alert" data-testid="list-load-error">
+                  <div style={{ fontSize: 14, color: '#C13B3F', marginBottom: 12 }}>시약 목록을 불러오지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.</div>
+                  <button onClick={() => fetchResults()} style={{ background: C.blue, color: '#fff', border: 'none', padding: '8px 16px', minHeight: 44, borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>다시 시도</button>
+                </div>
+              ) : batch && batch.matchedIds.length === 0 ? (
                 <div data-testid="batch-empty">
                   <div style={{ fontSize: 14, color: C.text, marginBottom: 12 }}>일괄검색 결과가 없습니다.</div>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>

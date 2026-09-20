@@ -25,6 +25,24 @@ export function rankFields({ name, name_ko, cas_no, extra }, rawTerm) {
   return null
 }
 
+// ── 서버(PostgREST) 목록 검색 필터 ─────────────────────────────────────────────
+// 목록의 Enter 검색은 서버 ilike 로 한다(자동추천은 메모리 인덱스). 두 곳이 같은 입력을 같게 찾도록 아래 두 가지를 맞춘다.
+//  · 값은 큰따옴표로 감싼다 — 쉼표/괄호가 or() 문법과 충돌해서 "Iron(III) chloride" 같은 실제 화학명이 예전엔 공백으로 바뀌어 0건이었다.
+//  · 하이픈 없는 CAS(64197)는 CAS 표기(64-19-7: 마지막 3자리 = 2자리-1자리)로 바꾼 값도 함께 찾는다.
+export function casFromDigits(term) {
+  const d = String(term ?? '').trim()
+  return /^\d{5,10}$/.test(d) ? `${d.slice(0, -3)}-${d.slice(-3, -1)}-${d.slice(-1)}` : null
+}
+const quoteVal = (v) => `"${v.replace(/[\\"]/g, ' ')}"`
+export function reagentOrFilter(term) {
+  const t = normalizeTerm(term).replace(/[%*\\]/g, ' ').trim()
+  if (!t) return ''
+  const parts = [`name.ilike.${quoteVal('%' + t + '%')}`, `name_ko.ilike.${quoteVal('%' + t + '%')}`, `cas_no.ilike.${quoteVal('%' + t + '%')}`]
+  const cas = casFromDigits(t)
+  if (cas) parts.push(`cas_no.ilike.${quoteVal('%' + cas + '%')}`)
+  return parts.join(',')
+}
+
 // ── 괄호 보조표기 ───────────────────────────────────────────────────────────────
 // "브로모티몰블루(BTB)" / "Acetic acid (glacial)" 처럼 이름 뒤에 붙은 괄호 표기 때문에 원문으로는 못 찾는 경우를 위한 대체 검색어.
 // 안전 조건 — 화학명 자체에 들어가는 괄호("Iron(III) chloride", "(R)-(+)-Limonene", "2-(N-Morpholino)…")를 망치지 않도록:

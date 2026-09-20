@@ -40,9 +40,9 @@ export default function MobileReagentCard({ r, locations, isPicked, onTogglePick
         <div style={{ fontSize: '12.5px', color: C.muted, marginBottom: '6px' }}>
           {r.cas_no || '-'}{r.company ? ` · ${r.company}` : ''}
         </div>
-        <div style={{ display: 'flex', gap: '14px', fontSize: '13px', color: C.text }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: '13px', color: C.text }}>
           <span style={ucStyle(uc?.location)}>📍 {locText}</span>
-          <span style={ucStyle(uc?.stock)}>{activeLots.length > 0 ? `${bottleSummaryText({ bottles: r._bottleCount, locations: r._activeLocIds.length })} · 잔량 ${r._avgStock}%` : '보유 0병'}</span>
+          <span style={{ ...ucStyle(uc?.stock), whiteSpace: 'nowrap' }}>{activeLots.length > 0 ? `${bottleSummaryText({ bottles: r._bottleCount, locations: r._activeLocIds.length })} · 잔량 ${r._avgStock}%` : '보유 0병'}</span>
         </div>
       </div>
       <span style={{ color: C.muted, fontSize: '18px', flexShrink: 0 }}>›</span>

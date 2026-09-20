@@ -9,12 +9,6 @@ export * from './reagentMatch.js'
 //  영문 시약명 / 국문 시약명 / CAS No. 를 대소문자 무시로 검색한다.
 export const SUGGEST_DEBOUNCE_MS = 150
 
-// PostgREST or() 필터 — 쉼표/괄호/와일드카드는 필터 문법을 깨므로 공백으로 치환한다.
-export function reagentOrFilter(term) {
-  const t = normalizeTerm(term).replace(/[,()%*\\]/g, ' ').trim()
-  return t ? `name.ilike.%${t}%,name_ko.ilike.%${t}%,cas_no.ilike.%${t}%` : ''
-}
-
 // 시약 목록 정렬 정본(시약목록/일괄정리 공통): 영문명 기준 자연 정렬.
 export const compareReagentNames = (a, b) => String(a?.name ?? '').localeCompare(String(b?.name ?? ''))
 

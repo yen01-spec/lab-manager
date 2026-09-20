@@ -20,9 +20,9 @@ export default function NoticeDetail() {
     await supabase.rpc('notice_increment_views', { p_id: id })
     const type = data.type
     const { data: prevData } = await supabase.from('notices').select('id, title').eq('type', type)
-      .lt('created_at', data.created_at).order('created_at', { ascending: false }).limit(1).single()
+      .lt('created_at', data.created_at).order('created_at', { ascending: false }).limit(1).maybeSingle()
     const { data: nextData } = await supabase.from('notices').select('id, title').eq('type', type)
-      .gt('created_at', data.created_at).order('created_at', { ascending: true }).limit(1).single()
+      .gt('created_at', data.created_at).order('created_at', { ascending: true }).limit(1).maybeSingle()
     setPrev(prevData || null); setNext(nextData || null)
   }
 

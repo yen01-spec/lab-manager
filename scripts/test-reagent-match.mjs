@@ -1,5 +1,5 @@
 // 시약 검색 순수 규칙 + 일괄검색 매칭 단위 테스트(node, DB 없음).
-import { normalizeTerm, rankFields, suggestFrom, searchTermVariants, parseBatchLines, runBatchMatch, BATCH_MAX_LINES } from '../src/lib/reagentMatch.js'
+import { normalizeTerm, rankFields, suggestFrom, searchTermVariants, parseBatchLines, runBatchMatch, BATCH_MAX_LINES, reagentOrFilter, casFromDigits } from '../src/lib/reagentMatch.js'
 
 const results = []
 const ok = (name, c, d) => { results.push(!!c); console.log(`${c ? '[PASS]' : '[FAIL]'} ${name}${d !== undefined ? ' — ' + JSON.stringify(d) : ''}`) }
@@ -85,6 +85,14 @@ const fixture = ['Acetic acid', 'acet', '아세트산', '64-19-7', '64197', '브
     if (!viaBatch?.via) { checks++; if (!same(ownIds, viaRank)) mismatches++ }
   }
   ok('equivalence: fast batch predicate == (rankFields !== null) on 600 random terms × 400 items (no fallback cases)', mismatches === 0 && checks > 300, { checks, mismatches })
+}
+
+// ── 서버 목록 검색 필터(실제 staging 브라우저 QA 에서 발견한 두 결함의 회귀) ──
+{
+  ok('server filter: hyphenless CAS 64197 also searches 64-19-7', casFromDigits('64197') === '64-19-7' && casFromDigits('7647145') === '7647-14-5' && casFromDigits('6419') === null && casFromDigits('64-19-7') === null && reagentOrFilter('64197').includes('cas_no.ilike."%64-19-7%"'))
+  const f = reagentOrFilter('Iron(III) chloride')
+  ok('server filter: parentheses/commas are kept (double-quoted values) instead of being replaced by spaces', f === 'name.ilike."%Iron(III) chloride%",name_ko.ilike."%Iron(III) chloride%",cas_no.ilike."%Iron(III) chloride%"' && reagentOrFilter('a,b').includes('"%a,b%"'), f)
+  ok('server filter: quotes/backslash/wildcards cannot break out of the value', !/"%[^"]*"[^,]*"/.test(reagentOrFilter('x"),name.eq."y')) && reagentOrFilter('50%*').split('%').length <= 7 && reagentOrFilter('   ') === '')
 }
 
 // ── 성능 ─────────────────────────────────────────────────────

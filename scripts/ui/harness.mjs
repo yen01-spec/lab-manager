@@ -108,7 +108,7 @@ export async function installMock(context, reagents, stats = { requests: [], rea
       let rows = reagents
       const or = p.get('or')
       if (or) {
-        const term = (or.match(/name\.ilike\.%(.*?)%,name_ko/) || [])[1]?.toLowerCase()
+        const term = (or.match(/name\.ilike\."?%(.*?)%"?,name_ko/) || [])[1]?.toLowerCase()
         if (term) rows = rows.filter(r => r.name.toLowerCase().includes(term) || (r.name_ko || '').toLowerCase().includes(term) || (r.cas_no || '').toLowerCase().includes(term))
       }
       const inIds = (p.get('id') || '').match(/^in\.\((.*)\)$/)

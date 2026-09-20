@@ -32,7 +32,7 @@ export const BRANDS = [
 // 팝업이 잘렸다. 좁은 화면(320px)에서는 화면 폭에 맞춰 줄어들고, 아래 공간이 모자라면 위로 열리며, 넘치면 내부 스크롤.
 const POPUP_WIDTH = 320
 
-export default function CompanyPicker({ value, onChange, onPick, onBlur, onKeyDown, inputRef, placeholder, style, disabled }) {
+export default function CompanyPicker({ value, onChange, onPick, onBlur, onKeyDown, inputRef, placeholder, style, disabled, ariaLabel = '제조사' }) {
   const [open, setOpen] = useState(false)
   const [place, setPlace] = useState(null)
   const boxRef = useRef(null)
@@ -62,14 +62,27 @@ export default function CompanyPicker({ value, onChange, onPick, onBlur, onKeyDo
     }
   }, [showPanel])
 
+  const skipFocusOpen = useRef(false)   // 팝업을 닫고 입력칸으로 포커스를 돌려줄 때 onFocus 가 팝업을 다시 열지 않게
+  const focusInput = () => { skipFocusOpen.current = true; boxRef.current?.querySelector('input')?.focus(); setTimeout(() => { skipFocusOpen.current = false }, 0) }
   function pick(name) {
     onChange(name)
     if (onPick) onPick(name)
     setOpen(false)
+    focusInput()
+  }
+  // 키보드: 입력칸에서 ↓ → 첫 로고로 이동, 로고 사이는 ←→↑↓/Home/End, Enter/Space 선택, Esc/Tab → 닫고 입력칸으로 복귀.
+  // (팝업이 body 포털이라 Tab 순서로는 닿지 않으므로 방향키 경로를 제공한다)
+  const logoButtons = () => [...(popRef.current?.querySelectorAll('button') || [])]
+  function onPopupKeyDown(e) {
+    const btns = logoButtons(); const i = btns.indexOf(document.activeElement)
+    if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); setOpen(false); focusInput(); return }
+    const move = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]
+    if (move !== undefined) { e.preventDefault(); if (i + move < 0) focusInput(); else btns[Math.min(btns.length - 1, i + move)]?.focus() }
+    else if (e.key === 'Home') { e.preventDefault(); btns[0]?.focus() } else if (e.key === 'End') { e.preventDefault(); btns[btns.length - 1]?.focus() }
   }
 
   const popup = showPanel && place && createPortal(
-    <div ref={popRef} role="group" aria-label="제조사 로고 선택" data-testid="company-picker-popup" style={{
+    <div ref={popRef} role="group" aria-label="제조사 로고 선택" data-testid="company-picker-popup" onKeyDown={onPopupKeyDown} style={{
       position: 'fixed', left: place.left, width: place.width, top: place.top, bottom: place.bottom, maxHeight: place.maxHeight,
       zIndex: 3000, boxSizing: 'border-box', overflowY: 'auto', overscrollBehavior: 'contain',
       background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px',
@@ -100,10 +113,15 @@ export default function CompanyPicker({ value, onChange, onPick, onBlur, onKeyDo
         value={value}
         disabled={disabled}
         onChange={e => onChange(e.target.value)}
-        onFocus={() => setOpen(true)}
+        onFocus={() => { if (!skipFocusOpen.current) setOpen(true) }}
         onClick={() => setOpen(true)}
         onBlur={onBlur}
-        onKeyDown={e => { if (e.key === 'Escape' && open) { setOpen(false) } onKeyDown?.(e) }}
+        aria-label={ariaLabel} aria-keyshortcuts="ArrowDown"
+        onKeyDown={e => {
+          if (e.key === 'Escape' && open) setOpen(false)
+          if (e.key === 'ArrowDown' && !disabled) { e.preventDefault(); setOpen(true); setTimeout(() => logoButtons()[0]?.focus(), 30) }
+          onKeyDown?.(e)
+        }}
         placeholder={placeholder}
         style={{ ...style, width: style?.width ?? '100%' }}
       />

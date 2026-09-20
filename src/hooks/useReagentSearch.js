@@ -125,6 +125,7 @@ export function useReagentSearch({ search = '', roomFilter = '', detailFilter = 
   const [loading, setLoading] = useState(true)
   const [overlayInfo, setOverlayInfo] = useState(null) // 진행 중 실사가 있을 때 { status, label, year, count }
   const [totalCount, setTotalCount] = useState(0)
+  const [loadError, setLoadError] = useState(false)   // 목록 조회 실패(네트워크 끊김/30초 시간 초과 등) — "조건에 맞는 시약이 없습니다"로 오해하지 않게 따로 표시
   const fetchRequestRef = useRef(0)
 
   useEffect(() => { fetchLocations(); fetchTotalCount() }, [])
@@ -156,7 +157,7 @@ export function useReagentSearch({ search = '', roomFilter = '', detailFilter = 
 
   async function fetchResults() {
     const myRequestId = ++fetchRequestRef.current
-    setLoading(true)
+    setLoading(true); setLoadError(false)
     // 목록 화면에서 실제로 쓰는 컬럼만 select — 예전엔 '*'로 모든 컬럼 + 위치 join까지
     // 통째로 가져와서(안 쓰는 locations(*) join 포함) 1,500여 개 시약 응답이 5MB가
     // 넘었음. 그게 페이지 진입마다 체감되는 지연의 큰 원인이라 필요한 것만 좁힘.
@@ -183,7 +184,7 @@ export function useReagentSearch({ search = '', roomFilter = '', detailFilter = 
       if (matchIds) q = q.in('id', matchIds)
       return q.range(0, 4999)
     }
-    let { data, count } = await runQuery(search.trim())
+    let { data, count, error: queryError } = await runQuery(search.trim())
     // 원문으로 아무것도 못 찾았고 "이름(약어)" 꼴이면, 자동추천/일괄검색과 같은 괄호 대체 검색어로 한 번씩 더 찾는다(원문 결과는 넓히지 않음).
     if (data && data.length === 0 && search.trim()) {
       for (const v of searchTermVariants(search).slice(1)) {
@@ -193,6 +194,7 @@ export function useReagentSearch({ search = '', roomFilter = '', detailFilter = 
       }
     }
     if (fetchRequestRef.current !== myRequestId) return // 늦게 도착한 응답이 최신 필터 결과를 덮어쓰지 않도록 함
+    if (queryError) { setLoadError(true); setResults([]); setLoading(false); return }
     if (count > 4999) {
       alert(`⚠️ 시약이 ${count}개로 많아 일부만 표시됩니다. 관리자에게 문의하세요.`)
     }
@@ -211,6 +213,6 @@ export function useReagentSearch({ search = '', roomFilter = '', detailFilter = 
   }
 
   return {
-    locations, results, setResults, loading, overlayInfo, totalCount, fetchResults, fetchLocations,
+    locations, results, setResults, loading, loadError, overlayInfo, totalCount, fetchResults, fetchLocations,
   }
 }

@@ -21,7 +21,7 @@ const BatchFilterBar = forwardRef(function BatchFilterBar({ batch, shownLots, un
             style={{ width: 28, height: 28, borderRadius: 14, border: 'none', background: 'rgba(255,255,255,.25)', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
         </span>
         <span role="status" data-testid="batch-summary" style={{ fontSize: 13, color: C.text }}>
-          입력 <b>{batch.terms.length.toLocaleString()}개</b> · 일치 시약 <b>{batch.matchedIds.length.toLocaleString()}개</b> · <b>{shownLots.toLocaleString()} Lot</b> 표시 · 미확인 <b>{unmatched.length.toLocaleString()}개</b>
+          입력 <b>{batch.terms.length.toLocaleString()}개</b> · 일치 시약 <b>{batch.matchedIds.length.toLocaleString()}개</b> · <b>{shownLots === null ? '…' : shownLots.toLocaleString()} Lot</b> 표시 · 미확인 <b>{unmatched.length.toLocaleString()}개</b>
         </span>
         <span style={{ flex: 1 }} />
         {unmatched.length > 0 && (

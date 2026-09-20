@@ -14,7 +14,12 @@ function fetchWithTimeout(input, init) {
   if (init?.signal) init.signal.addEventListener('abort', () => ctrl.abort())
   return fetch(input, { ...init, signal: ctrl.signal })
     .catch(err => {
-      if (err?.name === 'AbortError') throw new TypeError('요청 시간이 초과되었습니다. 네트워크 상태를 확인하고 다시 시도해주세요.')
+      if (err?.name === 'AbortError') {
+        // postgrest-js 는 네트워크 오류난 GET 을 3번 자동 재시도한다(30초 × 4 ≈ 2분 동안 로더가 남는다). 시간 초과는 재시도하지 않고 바로 실패시킨다(code=ABORT_ERR 는 재시도 제외 신호).
+        const timeout = new TypeError('요청 시간이 초과되었습니다. 네트워크 상태를 확인하고 다시 시도해주세요.')
+        timeout.code = 'ABORT_ERR'
+        throw timeout
+      }
       throw err
     })
     .finally(() => clearTimeout(timer))

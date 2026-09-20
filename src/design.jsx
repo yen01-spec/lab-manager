@@ -188,7 +188,8 @@ export function Icon({ name, size = 20, color, style = {} }) {
 // 마지막 항목 = 현재 페이지(aria-current="page", 링크 아님). items 가 비면 "홈" 자체가 현재 페이지.
 export function Breadcrumb({ items = [] }) {
   const list = items.filter(Boolean).map(b => (typeof b === 'string' ? { label: b } : b)).filter((b, i) => !(i === 0 && b.label === '홈'))
-  const linkStyle = { color: C.muted, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', minHeight: '28px', padding: '0 2px' }
+  // 글자 크기·줄 높이(28px)는 그대로 두고, 터치 영역만 padding 으로 키운 뒤 같은 크기의 음수 margin 으로 상쇄한다(≈44px 터치 타깃, 레이아웃 높이 불변).
+  const linkStyle = { color: C.muted, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', minHeight: '44px', padding: '0 6px', margin: '-8px -6px' }
   return (
     <nav aria-label="현재 위치" style={{ paddingTop: '10px', marginBottom: '6px' }}>
       <ol style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px 6px', margin: 0, padding: 0, listStyle: 'none', fontSize: '12px', color: C.muted }}>
