@@ -58,14 +58,13 @@ function enrichReagent(r) {
 
 // 시약목록 화면의 데이터 조회 부분(위치 목록/전체 개수/검색·필터 결과)만 떼어낸 훅 —
 // ReagentList.jsx 쪽은 이 훅이 내려주는 데이터/상태를 "어떻게 보여줄지"만 신경 쓰면 됨.
-export function useReagentSearch({ initialSearch = '' } = {}) {
+// search/roomFilter/detailFilter는 URL 쿼리(useReagentListParams)가 들고 있고 여기선 받아서 쓰기만 한다.
+// 위치 필터 — 방(room) 탭 + (세부위치가 있는 방이면) 세부위치 알약 2단계 구조.
+// roomFilter=''(전체) | 방 이름. detailFilter=''(그 방 전체) | 특정 위치 id.
+export function useReagentSearch({ search = '', roomFilter = '', detailFilter = '' } = {}) {
   const [locations, setLocations] = useState([])
-  const [search, setSearch] = useState(initialSearch)
-  // 위치 필터 — 방(room) 탭 + (세부위치가 있는 방이면) 세부위치 알약 2단계 구조.
-  // roomFilter=''(전체) | 방 이름. detailFilter=''(그 방 전체) | 특정 위치 id.
-  const [roomFilter, setRoomFilter] = useState('')
-  const [detailFilter, setDetailFilter] = useState('')
   const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(true)
   const [totalCount, setTotalCount] = useState(0)
   const fetchRequestRef = useRef(0)
 
@@ -74,10 +73,14 @@ export function useReagentSearch({ initialSearch = '' } = {}) {
   // 확정된 검색어(홈 화면 ?q= 포함) 또는 필터가 바뀔 때마다 결과를 다시 불러온다.
   // search는 "입력 중"이 아니라 Enter/검색 버튼으로 확정된 값만 담기므로(ReagentToolbar가
   // 입력 상태를 따로 들고 있음), 타이핑 한 글자마다 재조회되지 않는다.
+  // 방 필터가 URL로 복원돼 들어오면(뒤로가기·링크) 위치 목록이 아직 비어 있을 수 있다 —
+  // 방→위치 id 변환에 필요하므로 locations가 도착할 때까지 조회를 미룬다.
+  const locationsReady = !(roomFilter && !detailFilter) || locations.length > 0
   useEffect(() => {
+    if (!locationsReady) return
     fetchResults()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, roomFilter, detailFilter])
+  }, [search, roomFilter, detailFilter, locationsReady])
 
   async function fetchLocations() {
     const { data } = await supabase.from('locations').select('*').order('room')
@@ -94,6 +97,7 @@ export function useReagentSearch({ initialSearch = '' } = {}) {
 
   async function fetchResults() {
     const myRequestId = ++fetchRequestRef.current
+    setLoading(true)
     // 목록 화면에서 실제로 쓰는 컬럼만 select — 예전엔 '*'로 모든 컬럼 + 위치 join까지
     // 통째로 가져와서(안 쓰는 locations(*) join 포함) 1,500여 개 시약 응답이 5MB가
     // 넘었음. 그게 페이지 진입마다 체감되는 지연의 큰 원인이라 필요한 것만 좁힘.
@@ -117,7 +121,7 @@ export function useReagentSearch({ initialSearch = '' } = {}) {
         .select('reagent_id').in('location_id', activeLocationIds).eq('status', 'active')
       const matchIds = [...new Set((matchLots || []).map(l => l.reagent_id))]
       if (fetchRequestRef.current !== myRequestId) return
-      if (matchIds.length === 0) { setResults([]); return [] }
+      if (matchIds.length === 0) { setResults([]); setLoading(false); return [] }
       query = query.in('id', matchIds)
     }
     const { data, count } = await query.range(0, 4999)
@@ -128,12 +132,13 @@ export function useReagentSearch({ initialSearch = '' } = {}) {
     if (data) {
       const sorted = data.sort((a, b) => a.name.localeCompare(b.name)).map(enrichReagent)
       setResults(sorted)
+      setLoading(false)
       return sorted
     }
+    setLoading(false)
   }
 
   return {
-    locations, search, setSearch, roomFilter, setRoomFilter, detailFilter, setDetailFilter,
-    results, setResults, totalCount, fetchResults, fetchLocations,
+    locations, results, setResults, loading, totalCount, fetchResults, fetchLocations,
   }
 }

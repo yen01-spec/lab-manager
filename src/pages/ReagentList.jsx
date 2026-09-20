@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
-import { useOutletContext, useSearchParams, useNavigate } from 'react-router-dom'
+import { useOutletContext, useNavigate, useLocation, useNavigationType } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner } from '../design'
 import { exportReagents } from '../exportUtils'
@@ -8,55 +8,53 @@ import { computeSortLetter } from '../lib/sortLetter'
 import { resolveLotNo } from '../lib/lotNo'
 import { groupReagentsByName } from '../lib/nameGroup'
 import { useReagentSearch } from '../hooks/useReagentSearch'
+import { useReagentListParams } from '../hooks/useReagentListParams'
+import { loadViewSnapshot, saveViewSnapshot } from '../lib/reagentListView'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import ReagentTable from '../components/reagents/ReagentTable'
-import MobileReagentCard from '../components/reagents/MobileReagentCard'
+import MobileReagentList from '../components/reagents/MobileReagentList'
 import ReagentToolbar from '../components/reagents/ReagentToolbar'
 import ReagentFilters from '../components/reagents/ReagentFilters'
-import { FIRE_CLASSES } from '../lib/hazardCategory'
 import BulkLookupModal from '../components/reagents/BulkLookupModal'
 import RegisterReagentModal from '../components/reagents/RegisterReagentModal'
 import PickedListModal from '../components/reagents/PickedListModal'
 
-// 자료 탭 → 시약목록 딥링크용 preset (?preset=special|hazard|fire). 내부 judge 기준은 새로 만들지
-// 않고 ReagentFilters가 실제로 쓰는 필터(specialOnly/hazardClassFilter/fireClassFilter)를 그대로
-// 초기값으로 채운다 — preset은 "초기 필터값"일 뿐, 이후 사용자가 자유롭게 더하거나 해제할 수 있다.
-const VALID_PRESETS = ['special', 'hazard', 'fire']
+// 검색어·위치/유해분류/위험물유별/특별관리·CAS 필터는 URL 쿼리에 있다(useReagentListParams) — 상세
+// 페이지에서 뒤로가기 하면 같은 URL로 돌아와 그대로 복원된다. 자료 탭 딥링크 ?preset=special|hazard|fire는
+// 그 훅이 실제 필터 파라미터로 바꿔준다(이후 사용자가 자유롭게 더하거나 해제).
+
+const DEFAULT_COLS = {
+  casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
+  lot: false, expiry: false, category: false, fireClass: false, special: false, casCheck: false, ghs: false, status: false,
+}
 
 export default function ReagentList() {
   const { isAdmin, student, applySession } = useOutletContext?.() || {}
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const location = useLocation()
+  const navType = useNavigationType()
   const { isMobile } = useBreakpoint()
 
-  const initialSearch = searchParams.get('q') || ''
-  const initialPreset = VALID_PRESETS.includes(searchParams.get('preset')) ? searchParams.get('preset') : null
   const {
-    locations, setSearch, roomFilter, setRoomFilter, detailFilter, setDetailFilter,
-    results, totalCount, fetchResults,
-  } = useReagentSearch({ initialSearch })
+    search, roomFilter, detailFilter, hazardClassFilter, fireClassFilter, specialOnly, casMismatchOnly,
+    hazardPresetPending,
+    setSearch, setRoomFilter, setDetailFilter, setHazardClassFilter, setFireClassFilter,
+    setSpecialOnly, setCasMismatchOnly,
+  } = useReagentListParams()
+  const {
+    locations, results, loading, totalCount, fetchResults,
+  } = useReagentSearch({ search, roomFilter, detailFilter })
 
-  const [expandedIds, setExpandedIds] = useState(new Set())
-  const [visibleCols, setVisibleCols] = useState({
-    casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
-    lot: false, expiry: false, category: false, fireClass: false, special: false, casCheck: false, ghs: false, status: false,
-  })
-  // 유해분류(인화성/급성독성 등)로 보기 — 예: 인화성 시약을 한 시약장에 모으려는 계획처럼,
-  // 특정 유해분류에 해당하는 시약만 걸러보기 위한 필터. 빈 Set이면 필터 없음.
-  // preset=hazard 는 결과가 로드된 뒤 "존재하는 모든 유해분류"를 채워 넣어 적용한다(아래 useEffect).
-  const [hazardClassFilter, setHazardClassFilter] = useState(new Set())
-  const [hazardPresetPending, setHazardPresetPending] = useState(initialPreset === 'hazard')
-  // 위험물안전관리법 유별(제1류~6류)로 보기 — 학교 "성상별 분류 방법" 문서 기준으로
-  // 유별별 시약장을 실제로 분리할 계획이라, 류 단위로 바로 걸러볼 수 있게 함.
-  // preset=fire 는 6개 유별을 전부 켠 상태로 시작(= "위험물 전체") — FIRE_CLASSES는 고정 목록이라
-  // fetch 결과를 기다릴 필요 없이 바로 초기화 가능.
-  const [fireClassFilter, setFireClassFilter] = useState(() => initialPreset === 'fire' ? new Set(FIRE_CLASSES) : new Set())
-  // 특별관리물질(산업안전보건기준에관한 규칙 별표12, 44종)만 보기 — CAS 기준 매칭
-  const [specialOnly, setSpecialOnly] = useState(initialPreset === 'special')
-  // CAS-이름 정합성 검증(scripts/verify-cas-consistency.mjs)에서 "불일치(의심)"로 나온
-  // 시약만 보기 — PubChem에 그 CAS 자체가 없는(not_found) 경우는 흔해서 제외, 이름이 그
-  // 물질과 다른(mismatch) 경우만 실제로 확인이 필요한 항목이라 필터 대상으로 삼음.
-  const [casMismatchOnly, setCasMismatchOnly] = useState(false)
+  // 뒤로가기(POP)로 돌아왔을 때만 펼침/표시 열 복원 — 스크롤 위치는 목록(useVirtualListRestore)이 복원.
+  const [restored] = useState(() => (navType === 'POP' ? loadViewSnapshot(location.search) : null))
+  const [expandedIds, setExpandedIds] = useState(() => new Set(restored?.expanded || []))
+  const [visibleCols, setVisibleCols] = useState(() => ({ ...DEFAULT_COLS, ...(restored?.cols || {}) }))
+  const viewRef = useRef({})
+  useEffect(() => { viewRef.current = { search: location.search, expandedIds, visibleCols } })
+  useEffect(() => () => {
+    const v = viewRef.current
+    saveViewSnapshot(v.search, { expanded: [...v.expandedIds], cols: v.visibleCols })
+  }, [])
 
   // 선택 목록 (검색결과에서 여러 시약을 체크해 모아보기 — 전체 사용자). id -> reagent row
   const [pickedIds, setPickedIds] = useState(new Map())
@@ -97,15 +95,12 @@ export default function ReagentList() {
   // 표시 열 체크박스를 기본값으로 되돌림(기존의 검색어/위치/제조사 초기화 기능을 대체)
   // useCallback — memo된 ReagentFilters로 안정적으로 내려주기 위함.
   const resetFilters = useCallback(() => {
-    setVisibleCols({
-      casNo: true, company: true, volume: true, stock: true, location: true, lastConfirmed: true,
-      lot: false, expiry: false, category: false, fireClass: false, special: false, casCheck: false, ghs: false, status: false,
-    })
+    setVisibleCols({ ...DEFAULT_COLS })
     setHazardClassFilter(new Set())
     setFireClassFilter(new Set())
     setSpecialOnly(false)
     setCasMismatchOnly(false)
-  }, [])
+  }, [setHazardClassFilter, setFireClassFilter, setSpecialOnly, setCasMismatchOnly])
 
   const togglePick = useCallback((r, e) => {
     e.stopPropagation()
@@ -395,13 +390,13 @@ export default function ReagentList() {
   // "N병" 배지를 눌러야만 동작(둘 다 stopPropagation으로 행 클릭과 분리돼 있음) —
   // 예전엔 한 번 클릭=펼치기·더블클릭=상세페이지로 나눴었는데, Lot이 1개뿐인 대부분의
   // 행에서는 한 번 클릭이 아무 반응도 없는 "죽은 클릭"이 돼서 오히려 헷갈렸음.
-  const handleRowClick = useCallback((r) => {
-    navigate(`/reagents/${r.id}`)
-  }, [navigate])
+  // state.from='list' — 상세 페이지의 "← 목록으로"가 navigate(-1)로 정확히 이 목록 화면으로 돌아가게 한다.
+  const openDetail = useCallback((r) => navigate(`/reagents/${r.id}`, { state: { from: 'list' } }), [navigate])
+  const handleRowClick = openDetail
 
   // 아래 콜백들은 memo된 ReagentToolbar에 내려가므로 참조를 고정한다 — 체크박스 선택 등
   // 무관한 리렌더에 검색창/버튼줄이 함께 리렌더되지 않게.
-  const handleSearchSelect = useCallback((r) => navigate(`/reagents/${r.id}`), [navigate])
+  const handleSearchSelect = openDetail
   const openBulkLookup = useCallback(() => { setShowBulkLookupModal(true); setBulkLookupResults(null) }, [])
   const openRegister = useCallback(() => { setRegisterTab('new'); setShowRegisterModal(true) }, [])
 
@@ -420,9 +415,7 @@ export default function ReagentList() {
   // 이후 사용자가 개별 유해분류를 해제하면 그 다음부턴 정상적인 다중선택 필터로 동작(1회성 초기화).
   const applyHazardPreset = useCallback(() => {
     setHazardClassFilter(new Set(allHazardClassNames))
-    setHazardPresetPending(false)
-  }, [allHazardClassNames])
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  }, [allHazardClassNames, setHazardClassFilter])
   useEffect(() => { if (hazardPresetPending && allHazardClassNames.length > 0) applyHazardPreset() }, [hazardPresetPending, allHazardClassNames, applyHazardPreset])
   const displayResults = useMemo(() => results.filter(r => {
     if (hazardClassFilter.size > 0 && !(r._hazardClassNames || []).some(name => hazardClassFilter.has(name))) return false
@@ -449,7 +442,7 @@ export default function ReagentList() {
       <div style={{ padding: '8px 16px' }}>
 
         <ReagentToolbar
-          initialSearch={initialSearch}
+          initialSearch={search}
           onSubmitSearch={setSearch}
           onSearchSelect={handleSearchSelect}
           onOpenBulkLookup={openBulkLookup}
@@ -505,19 +498,14 @@ export default function ReagentList() {
         {/* 결과 목록 */}
         {displayResults.length === 0
           ? <div style={{ textAlign: 'center', padding: '60px 0', color: C.muted, fontSize: '13px' }}>
-              {results.length > 0 ? '보유 재고가 있는 시약이 없습니다. "재고 0 포함"을 켜보세요.' : '조건에 맞는 시약이 없습니다.'}
+              {loading ? '시약 목록을 불러오는 중…'
+                : results.length > 0 ? '조건에 맞는 시약이 없습니다. 필터를 조정해 보세요.' : '조건에 맞는 시약이 없습니다.'}
             </div>
           : isMobile ? (
-            // 모바일 — PC의 minWidth:900px 표는 휴대폰에서 계속 가로 스크롤이 생겨
-            // 시약장을 돌아다니며 검색하기 불편함. 카드형 목록으로 대체(카드 탭 =
-            // 상세페이지, 체크박스 = 선택목록 담기만 지원).
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {displayResults.map(r => (
-                <MobileReagentCard key={r.id} r={r} locations={locations}
-                  isPicked={pickedIds.has(r.id)} onTogglePick={togglePick}
-                  onOpenDetail={r2 => navigate(`/reagents/${r2.id}`)} />
-              ))}
-            </div>
+            // 모바일 — PC의 minWidth:900px 표는 휴대폰에서 계속 가로 스크롤이 생겨 카드형 목록으로 대체
+            // (카드 탭 = 상세페이지, 체크박스 = 선택목록 담기). 카드는 가상 스크롤로 화면에 보이는 것만 그린다.
+            <MobileReagentList data={displayResults} locations={locations}
+              pickedIds={pickedIds} togglePick={togglePick} onOpenDetail={openDetail} />
           ) : (
             <ReagentTable
               data={displayResults} locations={locations} visibleCols={visibleCols}

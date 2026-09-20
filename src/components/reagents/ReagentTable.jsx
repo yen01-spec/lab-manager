@@ -4,6 +4,7 @@ import { C, thStyle, Card } from '../../design'
 import ReagentRow from './ReagentRow'
 import ReagentGroupRow from './ReagentGroupRow'
 import AlphabetIndex from './AlphabetIndex'
+import { useVirtualListRestore } from '../../hooks/useVirtualListRestore'
 import { groupReagentsByName, normalizeReagentName } from '../../lib/nameGroup'
 
 // data(=검색·필터 결과)를 화면에 세로로 쌓이는 "시각 행" 평탄 배열로 만든다.
@@ -68,6 +69,9 @@ export default function ReagentTable({
     scrollMargin,
     getItemKey: (i) => visualRows[i].key,
   })
+
+  // 상세 페이지에서 뒤로 돌아왔을 때 보던 위치로 복귀(scrollMargin 측정 완료 후 1회).
+  useVirtualListRestore(virtualizer, visualRows, scrollMargin > 0)
 
   const items = virtualizer.getVirtualItems()
   const totalSize = virtualizer.getTotalSize()

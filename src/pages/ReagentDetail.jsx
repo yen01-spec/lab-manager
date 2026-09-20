@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useOutletContext, useNavigate } from 'react-router-dom'
+import { useParams, useOutletContext, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../design'
 import CompanyPicker from '../components/CompanyPicker'
@@ -45,6 +45,7 @@ function InfoRow({ label, value, sourceBadge }) {
 export default function ReagentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const routeLocation = useLocation()
   const { isAdmin, student } = useOutletContext?.() || {}
 
   const [reagent, setReagent] = useState(null)
@@ -479,6 +480,10 @@ export default function ReagentDetail() {
         breadcrumb={['시약', reagent.name]}
         extra={
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* 목록에서 들어왔으면 navigate(-1)로 검색·필터·스크롤이 복원된 그 목록 화면으로, 링크로 바로
+                들어왔으면(뒤로 갈 목록 기록이 없음) 기본 목록으로. 브라우저/모바일 뒤로가기도 같은 화면으로 돌아간다. */}
+            <button onClick={() => (routeLocation.state?.from === 'list' ? navigate(-1) : navigate('/reagents/list'))}
+              style={{ padding: '9px 14px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.white, fontSize: '13px', color: C.navy, fontWeight: '600', cursor: 'pointer' }}>← 목록으로</button>
             <button onClick={() => setShowAddLotModal(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: '1px dashed #C9DAF5', background: '#F9FBFF', fontSize: '13px', color: '#1F4E96', fontWeight: '600', cursor: 'pointer' }}>📦 재고 등록</button>
             <button onClick={openMoveModal} disabled={activeLots.length === 0} style={{ padding: '9px 16px', borderRadius: '8px', border: `1px solid ${C.border}`, background: activeLots.length === 0 ? '#F7F7F7' : C.white, fontSize: '13px', color: '#586173', cursor: activeLots.length === 0 ? 'default' : 'pointer' }}>📍 위치 이동{!isAdmin && ' 신청'}</button>
             {activeInventorySession && (

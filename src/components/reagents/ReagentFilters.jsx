@@ -163,11 +163,11 @@ function ReagentFilters({
           </div>
         )}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        <span style={{ fontSize: '11px', color: C.muted, marginRight: '2px' }}>위험물유별</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '11px', color: C.muted, marginRight: '2px', whiteSpace: 'nowrap' }}>위험물유별</span>
         {FIRE_CLASSES.map(cls => (
           <button key={cls} onClick={() => toggleFireClass(cls)} style={{
-            padding: '4px 10px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
+            padding: '4px 10px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap',
             border: `1px solid ${fireClassFilter.has(cls) ? '#C13B3F' : C.border}`,
             background: fireClassFilter.has(cls) ? '#FDECEC' : C.white,
             color: fireClassFilter.has(cls) ? '#C13B3F' : C.text, fontWeight: fireClassFilter.has(cls) ? '700' : '400',

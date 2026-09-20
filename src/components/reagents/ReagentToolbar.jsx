@@ -13,9 +13,12 @@ function ReagentToolbar({
   onOpenBulkLookup, onOpenRegister,
   isAdmin, hasResults, onExportExcel,
 }) {
-  // 홈 화면 등에서 ?q=로 들어온 초기 검색어만 반영 — 이후 타이핑은 이 draft만 갱신하고
-  // 상위(무거운 목록 페이지)는 건드리지 않는다. Enter/검색 버튼에서만 onSubmitSearch로 확정.
+  // 타이핑은 이 draft만 갱신하고 상위(무거운 목록 페이지)는 건드리지 않는다.
+  // Enter/검색 버튼에서만 onSubmitSearch로 확정.
   const [draft, setDraft] = useState(initialSearch)
+  // 확정된 검색어(URL의 q)가 밖에서 바뀌면(뒤로가기·홈에서 재검색 등) 입력창도 따라간다 — 렌더 중 상태 보정 패턴.
+  const [syncedSearch, setSyncedSearch] = useState(initialSearch)
+  if (syncedSearch !== initialSearch) { setSyncedSearch(initialSearch); setDraft(initialSearch) }
 
   const submit = () => onSubmitSearch(draft.trim())
 
