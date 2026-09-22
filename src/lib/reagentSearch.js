@@ -9,9 +9,6 @@ export * from './reagentMatch.js'
 //  영문 시약명 / 국문 시약명 / CAS No. 를 대소문자 무시로 검색한다.
 export const SUGGEST_DEBOUNCE_MS = 150
 
-// 시약 목록 정렬 정본(시약목록/일괄정리 공통): 영문명 기준 자연 정렬.
-export const compareReagentNames = (a, b) => String(a?.name ?? '').localeCompare(String(b?.name ?? ''))
-
 // ── 공용 시약 인덱스(가볍게 한 번만 로드해 모든 자동추천이 공유) ─────────────────────────────
 // 매 키 입력마다 서버에 묻지 않는다: id/영문명/국문명/CAS/제조사/분류만 1회 조회(약 1.3천 행)해 메모리에서 검색.
 const INDEX_TTL_MS = 5 * 60 * 1000
