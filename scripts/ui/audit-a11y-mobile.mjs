@@ -28,7 +28,7 @@ const PAGES = [
   // 시약 일괄정리는 시약목록에 통합됨 — /reagents/bulk-edit는 /reagents/list로 redirect(reagent-list 항목이 이미 감사함)
   { name: 'purchase-request', path: '/purchase-request' },
   { name: 'resources', path: '/resources' },
-  { name: 'notices', path: '/notices' },
+  // 공지사항 기능 퇴역(2026-09-22, 자료실 CMS Phase) — /notices는 /resources로 redirect(resources 항목이 이미 감사함)
   { name: 'admin-login-gate', path: '/admin' },
   { name: 'admin-requests', path: '/admin', admin: true },
 ]

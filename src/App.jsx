@@ -1,5 +1,3 @@
-import Notices from './pages/Notices'
-import Safety from './pages/Safety'
 import Resources from './pages/Resources'
 import { Routes, Route, Navigate, Link, useOutletContext } from 'react-router-dom'
 import Layout from './components/Layout'
@@ -9,7 +7,6 @@ import ReagentLocations from './pages/ReagentLocations'
 import ReagentList from './pages/ReagentList'
 import Admin from './pages/Admin'
 import Inventory from './pages/Inventory'
-import NoticeDetail from './pages/NoticeDetail'
 import PurchaseRequest from './pages/PurchaseRequest'
 import PurchaseRequestList from './pages/PurchaseRequestList'
 import ReagentDetail from './pages/ReagentDetail'
@@ -63,10 +60,11 @@ function App() {
         <Route path="admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
         <Route path="inventory" element={<Inventory />} />
         <Route path="resources" element={<Resources />} />
-        <Route path="notices" element={<Notices />} />
-        <Route path="notices/:id" element={<NoticeDetail />} />
-<Route path="safety/:id" element={<NoticeDetail />} />
-        <Route path="safety" element={<Safety />} />
+        {/* 공지사항 기능 퇴역(2026-09-22, 자료실 CMS Phase) — 옛 bookmark 호환 redirect만 유지. DB(notices/notice_files)는 그대로 보존. */}
+        <Route path="notices" element={<Navigate to="/resources" replace />} />
+        <Route path="notices/:id" element={<Navigate to="/resources" replace />} />
+        <Route path="safety/:id" element={<Navigate to="/resources" replace />} />
+        <Route path="safety" element={<Navigate to="/resources" replace />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
