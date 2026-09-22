@@ -1,5 +1,5 @@
 import { supabase, supabaseAdmin } from '../supabase'
-import { validateResourceFile, buildStoragePath } from './resourceUpload'
+import { validateResourceFile, buildStoragePath, buildArticleStoragePath } from './resourceUpload'
 
 export { validateResourceFile, RESOURCE_UPLOAD_HELP } from './resourceUpload'
 
@@ -82,10 +82,9 @@ export async function updateResourceMeta(id, fields) {
 export async function replaceResourceFile(row, file) {
   const v = validateResourceFile(file)
   if (!v.ok) throw new Error(v.error)
-  const path = buildStoragePath({
-    categoryKey: row.category_key, sectionKey: row.section_key,
-    resourceKey: row.resource_key, filename: file.name,
-  })
+  const path = row.article_id
+    ? buildArticleStoragePath({ articleId: row.article_id, filename: file.name })
+    : buildStoragePath({ categoryKey: row.category_key, sectionKey: row.section_key, resourceKey: row.resource_key, filename: file.name })
   const up = await supabaseAdmin.storage.from(BUCKET).upload(path, file, {
     contentType: v.mime || 'application/octet-stream', upsert: false,
   })
@@ -195,4 +194,150 @@ export function resourceFileUrl(row) {
   if (row?.file_url) return row.file_url
   if (!row?.storage_path) return null
   return supabase.storage.from('documents').getPublicUrl(row.storage_path).data?.publicUrl || null
+}
+
+// ══════════════════════════════════════════════════════════════
+//  자료실 CMS — resource_tabs / resource_articles (자료실 단순화 Phase).
+//  관리자: 탭 생성 → 그 탭 안에 글 작성 → 글 밑에 파일 첨부. 일반 사용자는 읽기 전용.
+//  write 는 전부 supabaseAdmin(Supabase Auth + admin_users + public.is_admin())만 통과한다.
+// ══════════════════════════════════════════════════════════════
+
+export async function getResourceTabs() {
+  const { data, error } = await supabase.from('resource_tabs').select('*').order('sort_order', { ascending: true })
+  if (error) throw new Error('탭 목록을 불러오지 못했습니다: ' + error.message)
+  return data || []
+}
+
+export async function createResourceTab(name) {
+  const trimmed = (name || '').trim()
+  if (!trimmed) throw new Error('탭 이름을 입력해주세요.')
+  const { data: last } = await supabase.from('resource_tabs').select('sort_order').order('sort_order', { ascending: false }).limit(1).maybeSingle()
+  const nextOrder = (last?.sort_order ?? -1) + 1
+  const { data, error } = await supabaseAdmin.from('resource_tabs').insert({ name: trimmed, sort_order: nextOrder }).select('*').single()
+  if (error) throw new Error(error.code === '23505' ? '이미 같은 이름의 탭이 있습니다.' : '탭 생성 실패: ' + error.message)
+  return data
+}
+
+export async function renameResourceTab(id, name) {
+  const trimmed = (name || '').trim()
+  if (!trimmed) throw new Error('탭 이름을 입력해주세요.')
+  const { data, error } = await supabaseAdmin.from('resource_tabs').update({ name: trimmed, updated_at: new Date().toISOString() }).eq('id', id).select('*').single()
+  if (error) throw new Error(error.code === '23505' ? '이미 같은 이름의 탭이 있습니다.' : '탭 이름 수정 실패: ' + error.message)
+  return data
+}
+
+// 순서만 바꾼다(↑/↓) — orderedIds: 원하는 최종 순서의 탭 id 배열.
+export async function reorderResourceTabs(orderedIds) {
+  for (let i = 0; i < orderedIds.length; i++) {
+    const { error } = await supabaseAdmin.from('resource_tabs').update({ sort_order: i, updated_at: new Date().toISOString() }).eq('id', orderedIds[i])
+    if (error) throw new Error('탭 순서 변경 실패: ' + error.message)
+  }
+}
+
+// 글이 1개라도 있으면 차단(조용한 cascade 금지) — DB도 FK restrict 로 한 번 더 막는다.
+export async function deleteResourceTab(id) {
+  const { count } = await supabase.from('resource_articles').select('id', { count: 'exact', head: true }).eq('tab_id', id)
+  if (count > 0) throw new Error(`이 탭에 자료 ${count}개가 있습니다. 자료를 다른 탭으로 이동하거나 삭제한 후 탭을 삭제하세요.`)
+  const { error } = await supabaseAdmin.from('resource_tabs').delete().eq('id', id)
+  if (error) throw new Error(error.code === '23503' ? '이 탭에 아직 자료가 있어 삭제할 수 없습니다.' : '탭 삭제 실패: ' + error.message)
+}
+
+export async function getAllResourceArticles() {
+  const { data, error } = await supabase.from('resource_articles').select('*').order('tab_id', { ascending: true }).order('sort_order', { ascending: true })
+  if (error) throw new Error('자료 목록을 불러오지 못했습니다: ' + error.message)
+  return data || []
+}
+
+function articleRow(fields) {
+  const steps = Array.isArray(fields.steps) ? fields.steps.map(s => String(s).trim()).filter(Boolean) : []
+  return {
+    tab_id: fields.tabId,
+    title: (fields.title || '').trim(),
+    summary: fields.summary?.trim() || null,
+    audience: fields.audience?.trim() || null,
+    timing: fields.timing?.trim() || null,
+    steps,
+    notice: fields.notice?.trim() || null,
+    link_label: fields.linkLabel?.trim() || null,
+    link_url: fields.linkUrl?.trim() || null,
+    sort_order: Number.isFinite(+fields.sortOrder) ? +fields.sortOrder : 0,
+  }
+}
+
+export async function createResourceArticle(fields) {
+  const row = articleRow(fields)
+  if (!row.title) throw new Error('제목을 입력해주세요.')
+  if (!row.tab_id) throw new Error('탭을 선택해주세요.')
+  if ((row.link_label && !row.link_url) || (!row.link_label && row.link_url)) throw new Error('관련 링크는 이름과 주소를 함께 입력해주세요.')
+  const { data, error } = await supabaseAdmin.from('resource_articles').insert(row).select('*').single()
+  if (error) throw new Error('글 작성 실패: ' + error.message)
+  return data
+}
+
+export async function updateResourceArticle(id, fields) {
+  const row = articleRow(fields)
+  if (!row.title) throw new Error('제목을 입력해주세요.')
+  if ((row.link_label && !row.link_url) || (!row.link_label && row.link_url)) throw new Error('관련 링크는 이름과 주소를 함께 입력해주세요.')
+  row.updated_at = new Date().toISOString()
+  const { data, error } = await supabaseAdmin.from('resource_articles').update(row).eq('id', id).select('*').single()
+  if (error) throw new Error('글 수정 실패: ' + error.message)
+  return data
+}
+
+export async function moveResourceArticle(id, tabId) {
+  const { error } = await supabaseAdmin.from('resource_articles').update({ tab_id: tabId, updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw new Error('탭 이동 실패: ' + error.message)
+}
+
+export async function reorderResourceArticles(orderedIds) {
+  for (let i = 0; i < orderedIds.length; i++) {
+    const { error } = await supabaseAdmin.from('resource_articles').update({ sort_order: i, updated_at: new Date().toISOString() }).eq('id', orderedIds[i])
+    if (error) throw new Error('글 순서 변경 실패: ' + error.message)
+  }
+}
+
+// 첨부파일이 1개라도 있으면 차단(조용한 cascade 금지) — DB도 FK restrict 로 한 번 더 막는다.
+export async function deleteResourceArticle(id) {
+  const { count } = await supabase.from('resource_files').select('id', { count: 'exact', head: true }).eq('article_id', id)
+  if (count > 0) throw new Error(`이 글에 첨부파일 ${count}개가 있습니다. 첨부파일을 먼저 삭제한 후 글을 삭제하세요.`)
+  const { error } = await supabaseAdmin.from('resource_articles').delete().eq('id', id)
+  if (error) throw new Error(error.code === '23503' ? '이 글에 아직 첨부파일이 있어 삭제할 수 없습니다.' : '글 삭제 실패: ' + error.message)
+}
+
+// 글 하나의 첨부파일 전체(버전 이력 포함) — sort_order → created_at 순.
+export async function getArticleFiles(articleId) {
+  const { data } = await supabase.from('resource_files').select('*')
+    .eq('article_id', articleId).order('sort_order', { ascending: true }).order('created_at', { ascending: false })
+  return data || []
+}
+
+// 자료실 카드 30여 개가 한 화면에 동시에 보이므로 글마다 따로 조회하지 않고 한 번에 가져온다.
+export async function getAllArticleFiles() {
+  const { data } = await supabase.from('resource_files').select('*').not('article_id', 'is', null)
+    .order('sort_order', { ascending: true }).order('created_at', { ascending: false })
+  return data || []
+}
+
+// 새 자료실 파일의 단순 업로드 — 파일 + 표시 제목(선택, 기본 파일명)만 받는다(복잡한 버전/유형
+// 메타데이터는 요구하지 않음). 기존 legacy 파일의 메타데이터는 손대지 않고 그대로 보존한다.
+export async function createArticleFile(articleId, file, title) {
+  const v = validateResourceFile(file)
+  if (!v.ok) throw new Error(v.error)
+  const path = buildArticleStoragePath({ articleId, filename: file.name })
+  const up = await supabaseAdmin.storage.from(BUCKET).upload(path, file, { contentType: v.mime || 'application/octet-stream', upsert: false })
+  if (up.error) throw new Error('파일 업로드 실패: ' + up.error.message)
+  const row = {
+    article_id: articleId, category_key: null, section_key: null, resource_key: null,
+    title: (title || file.name || '').trim() || file.name,
+    resource_type: 'reference', issuer: null, revision_date: null, effective_date: null,
+    version_label: null, sort_order: 0, notes: null,
+    is_current: true, storage_path: path, original_filename: file.name, mime_type: v.mime, file_url: null,
+  }
+  const ins = await supabaseAdmin.from('resource_files').insert(row).select('*').single()
+  if (ins.error) {
+    const rm = await supabaseAdmin.storage.from(BUCKET).remove([path])
+    const tail = rm.error ? ` — 파일 정리도 실패했습니다(수동 삭제 필요): ${path}` : ''
+    throw new Error('자료 등록 실패: ' + ins.error.message + tail)
+  }
+  return ins.data
 }

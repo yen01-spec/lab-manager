@@ -44,8 +44,16 @@ function sanitizeSeg(s) {
 }
 
 // resources/{category}/{section}/{resourceKey|standalone}/{unique}__{원본이름} — storage_path 가 진실.
+// [legacy] 자료실 CMS 전환(article_id) 이전 파일의 경로 규칙 — 기존 파일은 옮기지 않으므로 그대로 둔다.
 export function buildStoragePath({ categoryKey, sectionKey, resourceKey, filename }) {
   const uid = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`)
   const group = resourceKey ? sanitizeSeg(resourceKey) : 'standalone'
   return `resources/${sanitizeSeg(categoryKey)}/${sanitizeSeg(sectionKey)}/${group}/${uid}__${sanitizeSeg(filename)}`
+}
+
+// resources/articles/{articleId}/{unique}__{원본이름} — 탭 이름/글 제목을 바꿔도 경로가 안 바뀌게
+// article_id 하나에만 의존한다(동적 카테고리/섹션 이름에 의존하지 않음).
+export function buildArticleStoragePath({ articleId, filename }) {
+  const uid = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`)
+  return `resources/articles/${sanitizeSeg(articleId)}/${uid}__${sanitizeSeg(filename)}`
 }

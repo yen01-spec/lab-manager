@@ -42,7 +42,7 @@ export default function ResourceFileCard({ row, dim = false, admin = false, onEd
   ].filter(Boolean).join(' · ')
 
   return (
-    <div style={{
+    <div data-file-id={row.id} style={{
       border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px',
       background: dim ? C.bg : C.white, opacity: dim ? 0.85 : 1,
       display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap',
@@ -68,12 +68,12 @@ export default function ResourceFileCard({ row, dim = false, admin = false, onEd
         <span style={{ fontSize: 11.5, color: C.danger, flexShrink: 0 }}>파일 경로를 확인할 수 없습니다.</span>
       )}
 
-      {admin && (
+      {admin && (onEdit || onNewVersion || onSetCurrent || onDelete) && (
         <div style={{ flexBasis: '100%', display: 'flex', gap: 6, flexWrap: 'wrap', paddingTop: 8, marginTop: 2, borderTop: `1px dashed ${C.border}` }}>
-          <button onClick={() => onEdit?.(row)} style={adminBtn()}>수정</button>
-          <button onClick={() => onNewVersion?.(row)} style={adminBtn()}>새 버전</button>
-          {!row.is_current && <button onClick={() => onSetCurrent?.(row)} style={adminBtn(C.navy, '#fff')}>현재 자료로 지정</button>}
-          <button onClick={() => onDelete?.(row)} style={adminBtn(C.dangerTint, C.dangerDark, '#F3D6D6')}>삭제</button>
+          {onEdit && <button onClick={() => onEdit(row)} style={adminBtn()}>수정</button>}
+          {onNewVersion && <button onClick={() => onNewVersion(row)} style={adminBtn()}>새 버전</button>}
+          {onSetCurrent && !row.is_current && <button onClick={() => onSetCurrent(row)} style={adminBtn(C.navy, '#fff')}>현재 자료로 지정</button>}
+          {onDelete && <button onClick={() => onDelete(row)} style={adminBtn(C.dangerTint, C.dangerDark, '#F3D6D6')}>삭제</button>}
         </div>
       )}
     </div>

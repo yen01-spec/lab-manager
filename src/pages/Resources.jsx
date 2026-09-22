@@ -1,87 +1,155 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useOutletContext, useSearchParams } from 'react-router-dom'
 import { C, PageBanner } from '../design'
-import { supabase } from '../supabase'
-import ResourceCard from '../components/resources/ResourceCard'
-import { ALL_RESOURCE_SECTIONS, RESOURCE_GROUPS } from '../lib/resourceGuides'
-import { getAllResources } from '../lib/resources'
-import { SCHOOL_SAFETY_SYSTEM_FALLBACK, KOSHA_LABEL_FALLBACK } from '../lib/appSettings'
+import ResourceLibraryTabs from '../components/resources/ResourceLibraryTabs'
+import ResourceArticleCard from '../components/resources/ResourceArticleCard'
+import ResourceTabManager from '../components/resources/ResourceTabManager'
+import ResourceArticleEditor from '../components/resources/ResourceArticleEditor'
+import { getResourceTabs, getAllResourceArticles, getAllArticleFiles, deleteResourceArticle, reorderResourceArticles } from '../lib/resources'
 
-// 자료 탭 — 짧은 행동지침·규칙 + 첨부파일을 보는 읽기 전용 자료실.
-// 시약 데이터 조회/필터/선택/Excel 같은 업무 도구는 여기서 반복하지 않는다(시약 목록이 그 단일 화면).
-// 공지사항은 별도 게시판(/notices, Home에 이미 독립 메뉴)이라 여기 카테고리에 넣지 않는다.
+// 자료실 — DB 기반 CMS. 관리자: 탭 생성 → 그 탭 안에 글 작성 → 글 밑에 파일 첨부.
+// 일반 사용자: 탭 선택 → 글 읽기 → 필요한 첨부파일 열기. 공지사항 개념은 여기 없다(공지 기능
+// 자체가 퇴역했다 — Home/Layout에서도 제거됨). resourceGuides.js 하드코딩은 더 이상 쓰지 않는다.
 export default function Resources() {
   const { isAdmin } = useOutletContext?.() || {}
   const [params, setParams] = useSearchParams()
-  const [settings, setSettings] = useState({})
+  const [tabs, setTabs] = useState([])
+  const [articles, setArticles] = useState([])
   const [filesState, setFilesState] = useState({ status: 'loading', rows: [] })
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [showTabManager, setShowTabManager] = useState(false)
+  const [editorState, setEditorState] = useState(null) // null | { article? }
 
-  const group = RESOURCE_GROUPS.some(g => g.key === params.get('g')) ? params.get('g') : 'all'
+  const selected = params.get('t') || 'all'
 
-  useEffect(() => {
-    supabase.from('app_settings').select('key, value')
-      .in('key', ['school_safety_system_url', 'kosha_label_url'])
-      .then(({ data }) => {
-        const m = {}; (data || []).forEach(r => { m[r.key] = r.value })
-        m.school_safety_system_url ||= SCHOOL_SAFETY_SYSTEM_FALLBACK
-        m.kosha_label_url ||= KOSHA_LABEL_FALLBACK
-        setSettings(m)
-      })
+  const loadTabsAndArticles = useCallback(async () => {
+    try {
+      const [t, a] = await Promise.all([getResourceTabs(), getAllResourceArticles()])
+      setTabs(t); setArticles(a); setLoadError('')
+    } catch (e) {
+      setLoadError(e.message || '자료실을 불러오지 못했습니다.')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  // 자료 항목마다 따로 조회하지 않고 한 번에 가져와서 항목별로 나눠 쓴다(29개 카드가 한 화면에
-  // 동시에 보이므로 — ResourceFiles.initialRows 참고).
+  useEffect(() => { loadTabsAndArticles() }, [loadTabsAndArticles])
+
+  // 글마다 따로 조회하지 않고 한 번에 가져와서 카드별로 나눠 쓴다.
   useEffect(() => {
     let alive = true
-    getAllResources()
+    getAllArticleFiles()
       .then(rows => { if (alive) setFilesState({ status: 'ok', rows }) })
       .catch(() => { if (alive) setFilesState({ status: 'error', rows: [] }) })
     return () => { alive = false }
   }, [])
 
-  const filesByKey = useMemo(() => {
+  const filesByArticle = useMemo(() => {
     const m = new Map()
     for (const r of filesState.rows) {
-      const k = `${r.category_key}|${r.section_key}`
-      if (!m.has(k)) m.set(k, [])
-      m.get(k).push(r)
+      if (!m.has(r.article_id)) m.set(r.article_id, [])
+      m.get(r.article_id).push(r)
     }
     return m
   }, [filesState.rows])
 
-  const sections = useMemo(
-    () => ALL_RESOURCE_SECTIONS.filter(s => group === 'all' || s.group === group),
-    [group],
+  const articleCountByTab = useMemo(() => {
+    const m = new Map()
+    for (const a of articles) m.set(a.tab_id, (m.get(a.tab_id) || 0) + 1)
+    return m
+  }, [articles])
+
+  const visibleArticles = useMemo(
+    () => (selected === 'all' ? articles : articles.filter(a => a.tab_id === selected)),
+    [articles, selected],
   )
+
+  function selectTab(id) { setParams(id === 'all' ? {} : { t: id }) }
+
+  async function handleDelete(article) {
+    if (!window.confirm(`"${article.title}"을(를) 삭제할까요?`)) return
+    try {
+      await deleteResourceArticle(article.id)
+      await loadTabsAndArticles()
+    } catch (e) {
+      alert(e.message || String(e))
+    }
+  }
+
+  async function reorderWithin(article, dir) {
+    const siblings = articles.filter(a => a.tab_id === article.tab_id)
+    const idx = siblings.findIndex(a => a.id === article.id)
+    const j = idx + dir
+    if (j < 0 || j >= siblings.length) return
+    const next = [...siblings]
+    ;[next[idx], next[j]] = [next[j], next[idx]]
+    try {
+      await reorderResourceArticles(next.map(a => a.id))
+      await loadTabsAndArticles()
+    } catch (e) {
+      alert(e.message || String(e))
+    }
+  }
+
+  const canManage = !!isAdmin
+  const withinTab = selected !== 'all'
 
   return (
     <div>
-      <PageBanner title="자료" sub="Resources" breadcrumb={['자료']} />
+      <PageBanner title="자료실" sub="Resources" breadcrumb={['자료실']} />
       <div style={{ padding: '20px 24px 48px', maxWidth: 760, margin: '0 auto' }}>
-        <p style={{ margin: '0 0 18px', fontSize: 13.5, color: C.muted }}>연구실 업무에 필요한 기본 절차와 서식을 확인합니다.</p>
+        <p style={{ margin: '0 0 18px', fontSize: 13.5, color: C.muted }}>연구실 업무에 필요한 안내와 서식을 확인합니다.</p>
 
-        <div role="group" aria-label="자료 분류" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 }}>
-          {RESOURCE_GROUPS.map(g => {
-            const active = g.key === group
-            return (
-              <button key={g.key} onClick={() => setParams(g.key === 'all' ? {} : { g: g.key })} aria-pressed={active} style={{
-                padding: '10px 18px', minHeight: 44, minWidth: 44, borderRadius: 999, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
-                fontWeight: active ? 700 : 500, border: `1px solid ${active ? C.navy : C.border}`,
-                background: active ? C.navy : C.white, color: active ? '#fff' : C.text,
-              }}>{g.label}</button>
-            )
-          })}
-        </div>
+        <ResourceLibraryTabs tabs={tabs} selected={selected} onSelect={selectTab} isAdmin={canManage} onManageTabs={() => setShowTabManager(true)} />
 
-        {filesState.status === 'loading' ? (
-          <div style={{ padding: '60px 0', textAlign: 'center', color: C.muted, fontSize: 13 }}>불러오는 중...</div>
-        ) : (
-          sections.map(section => (
-            <ResourceCard key={`${section.categoryKey}.${section.key}`} section={section} categoryLabel={section.categoryLabel}
-              settings={settings} isAdmin={isAdmin} filesRows={filesByKey.get(`${section.categoryKey}|${section.key}`) || []} />
-          ))
+        {canManage && (
+          <div style={{ marginBottom: 16 }}>
+            <button onClick={() => setEditorState({ defaultTabId: withinTab ? selected : (tabs[0]?.id || '') })} disabled={tabs.length === 0}
+              style={{
+                padding: '9px 16px', minHeight: 44, borderRadius: 8, cursor: tabs.length ? 'pointer' : 'default', fontSize: 13, fontWeight: 700,
+                fontFamily: 'inherit', border: 'none', background: tabs.length ? C.navy : '#F0F0F0', color: tabs.length ? '#fff' : C.muted,
+              }}>+ 글 작성</button>
+            {tabs.length === 0 && <span style={{ marginLeft: 10, fontSize: 12, color: C.muted }}>먼저 "탭 관리"에서 탭을 만들어주세요.</span>}
+          </div>
         )}
+
+        <div role="tabpanel" id="restab-panel" aria-labelledby={`restab-${selected}`}>
+          {loading || filesState.status === 'loading' ? (
+            <div style={{ padding: '60px 0', textAlign: 'center', color: C.muted, fontSize: 13 }}>불러오는 중...</div>
+          ) : loadError ? (
+            <div role="alert" style={{ padding: '20px', textAlign: 'center', color: C.dangerDark }}>{loadError}</div>
+          ) : visibleArticles.length === 0 ? (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: C.muted, fontSize: 13.5 }}>
+              {tabs.length === 0 ? '아직 등록된 자료가 없습니다.' : '이 탭에는 아직 자료가 없습니다.'}
+            </div>
+          ) : (
+            visibleArticles.map((article, i) => (
+              <ResourceArticleCard
+                key={article.id} article={article} isAdmin={canManage} canManage={canManage}
+                filesRows={filesByArticle.get(article.id) || []}
+                onEdit={a => setEditorState({ article: a })} onDelete={handleDelete}
+                onMoveUp={withinTab ? (a => reorderWithin(a, -1)) : undefined}
+                onMoveDown={withinTab ? (a => reorderWithin(a, 1)) : undefined}
+                isFirst={i === 0} isLast={i === visibleArticles.length - 1}
+              />
+            ))
+          )}
+        </div>
       </div>
+
+      {showTabManager && (
+        <ResourceTabManager tabs={tabs} articleCountByTab={articleCountByTab}
+          onClose={() => setShowTabManager(false)} onChanged={loadTabsAndArticles} />
+      )}
+
+      {editorState && (
+        <ResourceArticleEditor
+          tabs={tabs} defaultTabId={editorState.defaultTabId} article={editorState.article}
+          onClose={() => setEditorState(null)}
+          onSaved={async () => { await loadTabsAndArticles(); setEditorState(null) }}
+        />
+      )}
     </div>
   )
 }
