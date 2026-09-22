@@ -25,7 +25,7 @@ const PAGES = [
   { name: 'reagent-list', path: '/reagents/list' },
   { name: 'reagent-detail', path: '/reagents/r-0010' },
   { name: 'inventory', path: '/inventory' },
-  { name: 'bulk-edit', path: '/reagents/bulk-edit' },
+  // 시약 일괄정리는 시약목록에 통합됨 — /reagents/bulk-edit는 /reagents/list로 redirect(reagent-list 항목이 이미 감사함)
   { name: 'purchase-request', path: '/purchase-request' },
   { name: 'resources', path: '/resources' },
   { name: 'notices', path: '/notices' },

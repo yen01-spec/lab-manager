@@ -119,7 +119,7 @@ const overflowX = page => page.evaluate(() => document.documentElement.scrollWid
 
   // 선택(pickedIds) 유지 규칙: 필터가 바뀌어도 기존 선택 동작 유지
   await page.locator('input[aria-label="Benzene 선택 목록에 담기"]').check().catch(async () => { await page.locator('tr', { hasText: 'Benzene' }).locator('td').first().click() })
-  ok('row selection works inside a batch result', (await page.getByText(/1개 선택됨/).count()) === 1)
+  ok('row selection works inside a batch result', (await page.getByText(/1종 선택됨/).count()) === 1)
 
   // I. 상세 → 뒤로: batch 유지
   await page.locator('tr', { hasText: 'Benzene' }).locator('td').nth(1).click()
@@ -183,7 +183,7 @@ const overflowX = page => page.evaluate(() => document.documentElement.scrollWid
   // PDF(인쇄)·학교등록 내보내기는 "선택 목록"(체크한 시약)을 대상으로 한다 — 헤더 체크박스는 현재(=일괄검색 필터된) 목록만 담는다.
   const nShown = await resultCount(page)
   await page.locator('input[aria-label="현재 목록 전체를 선택 목록에 담기"]').check(); await page.waitForTimeout(300)
-  ok('select-all in a batch result picks ONLY the filtered reagents (feeds 선택 목록 → PDF / 학교등록 exports)', (await page.getByText(new RegExp(`${nShown}개 선택됨`)).count()) === 1 && nShown < 20, nShown)
+  ok('select-all in a batch result picks ONLY the filtered reagents (feeds 선택 목록 → PDF / 학교등록 exports)', (await page.getByText(new RegExp(`${nShown}종 선택됨`)).count()) === 1 && nShown < 20, nShown)
   await ctx.close()
 }
 

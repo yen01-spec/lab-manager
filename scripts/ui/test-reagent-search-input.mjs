@@ -47,9 +47,7 @@ const SURFACES = [
   { key: 'purchase-request', path: '/purchase-request', ph: /화학물질명 또는 CAS/,
     afterSelect: async page => { await page.waitForFunction(() => [...document.querySelectorAll('input')].some(i => i.value === '64-19-7'), null, { timeout: 5000 }); return true },
     afterEnter: null },
-  { key: 'bulk-edit', path: '/reagents/bulk-edit', ph: /시약명.*CAS/,
-    afterSelect: async page => { await page.waitForTimeout(900); const t = await page.locator('main').innerText(); return t.includes('Acetic acid') && !t.includes('Acetone') && /1개 시약/.test(t) },
-    afterEnter: async page => { await page.waitForTimeout(900); const t = await page.locator('main').innerText(); return t.includes('Acetic acid') && t.includes('Acetone') } },
+  // 시약 일괄정리(/reagents/bulk-edit)는 시약목록에 통합되어 redirect만 남음 — 이 surface의 검색창은 'reagent-list' surface와 같다(중복 제거).
   { key: 'register-modal', path: '/reagents/list', ph: /Acetone — 이미 있는 시약이면/, prep: async page => { await page.getByRole('button', { name: /신규 시약 등록/ }).click(); await page.getByText('시약명 *').waitFor({ timeout: 8000 }) },
     afterSelect: async page => { await page.getByText('기존 시약에 새 Lot만 추가돼요').waitFor({ timeout: 5000 }); return true }, afterEnter: null },
 ]
@@ -195,7 +193,7 @@ for (const s of SURFACES.filter(x => x.key !== 'reagent-list')) {
 
 // ── 모바일 4종: 화면 밖/잘림/터치 타깃/짧은 화면 ───────────────────────────────────────────────────────────
 for (const [w, h] of [[320, 568], [360, 740], [390, 844], [430, 932]]) {
-  for (const s of [SURFACES[0], SURFACES[1], SURFACES[4]]) {
+  for (const s of [SURFACES[0], SURFACES[1], SURFACES.find(x => x.key === 'register-modal')]) {
     const { ctx, page } = await open(w, h, { mobile: true })
     const b = await box(page, s)
     await b.tap(); await b.fill('acet'); await page.waitForTimeout(500)

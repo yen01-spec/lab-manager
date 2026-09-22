@@ -58,11 +58,15 @@ const inView = async (loc, page) => { const b = await loc.boundingBox(); const v
   await page.waitForFunction(() => !document.querySelector('nav[aria-label="현재 위치"]')?.textContent.includes('시약 목록'))
   const homeNav = await crumbText(page)
   ok('H5. Home page shows just "홈" as the current page (no link, no duplicate)', homeNav === '홈' && (await crumbs(page).getByRole('link').count()) === 0, homeNav)
-  for (const [path, want] of [['/reagents/bulk-edit', '홈 › 시약 일괄정리'], ['/reagents/locations', '홈 › 시약장 위치'], ['/inventory', '홈 › 재고 실사'], ['/purchase-request', '홈 › 구매요청서'], ['/purchase-request/list', '홈 › 구매요청서 › 목록'], ['/resources', '홈 › 자료'], ['/safety-signage', '홈 › 자료 › 표지·대장 준비 도구']]) {
+  for (const [path, want] of [['/reagents/locations', '홈 › 시약장 위치'], ['/inventory', '홈 › 재고 실사'], ['/purchase-request', '홈 › 구매요청서'], ['/purchase-request/list', '홈 › 구매요청서 › 목록'], ['/resources', '홈 › 자료'], ['/safety-signage', '홈 › 자료 › 표지·대장 준비 도구']]) {
     await page.goto(BASE + path, { waitUntil: 'domcontentloaded' }); await crumbs(page).waitFor({ timeout: 15000 })
     const tx = await crumbText(page)
     ok(`H6. ${path}: breadcrumb "${want}"`, tx === want, tx)
   }
+  // 시약 일괄정리는 시약 목록에 통합됨 — /reagents/bulk-edit는 breadcrumb 없이 /reagents/list로 즉시 redirect
+  await page.goto(BASE + '/reagents/bulk-edit', { waitUntil: 'domcontentloaded' })
+  await page.waitForURL(u => new URL(u).pathname === '/reagents/list', { timeout: 15000 })
+  ok('H6b. /reagents/bulk-edit redirects to /reagents/list (compatibility redirect, no separate page)', new URL(page.url()).pathname === '/reagents/list')
   await page.goto(BASE + '/purchase-request/list', { waitUntil: 'domcontentloaded' }); await crumbs(page).waitFor()
   await crumbs(page).getByRole('link', { name: '구매요청서' }).click()
   ok('H7. intermediate crumb (구매요청서) links to its real route', new URL(page.url()).pathname === '/purchase-request')

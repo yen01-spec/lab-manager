@@ -8,11 +8,13 @@ import { useBreakpoint } from '../hooks/useBreakpoint'
 import { useAdminSession } from '../hooks/useAdminSession'
 import AdminAuthBanner from '../components/admin/AdminAuthBanner'
 import { C, PageBanner, inputStyle, labelStyle, btnPrimary, btnGhost } from '../design'
-import CompanyPicker from '../components/CompanyPicker'
 import { getHazardCategory } from '../lib/hazardCategory'
 import { getSpecialManagementInfo } from '../lib/specialManagementSubstances'
 import LotNoInput from '../components/reagents/LotNoInput'
 import { getSessionToken } from '../lib/session'
+import ReagentMasterFieldsGrid from '../components/reagents/ReagentMasterFieldsGrid'
+import { saveReagentMasterFields } from '../lib/reagentMasterEdit'
+import { FIELD_LABELS, MASTER_KEYS } from '../lib/reagentMasterFields'
 
 // 국가유해물질정보(KECO) GHS 조회 API가 주는 공식 픽토그램 코드(pctgrmCd) → 표시용 매핑.
 // 예전엔 hazard 텍스트에서 키워드를 추측해서 이모지를 붙였는데, 이 API 응답에 이미
@@ -32,26 +34,6 @@ function getGhsPictograms(codes) {
   if (!codes) return []
   return codes.split('^').filter(Boolean).map(code => ({ code, ...(GHS_PICTOGRAM_MAP[code] || { emoji: '❓', label: code }) }))
 }
-
-const FIELD_LABELS = {
-  name: '시약명', name_ko: '국문 시약명', purity: '순도', cas_no: 'CAS 번호', company: '제조사', category: '성상', volume: '용량', unit: '단위', hazard: '유해정보',
-  manager: '담당자', msds_url: 'MSDS URL', notes: '비고',
-}
-
-// 시약 기본정보(reagent 단위) 중 화면에서 고칠 수 있는 항목 — 서버 review RPC 허용 목록(name,name_ko,cas_no,company,purity,volume,unit,category,manager,msds_url,notes,hazard)의 부분집합.
-// 영문 시약명(name: 정렬·묶음의 기준)은 화면에서 고치지 않는다. 용량(numeric)과 단위(text)는 별개 컬럼이라 따로 입력한다.
-const MASTER_ROWS = [
-  { key: 'name_ko', label: '국문 시약명', keys: ['name_ko'] },
-  { key: 'cas_no', label: 'CAS 번호', keys: ['cas_no'], source: 'cas_source' },
-  { key: 'company', label: '제조사', keys: ['company'], source: 'company_source' },
-  { key: 'purity', label: '순도', keys: ['purity'] },
-  { key: 'category', label: '성상', keys: ['category'], source: 'category_source' },
-  { key: 'volume', label: '용량 · 단위', keys: ['volume', 'unit'], source: 'volume_source' },
-  { key: 'hazard', label: '유해정보', keys: ['hazard'], source: 'hazard_source' },
-]
-const MASTER_KEYS = MASTER_ROWS.flatMap(r => r.keys)
-// 항목별 "입력 출처" 컬럼(cas_no 의 출처 컬럼은 cas_source 다 — 예전 화면은 cas_no_source 라는 없는 컬럼을 써서 관리자 CAS 저장이 조용히 실패했다)
-const SOURCE_COL = { cas_no: 'cas_source', company: 'company_source', category: 'category_source', volume: 'volume_source', hazard: 'hazard_source' }
 
 function InfoRow({ label, value, sourceBadge }) {
   return (
@@ -155,6 +137,14 @@ export default function ReagentDetail() {
   }
 
   useEffect(() => { fetchAll() }, [id])
+  // 시약 목록에서 "1종 선택 → 정보 수정"으로 넘어온 경우 상세페이지가 열리자마자 바로 편집모드로 진입(별도 편집기를 새로 만들지 않고 이 화면 재사용).
+  const autoEditDoneRef = useRef(false)
+  useEffect(() => {
+    if (!loading && reagent && routeLocation.state?.autoEdit && !autoEditDoneRef.current) {
+      autoEditDoneRef.current = true
+      startEdit()
+    }
+  }, [loading, reagent, routeLocation.state])
   useEffect(() => () => clearTimeout(noticeTimerRef.current), [])
   // 성공/결과 안내 — 3종 요청이 모두 같은 방식(하단 안내줄)으로 알려준다. "변경되었습니다" 같은 오해 문구는 쓰지 않는다.
   function showNotice(text) {
@@ -353,7 +343,6 @@ export default function ReagentDetail() {
 
   const norm = (v) => String(v ?? '').trim()
   const cur = (k) => (reagent && reagent[k] != null ? String(reagent[k]) : '')
-  const val = (k) => (draft[k] !== undefined ? draft[k] : cur(k))
   const setDraftField = (k, v) => setDraft(d => ({ ...d, [k]: v }))
   function startEdit() {
     setDraft({}); setEditMode(true)
@@ -362,39 +351,24 @@ export default function ReagentDetail() {
   function cancelEdit() { setDraft({}); setEditMode(false) }
 
   // 시약 기본정보(reagent-level) 저장/신청 — 바꾼 항목만. 관리자: 직접 저장, 일반 사용자: 항목별 신청(서버 RPC, 승인 전엔 기존 값 그대로).
+  // 저장 규칙(어떤 값을 어떻게 보내는지)은 lib/reagentMasterEdit.js — MultiReagentEditQueue(여러 시약 순차 편집)와 공유.
   async function saveEditImpl() {
-    const keys = MASTER_KEYS.filter(k => draft[k] !== undefined && norm(draft[k]) !== norm(cur(k)) && (isAdmin || !pendingChanges.some(p => p.field_name === k)))
-    if (keys.length === 0) { showNotice('바꾼 항목이 없어요.'); return }
-    if (keys.includes('volume')) {
-      const v = norm(draft.volume)
-      if (v !== '' && !(Number.isFinite(Number(v)) && Number(v) >= 0)) { alert('용량은 0 이상의 숫자로 입력해주세요.'); return }
+    const out = await saveReagentMasterFields({ id, isAdmin, student, draft, reagent, pendingChanges })
+    if (!out.ok) {
+      if (out.reason === 'nochange') showNotice('바꾼 항목이 없어요.')
+      else if (out.reason === 'badvolume') alert('용량은 0 이상의 숫자로 입력해주세요.')
+      else if (out.reason === 'nologin') alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.')
+      else if (out.reason === 'error') alert(out.message)
+      if (out.reason === 'nochange' || out.reason === 'badvolume' || out.reason === 'nologin' || out.reason === 'error') return
     }
-    if (isAdmin) {
-      const update = {}
-      for (const k of keys) {
-        const t = norm(draft[k])
-        update[k] = t === '' ? null : (k === 'volume' ? Number(t) : t)
-        if (SOURCE_COL[k]) update[SOURCE_COL[k]] = 'manual'
-      }
-      const { error } = await supabaseAdmin.from('reagents').update(update).eq('id', id)
-      if (error) { alert(error.message || '저장 중 오류가 발생했어요'); return }
-      setReagent(prev => ({ ...prev, ...update }))
+    if (out.mode === 'admin') {
+      setReagent(prev => ({ ...prev, ...out.update }))
       showNotice('시약 기본정보를 저장했어요.')
-    } else {
-      if (!student) { alert('제출하려면 로그인이 필요해요. 로그인 후 다시 시도해주세요.'); return }
-      let okN = 0
-      const errs = []
-      for (const k of keys) {
-        // requested_by 등 신원은 client 가 보내지 않는다 — 서버가 session_token 으로 확정한다.
-        const { error } = await supabase.rpc('reagent_change_request_submit', {
-          p_session_token: getSessionToken(), p_reagent_id: id, p_field_name: k, p_old_value: cur(k), p_new_value: norm(draft[k]),
-        })
-        if (error) errs.push(`${FIELD_LABELS[k] || k}: ${error.message || '신청 중 오류가 발생했어요'}`); else okN++
-      }
-      if (errs.length) alert(errs.join('\n'))
-      if (okN) showNotice(SUBMIT_SUCCESS.change)
+    } else if (out.mode === 'student') {
+      if (out.errs.length) alert(out.errs.join('\n'))
+      if (out.okN) showNotice(SUBMIT_SUCCESS.change)
       fetchPendingRequests()
-      if (okN === 0) return
+      if (out.okN === 0) return
     }
     setEditMode(false); setDraft({})
   }
@@ -789,55 +763,9 @@ export default function ReagentDetail() {
               </div>
               <div style={{ fontWeight: 400, color: C.muted, fontSize: '11.5px', marginTop: 2 }}>이 시약 종류의 모든 병에 공통으로 적용되는 정보예요.</div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '14px 20px', padding: '18px 20px' }}>
-              <div>
-                <div style={{ fontSize: '11px', color: C.muted, marginBottom: '4px' }}>영문 시약명{editMode ? ' (변경 불가)' : ''}</div>
-                <div style={{ fontSize: '13.5px', color: C.text, overflowWrap: 'anywhere' }}>{reagent.name}</div>
-              </div>
-              {MASTER_ROWS.map(row => {
-                const keys = row.keys
-                const pending = keys.map(k => pendingChanges.find(p => p.field_name === k)).find(Boolean)
-                const locked = !isAdmin && !!pending
-                const isEditing = editMode
-                const sourceVal = row.source ? reagent[row.source] : null
-                const viewValue = row.key === 'volume' ? (reagent.volume ? `${reagent.volume} ${reagent.unit || ''}` : '') : cur(row.key)
-                const inputId = `master-${row.key}`
-                return (
-                  <div key={row.key} style={{ background: pending ? '#FBF0DF' : 'transparent', borderRadius: '8px', padding: pending ? '8px 10px' : 0, margin: pending ? '-8px -10px' : 0 }}>
-                    {pending && (
-                      <div style={{ fontSize: '10.5px', color: '#8A5A16', marginBottom: '3px', fontWeight: '600' }}>
-                        {isAdmin ? `${pending.requested_by} · ${requestStatusLabel('change', 'pending', 'admin')}` : requestStatusLabel('change', 'pending')}
-                      </div>
-                    )}
-                    <label htmlFor={inputId} style={{ display: 'block', fontSize: '11px', color: C.muted, marginBottom: '4px' }}>{row.label}</label>
-                    {isEditing ? (
-                      row.key === 'company' ? (
-                        <CompanyPicker value={val('company')} onChange={v => setDraftField('company', v)} disabled={locked}
-                          style={{ ...inputStyle, padding: '6px 8px', fontSize: '13px', background: locked ? C.bg : C.white }} />
-                      ) : row.key === 'volume' ? (
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <input id={inputId} type="number" min="0" step="any" inputMode="decimal" value={val('volume')} disabled={locked} placeholder="용량" aria-label="용량(숫자)"
-                            onChange={e => setDraftField('volume', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '13px', flex: 1, minWidth: 0 }} />
-                          <input value={val('unit')} disabled={locked} placeholder="단위(mL, g …)" aria-label="단위"
-                            onChange={e => setDraftField('unit', e.target.value)} style={{ ...inputStyle, padding: '6px 8px', fontSize: '13px', flex: 1, minWidth: 0 }} />
-                        </div>
-                      ) : (
-                        <input id={inputId} value={val(row.key)} disabled={locked} onChange={e => setDraftField(row.key, e.target.value)}
-                          style={{ ...inputStyle, padding: '6px 8px', fontSize: '13px', background: locked ? C.bg : C.white }} />
-                      )
-                    ) : (
-                      <div style={{ fontSize: '13.5px', color: C.text, overflowWrap: 'anywhere' }}>
-                        {viewValue || '-'}
-                        {sourceVal === 'auto_ghs' && (
-                          <span title="국가유해물질정보 자동조회로 채워졌어요" style={{ marginLeft: '6px', fontSize: '9.5px', color: C.muted, background: '#F3F4F6', padding: '1px 6px', borderRadius: '8px' }}>🔎 MSDS 자동조회</span>
-                        )}
-                        {pending && <span style={{ marginLeft: '6px', fontSize: '11px', color: '#8A5A16' }}>→ {pending.new_value}</span>}
-                      </div>
-                    )}
-                    {isEditing && locked && <div style={{ fontSize: '11px', color: '#8A5A16', marginTop: 3 }}>{DUPLICATE_PENDING_MESSAGE.change}</div>}
-                  </div>
-                )
-              })}
+            <div style={{ padding: '18px 20px' }}>
+              <ReagentMasterFieldsGrid reagent={reagent} isMobile={isMobile} isEditing={editMode}
+                draft={draft} setDraftField={setDraftField} pendingChanges={pendingChanges} isAdmin={isAdmin} />
             </div>
           </div>
 

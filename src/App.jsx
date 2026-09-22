@@ -12,7 +12,6 @@ import Inventory from './pages/Inventory'
 import NoticeDetail from './pages/NoticeDetail'
 import PurchaseRequest from './pages/PurchaseRequest'
 import PurchaseRequestList from './pages/PurchaseRequestList'
-import BulkEdit from './pages/BulkEdit'
 import ReagentDetail from './pages/ReagentDetail'
 import SafetySignage from './pages/SafetySignage'
 
@@ -54,7 +53,8 @@ function App() {
         <Route path="reagents/locations" element={<ReagentLocations />} />
         <Route path="reagents/list" element={<ReagentList />} />
         <Route path="reagents/:id" element={<ReagentDetail />} />
-        <Route path="reagents/bulk-edit" element={<BulkEdit />} />
+        {/* 시약 일괄정리는 시약 목록의 선택→작업 흐름으로 통합됨 — 옛 즐겨찾기/링크 호환용 redirect만 유지 */}
+        <Route path="reagents/bulk-edit" element={<Navigate to="/reagents/list" replace />} />
         <Route path="safety-signage" element={<SafetySignage />} />
         {/* 구 구매요청 화면(purchase_requests)은 폐기됨 — 옛 링크/북마크는 구매요청서로 안내 */}
         <Route path="requests" element={<Navigate to="/purchase-request" replace />} />

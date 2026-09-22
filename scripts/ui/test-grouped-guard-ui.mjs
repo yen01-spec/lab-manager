@@ -1,4 +1,5 @@
-// 묶음 행(sealed_count > 1) 가드 UI — 병 단위 작업(위치 변경/폐기 신청, 일괄정리)이 화면에서도 막히고 안내가 보이는지. 가짜 Supabase.
+// 묶음 행(sealed_count > 1) 가드 UI — Reagent Detail의 병 단위 작업(위치 변경/폐기 신청)이 화면에서도 막히는지.
+// 시약목록 선택 → 위치이동/폐기 2단계 병 선택에서의 같은 가드는 scripts/ui/test-reagent-unified-actions.mjs(Phase G/H)에서 검증한다. 가짜 Supabase.
 import { chromium, CHROME, BASE, buildReagents, installMock } from './harness.mjs'
 const results = []
 const ok = (name, c, d) => { results.push(!!c); console.log(`${c ? '[PASS]' : '[FAIL]'} ${name}${d !== undefined ? ' — ' + JSON.stringify(d) : ''}`) }
@@ -30,13 +31,6 @@ await page.goto(BASE + '/reagents/r-0001', { waitUntil: 'domcontentloaded' })
 await page.getByRole('button', { name: /위치 변경 신청/ }).first().waitFor({ timeout: 15000 })
 ok('detail (single-bottle lot): 위치 변경 신청 is enabled', await page.getByRole('button', { name: /위치 변경 신청/ }).first().isEnabled())
 
-await page.goto(BASE + '/reagents/bulk-edit', { waitUntil: 'domcontentloaded' })
-await page.getByText('시약 일괄정리').first().waitFor({ timeout: 15000 })
-await page.waitForTimeout(1500)
-const txt = await page.locator('main').innerText()
-ok('bulk-edit: grouped rows are flagged "묶음 행 … 병별 Lot 행으로 분리 필요"', txt.includes('묶음 행') && txt.includes('병별 Lot 행으로 분리 필요'))
-const disabled = await page.locator('tbody input[type=checkbox][disabled]').count()
-ok('bulk-edit: grouped rows cannot be selected (checkbox disabled)', disabled >= 1, disabled)
 ok('no submit RPC was called; no page errors', submits.length === 0 && errors.length === 0, { submits, errors })
 await browser.close()
 const fail = results.filter(x => !x).length

@@ -53,9 +53,13 @@ await scenario('학생 세션', { session: 'student', adminUsers: 'empty' }, asy
   await page.goto(BASE + '/admin', { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(1200)
   const t = await body(page)
   ok('학생: /admin → 관리자 화면 미노출', !t.includes(ADMIN_MARK) && t.includes('관리자 로그인 후 이용할 수 있습니다'))
-  await page.goto(BASE + '/reagents/bulk-edit', { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(1000)
+  // 시약 일괄정리는 시약목록에 통합됨 — 선택 → 위치 이동에서도 학생은 "신청" 모드(직접 반영 아님, 관리자 배너 없음)
+  await page.goto(BASE + '/reagents/list', { waitUntil: 'domcontentloaded' }); await page.getByText(/검색결과/).first().waitFor({ timeout: 15000 })
+  await page.locator('input[aria-label$="선택 목록에 담기"]').first().click()
+  await page.getByRole('button', { name: /위치 이동/ }).click()
+  await page.getByRole('dialog', { name: '병 선택 — 위치 이동' }).waitFor({ timeout: 10000 })
   const bt = await body(page)
-  ok('학생: 일괄정리는 "신청" 모드(직접 반영 아님, 관리자 배너 없음)', bt.includes('신청') && !bt.includes('일괄 위치이동/폐기를 처리'))
+  ok('학생: 위치 이동 병 선택 화면은 "신청" 모드(직접 반영 아님, 관리자 배너 없음)', bt.includes('신청') && !bt.includes('관리자 로그인 상태 확인 중') && !bt.includes('관리자 로그인됨'))
 })
 
 await scenario('Auth 세션은 있으나 admin_users 미등록', { session: 'admin', adminUsers: 'empty' }, async (page) => {

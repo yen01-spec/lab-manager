@@ -114,7 +114,7 @@ ref 상수는 `scripts/supabase-refs.mjs` 한 곳에만 있다.
 - **제조사 로고 팝업**(`CompanyPicker`): body 포털 + `lib/popoverPlacement`(자동추천과 공용) viewport 충돌 처리, 로고 버튼 44px. 예전엔 입력칸 안쪽 absolute(300px)라 모달의 overflow 영역/화면 오른쪽에서 잘렸다.
 - **시약 일괄검색 = 시약목록에 거는 다중 검색 필터**: 별도 결과표 없음. `📋 시약 일괄 검색` 모달(입력 전용) → [조회] → 공통 검색 규칙(`lib/reagentMatch.js`, 영문명/국문명/CAS·하이픈 없는 CAS)으로 메모리의 시약 인덱스에 대조 → 시약 id 집합을 다른 필터와 AND 로 적용. 여러 줄 = OR, 시약 id 로 중복 제거, 한 줄이 여러 시약에 걸리면 모두 표시(후보 선택 없음). 원문이 아무것도 못 찾을 때만 "이름(약어)"의 괄호 대체 검색어(앞 본문 → 괄호 안 3자 이상)를 시도 — 자동추천·목록 Enter 검색도 같은 fallback. 입력 줄마다 DB 를 조회하지 않는다(1,000줄 상한, 2,000 시약×1,000줄 ≈ 0.2s). 상태: URL 은 `bs=1` 표시만, 입력·결과는 sessionStorage(상세→뒤로/새로고침 유지, 새 세션 X). 요약 줄: 입력 N · 일치 시약 M · Lot 표시 · 미확인 U(=공통 규칙으로 못 찾음, "연구실에 없음"이 아님).
 - 과거 0/35 원인: 옛 일괄검색은 `name`(영문명) 컬럼만 `ilike`로 비교(국문명·CAS 미사용, 공통 normalize 미사용)했고 괄호는 공백으로 바꾼 뒤 클라이언트에서 원문 `includes` 로 다시 걸렀다 → 국문/CAS/괄호 입력은 항상 "없음".
-- 테스트: `node scripts/test-reagent-match.mjs`(29), UI `scripts/ui/test-bulk-edit-ux.mjs`, `test-company-picker.mjs`, `test-batch-search.mjs`.
+- 테스트: `node scripts/test-reagent-match.mjs`(29), UI `test-company-picker.mjs`, `test-batch-search.mjs` (당시의 `test-bulk-edit-ux.mjs`는 시약 일괄정리 폐지와 함께 2026-09-22에 삭제 — 아래 "시약 통합 액션 허브" 참고).
 
 ## 시약 상세/목록 UX 통합 (2026-09-24, frontend 전용)
 - **Breadcrumb**(`design.jsx` `Breadcrumb`/`PageBanner`): 실제 라우트 계층만 표시. 항상 "홈"(/)으로 시작하므로 페이지는 `breadcrumb`에 '홈'을 넣지 않는다(옛 "홈 › 홈"·없는 "시약 관리" 단계 제거). 항목 = 문자열(링크 없음) | `{ label, to, onClick }`; 마지막 = 현재 페이지(`aria-current="page"`). `<nav aria-label="현재 위치">`.
@@ -151,3 +151,28 @@ ref 상수는 `scripts/supabase-refs.mjs` 한 곳에만 있다.
   - 실행은 app_settings.restore_enabled='true' + p_confirm='RESTORE' 필요(기본 비활성 = production; migration 이 이 값을 만들지 않는다). 복원 전 같은 모드의 현재 상태 백업 내려받기를 UI 가 강제. 다른 프로젝트로 복원하면 Storage URL 을 대상 프로젝트로 재작성하고 digest 는 재작성된 행 기준으로 검증.
   - Storage 키는 ASCII 안전 문자만 허용(Supabase Storage 가 한글/이모지 키를 'Invalid key' 로 거부) — 그런 경로가 ZIP 에 있으면 dry-run 이 미리 거부한다.
   - 리허설: `scripts/staging/test-backup-restore.mjs`(핵심 22) + `test-backup-restore-full.mjs`(전체 29)는 `reset-and-run-all.sh` 의 **마지막**에 실행(범위 테이블을 비우고 합성 데이터로 채우므로). UI: `scripts/ui/test-backup-restore-tab.mjs`.
+
+## 시약 통합 액션 허브 — 시약 일괄정리 폐지 (2026-09-22, frontend 전용)
+- **시약 일괄정리 페이지는 없어졌다.** "시약 목록" 하나가 시약 관련 모든 작업의 단일 허브다. 체크박스는 언제나 "이 시약(reagent 종류, `reagents.id`)을 작업 대상으로 선택"만 의미하고, 무엇에 쓸지는 선택 뒤 액션바에서 고른다("N종 선택됨" — 별도 "일괄 작업 모드" 없음, 1종 선택=단일 작업·여러 종 선택=자연히 일괄 작업).
+- **액션바**(`components/reagents/actions/SelectedReagentActionBar.jsx`): 구매요청 / 위치 이동(신청) / 폐기(신청) / 정보 수정(신청) / 선택 목록 보기 / Excel 내보내기 / 선택 해제. 데스크톱은 가로 바, 모바일은 "작업 선택" 버튼 → bottom sheet. 필터를 바꿔도 선택은 유지되고, 현재 필터 밖으로 숨은 선택 수를 안내한다("N종 선택됨 · 현재 필터에서 M종 숨김").
+- **위치 이동/폐기 = 2단계**(`components/reagents/actions/LotSelectionDialog.jsx`): 시약 체크만으로 그 시약의 모든 병이 자동으로 대상이 되지 않는다. 선택한 시약들의 실제 보유 병(`reagent_lots.id`)을 다시 보여주고 명시적으로 체크해야 한다(기본 전부 미선택). 같은 Lot No.라도 병은 독립적으로 선택되고, `sealed_count > 1`(묶음 행)은 옛 시약 일괄정리와 같은 이유로 선택 불가(fail-closed, 서버도 거부). 실제 제출(관리자 직접 반영 또는 학생 신청)은 옛 시약 일괄정리가 쓰던 `adminMoveLots`/`adminDisposeLots`/`location_request_submit`/`disposal_request_submit`을 그대로 재사용 — RPC/권한 semantics 변경 없음.
+- **구매요청**: 옛 로직 그대로(reagent-level `prefillReagentItems`, Lot 선택 없음) — 액션바에서 바로 `/purchase-request`로 이동.
+- **정보 수정**: 1종 선택 시 시약 상세페이지로 이동해 그 화면의 기존 편집 폼이 자동으로 열린다(`location.state.autoEdit`) — 별도 편집기를 새로 만들지 않음. 여러 종 선택 시 `components/reagents/actions/MultiReagentEditQueue.jsx`가 시약마다 같은 폼을 순차로 보여주고 각각 따로 저장/신청한다(여러 시약에 같은 값을 한 번에 잘못 덮어쓰는 사고를 막기 위해 새 bulk-update RPC를 만들지 않음). 필드 목록/저장 규칙은 `lib/reagentMasterFields.js` + `lib/reagentMasterEdit.js`로 뽑아 상세페이지와 큐가 공유하고, 렌더링은 `components/reagents/ReagentMasterFieldsGrid.jsx`를 공유한다.
+- **Excel**: "선택 항목 Excel"(액션바, `exportPickedReagents`)과 "현재 목록 Excel"(툴바, `exportReagents`, 필터링된 전체 목록)은 서로 다른 별개 기능으로 공존 — 통합하면서 지우지 않았다.
+- **호환**: `/reagents/bulk-edit`는 `/reagents/list`로 즉시 redirect만 하고(옛 즐겨찾기/링크 보존), 사이드바 "시약 일괄정리" 메뉴는 제거됐다.
+- **Dead-code 감사 증거표** (import/route/runtime/test 전수 확인 후 결정):
+
+  | File | imports | routes | runtime use | test/script use | decision |
+  |---|---|---|---|---|---|
+  | `src/pages/BulkEdit.jsx` | 0 (App.jsx의 import 제거) | route가 redirect로 교체 | 0 | 커버리지 이전됨 | DELETE (`git rm`) |
+  | `src/components/admin/BulkEditTab.jsx` | 0 | 0 | 0 | 커버리지 이전됨 | DELETE (`git rm`) |
+  | `src/lib/reagentSearch.js`의 `compareReagentNames` | 0(정의부 제외) | — | 0 | 0 | DELETE(export 제거, 파일 자체는 다른 export 때문에 유지) |
+  | `BulkMoveModal.jsx` / `BulkDisposalModal.jsx` | `LotSelectionDialog.jsx`에서 사용 | — | 있음(신청/승인 폼) | `test-reagent-unified-actions.mjs` | KEEP |
+  | `adminMoveLots` / `adminDisposeLots`(`lib/adminReview.js`) | `LotSelectionDialog.jsx`, `ReagentDetail.jsx` | — | 있음 | 다수 | KEEP |
+  | `LocationFilter.jsx` | `ReagentFilters.jsx`에서 사용 | — | 있음 | 다수 | KEEP |
+  | `AlphabetIndex.jsx`/`AlphabetSheet.jsx`/`groupByLetter`/`rankFields` | `ReagentTable`/`MobileReagentList`/`reagentMatch.js` 내부 | — | 있음(시약목록 A–Z/자동추천) | 다수 | KEEP |
+  | `src/components/resources/ResourceReagentList.jsx` | `Resources.jsx` | `/resources` (특별관리물질 > 대상물질 섹션) | 있음 | `test-reagent-unified-actions.mjs`에 생존 확인 재수록 | KEEP — 과거 오판(dead 취급) 사례가 있어 이번에도 명시적으로 재확인 |
+  | `src/ReagentList.jsx`,`ReagentLocations.jsx`,`Items.jsx`,`pages/Reagents.jsx`,`ItemDetail.jsx`,`pages/Requests.jsx`,`pages/Calendar.jsx` | — | — | — | — | 최신 local HEAD에 이미 없음(재작성 안 함) |
+
+- **테스트**: `scripts/ui/test-reagent-unified-actions.mjs`(선택 semantics·액션바·2단계 Lot 선택·묶음 행 가드·같은 Lot No. 독립·구매요청·정보수정 단일/큐·Excel·redirect). 옛 `test-bulk-edit-ux.mjs`는 삭제(검색/자동완성/CAS 회귀는 `test-reagent-search-input.mjs`·`test-reagent-list.mjs`가 이미 커버하던 것이라 중복). `test-grouped-guard-ui.mjs`는 상세페이지 단일-병 가드만 남기고 시약 일괄정리 전용 구간 제거. `test-reagent-ux-consolidation.mjs`의 breadcrumb 표에서 `/reagents/bulk-edit` 항목을 redirect 확인으로 교체.
+- **알려진 후속 과제**: staging 전용 QA 스크립트(`scripts/qa/qa-e-ui.mjs`, `qa-f-network.mjs`, `scripts/ui/audit-a11y-mobile.mjs`)는 아직 `/reagents/bulk-edit`를 직접 열도록 되어 있어 다음 staging 실브라우저 QA 때 새 흐름(선택 → 액션바 → LotSelectionDialog)에 맞춰 다시 손봐야 한다 — 이번 Phase는 frontend 아키텍처/mock 회귀 범위만 다뤘다.

@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useOutletContext, useNavigate, useLocation, useNavigationType } from 'react-router-dom'
 import { supabase, supabaseAdmin } from '../supabase'
 import { C, PageBanner } from '../design'
-import { exportReagents } from '../exportUtils'
+import { exportReagents, exportPickedReagents } from '../exportUtils'
 import { checkStudentLogin, writeSession } from '../lib/session'
 import { computeSortLetter } from '../lib/sortLetter'
 import { groupReagentsByName } from '../lib/nameGroup'
@@ -22,6 +22,9 @@ import RegisterReagentModal from '../components/reagents/RegisterReagentModal'
 import { invalidateReagentIndex } from '../lib/reagentSearch'
 import PickedListModal from '../components/reagents/PickedListModal'
 import { ResultSummary, Count, ListState } from '../components/reagents/ReagentListChrome'
+import SelectedReagentActionBar from '../components/reagents/actions/SelectedReagentActionBar'
+import LotSelectionDialog from '../components/reagents/actions/LotSelectionDialog'
+import MultiReagentEditQueue from '../components/reagents/actions/MultiReagentEditQueue'
 
 // 검색어·위치/유해분류/위험물유별/특별관리·CAS 필터는 URL 쿼리에 있다(useReagentListParams) — 상세
 // 페이지에서 뒤로가기 하면 같은 URL로 돌아와 그대로 복원된다. 자료 탭 딥링크 ?preset=special|hazard|fire는
@@ -64,6 +67,9 @@ export default function ReagentList() {
   // 선택 목록 (검색결과에서 여러 시약을 체크해 모아보기 — 전체 사용자). id -> reagent row
   const [pickedIds, setPickedIds] = useState(new Map())
   const [showPickedModal, setShowPickedModal] = useState(false)
+  // 선택(reagents.id) 후 고르는 작업 — 구매요청/Excel은 즉시 실행, 위치이동/폐기는 2단계 병 선택, 정보수정은 1종=상세페이지·여러종=순차 큐.
+  const [lotDialogMode, setLotDialogMode] = useState(null) // null | 'move' | 'dispose'
+  const [showEditQueue, setShowEditQueue] = useState(false)
 
   // 인라인 편집 (목록에서 재고 숫자 바로 수정)
   const [inlineEdit, setInlineEdit] = useState(null)
@@ -131,6 +137,34 @@ export default function ReagentList() {
       spec: r.volume ? `${r.volume}${r.unit || ''}` : '', quantity: '1',
     }))
     navigate('/purchase-request', { state: { prefillReagentItems } })
+  }
+
+  function handlePickedAction(key) {
+    if (key === 'purchase') { goToPurchaseRequestWithPicked(); return }
+    if (key === 'list') { setShowPickedModal(true); return }
+    if (key === 'excel') { exportPickedReagents(Array.from(pickedIds.values()), locations); return }
+    if (key === 'move') { setLotDialogMode('move'); return }
+    if (key === 'dispose') { setLotDialogMode('dispose'); return }
+    if (key === 'edit') {
+      if (pickedIds.size === 1) {
+        const [onlyId] = pickedIds.keys()
+        navigate(`/reagents/${onlyId}`, { state: { from: 'list', autoEdit: true } })
+      } else {
+        setShowEditQueue(true)
+      }
+    }
+  }
+
+  function afterLotAction() {
+    setLotDialogMode(null)
+    setPickedIds(new Map())
+    fetchResults()
+  }
+  function afterEditQueue(changedCount) {
+    setShowEditQueue(false)
+    setPickedIds(new Map())
+    fetchResults()
+    if (changedCount > 0) alert(`${changedCount}종 ${isAdmin ? '정보를 저장했어요' : '정보 수정을 신청했어요'}.`)
   }
 
   // 현재 목록(일괄검색 결과 포함)에서 MSDS 파일이 등록된 시약들의 MSDS를 하나의 ZIP으로 묶어서 다운로드.
@@ -395,6 +429,12 @@ export default function ReagentList() {
   // 홈 화면 "전체 시약 N종"과 기준을 맞추려 제조사/순도 무시하고 이름만으로 센 값 —
   // ReagentTable도 내부에서 letter별로 다시 그룹핑하므로 여기선 개수만 필요.
   const groupedResultCount = useMemo(() => groupReagentsByName(displayResults).length, [displayResults])
+  // 필터를 바꿔도 선택은 유지된다 — 현재 필터 밖으로 숨겨진 선택이 있으면 그 수를 액션바에 안내(Phase Q).
+  const pickedHiddenCount = useMemo(() => {
+    if (pickedIds.size === 0) return 0
+    const shown = new Set(displayResults.map(r => r.id))
+    return [...pickedIds.keys()].filter(id => !shown.has(id)).length
+  }, [pickedIds, displayResults])
 
   const handleExportExcel = useCallback(() => {
     const activeLocationIds = detailFilter ? [detailFilter] : roomFilter ? locations.filter(l => l.room === roomFilter).map(l => l.id) : null
@@ -451,31 +491,12 @@ export default function ReagentList() {
           </div>
         )}
 
-        {/* 선택 목록 액션 바 */}
+        {/* 선택 후 작업 액션 바 — 체크박스는 "이 시약을 선택"만 의미, 작업은 선택 후 여기서 고른다 */}
         {pickedIds.size > 0 && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '12px',
-            padding: '12px 16px', marginBottom: '16px',
-            background: '#EEF2FB', border: `1px solid ${C.navy}`,
-            borderRadius: '8px',
-          }}>
-            <span style={{ fontSize: '13px', fontWeight: '700', color: C.navy }}>
-              📋 {pickedIds.size}개 선택됨
-            </span>
-            <button onClick={() => setShowPickedModal(true)} style={{
-              background: C.white, color: C.navy, border: `1px solid #C9DAF5`,
-              padding: '7px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
-            }}>선택 목록 보기</button>
-            <button onClick={goToPurchaseRequestWithPicked} style={{
-              background: C.navy, color: '#fff', border: 'none',
-              padding: '7px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
-              display: 'flex', alignItems: 'center', gap: '6px',
-            }}>🛒 구매요청서에 담기</button>
-            <button onClick={() => setPickedIds(new Map())} style={{
-              background: C.white, color: C.muted, border: `1px solid ${C.border}`,
-              padding: '7px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px',
-            }}>선택 해제</button>
-          </div>
+          <SelectedReagentActionBar
+            count={pickedIds.size} hiddenCount={pickedHiddenCount} isAdmin={isAdmin}
+            onAction={handlePickedAction} onClear={() => setPickedIds(new Map())}
+          />
         )}
 
         {/* 결과 목록 */}
@@ -534,6 +555,20 @@ export default function ReagentList() {
 
       {showPickedModal && (
         <PickedListModal pickedIds={pickedIds} setPickedIds={setPickedIds} locations={locations} onClose={() => setShowPickedModal(false)} />
+      )}
+
+      {lotDialogMode && (
+        <LotSelectionDialog
+          reagentIds={[...pickedIds.keys()]} mode={lotDialogMode} locations={locations} isAdmin={isAdmin} student={student}
+          onClose={() => setLotDialogMode(null)} onDone={afterLotAction}
+        />
+      )}
+
+      {showEditQueue && (
+        <MultiReagentEditQueue
+          reagentIds={[...pickedIds.keys()]} isAdmin={isAdmin} student={student}
+          onClose={() => setShowEditQueue(false)} onDone={afterEditQueue}
+        />
       )}
 
     </div>
