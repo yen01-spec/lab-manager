@@ -41,7 +41,7 @@ const sha = (b) => createHash('sha256').update(b).digest('hex')
 const clone = o => JSON.parse(JSON.stringify(o))
 
 const CORE = ['students', 'locations', 'reagents', 'reagent_lots', 'location_history', 'location_requests', 'disposal_requests', 'reagent_change_requests', 'stock_history', 'stock_logs', 'reagent_import_history', 'special_material_logs', 'inventory_sessions', 'inventory_assignments', 'inventory_counts', 'admin_logs']
-const FULL = [...CORE, 'purchase_request_logs', 'purchase_request_reagent_items', 'purchase_request_goods_items', 'purchase_requests', 'notices', 'notice_files', 'resource_files', 'app_settings']
+const FULL = [...CORE, 'purchase_request_logs', 'purchase_request_reagent_items', 'purchase_request_goods_items', 'purchase_requests', 'notices', 'notice_files', 'resource_tabs', 'resource_articles', 'resource_files', 'app_settings']
 const ALLOWED_KEYS = ['lab_name', 'lab_professor', 'lab_assistant', 'lab_phone', 'safety_dept_phone', 'emergency_contact', 'school_safety_system_url', 'kosha_label_url', 'quick_links']
 const SECRET_KEYS = ['admin_password', 'super_password']
 const suffix = randomBytes(4).toString('hex')
@@ -117,9 +117,17 @@ async function seed() {
     { id: randomUUID(), notice_id: notices[1].id, file_url: pub(GONE), file_name: '사라진 파일.pdf', file_size: 1234 },               // 링크만 있고 파일 없음
     { id: randomUUID(), notice_id: notices[2].id, file_url: 'https://example.com/external.pdf', file_name: '외부 링크.pdf', file_size: null },   // 외부 URL(참조 아님)
   ])
+  // 자료실 CMS(resource_tabs → resource_articles → resource_files.article_id, FK restrict 순서)
+  const tabs = [{ id: randomUUID(), name: `BKF 안전·폐기 ${suffix}`, sort_order: 0 }, { id: randomUUID(), name: `BKF 운영 ${suffix}`, sort_order: 1 }]
+  await insertBatch('resource_tabs', tabs)
+  const articles = [
+    { id: randomUUID(), tab_id: tabs[0].id, title: '폐액 처리 안내', summary: '요약 "따옴표"', audience: '연구실책임자', timing: '정기 점검 시', steps: ['확인', '배출'], notice: '참고사항', link_label: '학교 시스템 열기', link_url: 'https://safety.kangwon.ac.kr/', sort_order: 0, legacy_category_key: 'waste', legacy_section_key: 'pickup' },
+    { id: randomUUID(), tab_id: tabs[1].id, title: '학교 화학물질 등록', summary: null, audience: null, timing: null, steps: [], notice: null, link_label: null, link_url: null, sort_order: 0, legacy_category_key: null, legacy_section_key: null },
+  ]
+  await insertBatch('resource_articles', articles)
   await insertBatch('resource_files', [
-    { id: randomUUID(), category_key: 'waste', section_key: 'pickup', resource_key: 'k1', title: '수거 신청서', resource_type: 'form', is_current: true, storage_path: OBJ.res.path, file_url: pub(OBJ.res.path), original_filename: 'form.docx', mime_type: OBJ.res.type, sort_order: 1 },
-    { id: randomUUID(), category_key: 'waste', section_key: 'pickup', resource_key: 'k1', title: '수거 신청서(이전)', resource_type: 'form', is_current: false, storage_path: OBJ.resOld.path, file_url: null, original_filename: 'old.docx', mime_type: null, sort_order: 2 },
+    { id: randomUUID(), article_id: articles[0].id, category_key: 'waste', section_key: 'pickup', resource_key: 'k1', title: '수거 신청서', resource_type: 'form', is_current: true, storage_path: OBJ.res.path, file_url: pub(OBJ.res.path), original_filename: 'form.docx', mime_type: OBJ.res.type, sort_order: 1 },
+    { id: randomUUID(), article_id: articles[0].id, category_key: 'waste', section_key: 'pickup', resource_key: 'k1', title: '수거 신청서(이전)', resource_type: 'form', is_current: false, storage_path: OBJ.resOld.path, file_url: null, original_filename: 'old.docx', mime_type: null, sort_order: 2 },
   ])
   // app_settings: allowlist 키 + 비밀 키(내보내면 안 됨) — admin_password 는 fixture 가 이미 넣어 둠
   await service.from('app_settings').upsert([

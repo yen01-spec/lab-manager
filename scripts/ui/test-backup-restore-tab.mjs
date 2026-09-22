@@ -14,7 +14,7 @@ const UID = '11111111-1111-1111-1111-111111111111'
 const exp = Math.floor(Date.now() / 1000) + 36000
 const adminSession = { access_token: `${b64({ alg: 'HS256' })}.${b64({ sub: UID, role: 'authenticated', exp })}.s`, refresh_token: 'x', token_type: 'bearer', expires_in: 36000, expires_at: exp, user: { id: UID, email: 'a@test.local' } }
 const CORE = ['students', 'locations', 'reagents', 'reagent_lots', 'location_history', 'location_requests', 'disposal_requests', 'reagent_change_requests', 'stock_history', 'stock_logs', 'reagent_import_history', 'special_material_logs', 'inventory_sessions', 'inventory_assignments', 'inventory_counts', 'admin_logs']
-const FULL = [...CORE, 'purchase_request_logs', 'purchase_request_reagent_items', 'purchase_request_goods_items', 'purchase_requests', 'notices', 'notice_files', 'resource_files', 'app_settings']
+const FULL = [...CORE, 'purchase_request_logs', 'purchase_request_reagent_items', 'purchase_request_goods_items', 'purchase_requests', 'notices', 'notice_files', 'resource_tabs', 'resource_articles', 'resource_files', 'app_settings']
 const sha = b => createHash('sha256').update(b).digest('hex')
 const FILE = Buffer.from('%PDF-1.4 fake notice attachment '.repeat(40))
 const PATH = 'notices/attach_1.pdf'
@@ -105,7 +105,7 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true }
   ok('core backup download: mode=core, 16 tables, NO storage/ entries', m1.backup_mode === 'core' && Object.keys(m1.table_counts).length === 16 && !Object.keys(z1.files).some(n => n.startsWith('storage/')) && /^lab-core-backup_\d{8}_\d{4}\.zip$/.test(d1.suggestedFilename()), d1.suggestedFilename())
   const d2 = await dlOf(page, /전체 시스템 복원용 백업 내려받기/)
   const z2 = await JSZip.loadAsync(readFileSync(await d2.path())); const m2 = JSON.parse(await z2.file('manifest.json').async('string'))
-  ok('full backup download: mode=full, 24 tables, storage/documents/<path> file + manifest.storage[bucket,path,size,sha256]', m2.backup_mode === 'full' && Object.keys(m2.table_counts).length === 24 && !!z2.file(`storage/documents/${PATH}`) && m2.storage.objects[0].sha256 === sha(FILE) && m2.storage.objects[0].size === FILE.length && /^lab-system-backup_/.test(d2.suggestedFilename()), m2.storage?.objects)
+  ok(`full backup download: mode=full, ${FULL.length} tables, storage/documents/<path> file + manifest.storage[bucket,path,size,sha256]`, m2.backup_mode === 'full' && Object.keys(m2.table_counts).length === FULL.length && !!z2.file(`storage/documents/${PATH}`) && m2.storage.objects[0].sha256 === sha(FILE) && m2.storage.objects[0].size === FILE.length && /^lab-system-backup_/.test(d2.suggestedFilename()), m2.storage?.objects)
   ok('full backup: Storage file downloaded once (no N+1), server refs used', seq.filter(s => s.startsWith('storage:download:')).length === 1 && seq.includes('rpc:export:full'))
   const d3 = await dlOf(page, /조회용 Excel 내려받기/, 0)
   const wb = new ExcelJS.Workbook(); await wb.xlsx.load(readFileSync(await d3.path()))
