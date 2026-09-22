@@ -9,7 +9,8 @@ export const BASE = 'http://localhost:5299'
 export const STATE = JSON.parse(readFileSync(process.env.QA_STATE_FILE, 'utf-8'))
 const OUT = process.env.QA_OUT
 mkdirSync(OUT, { recursive: true })
-export const shot = async (page, name) => { await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: false }); return `${OUT}/${name}.png` }
+// 스크린샷 실패(폰트 로딩 타임아웃 등 환경 플레이크)가 전체 스위트를 죽이지 않게 — 증거 첨부일 뿐 assertion이 아니다.
+export const shot = async (page, name) => { try { await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: false, timeout: 10000 }); return `${OUT}/${name}.png` } catch (e) { note(`shot(${name}) failed — non-fatal`, e.message); return null } }
 
 const results = []
 export const ok = (name, cond, detail) => {

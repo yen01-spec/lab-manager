@@ -1,6 +1,7 @@
 // 자료실 CMS 실브라우저 QA — 실제 staging(관리자 Auth 계정으로 탭 생성/수정/순서/삭제 guard,
 // 글 작성/수정/이동/순서/삭제 guard, 첨부파일 업로드×2/열기/교체/삭제) + 일반 화면 반영 확인.
 // QA 전용 탭/글/파일만 사용, 끝나면 정리한다.
+import { readFileSync } from 'node:fs'
 import { browserLaunch, session, ok, note, summary, shot, adminLogin, BASE } from './lib.mjs'
 
 const browser = await browserLaunch(process.env.QA_HEADED === '1', process.env.QA_HEADED === '1' ? 150 : 0)
@@ -177,6 +178,100 @@ const fileRow = (scope, title) => scope.locator('[data-file-id]', { hasText: tit
 
   ok('production 접속 없음(이번 세션)', rec.prod.length === 0, rec.prod)
   ok('콘솔 오류 없음', rec.errors.length === 0, rec.errors.slice(0, 3))
+  await ctx.close()
+}
+
+// ── 글 순서 변경(article reorder) — 이전 Phase 최종보고에서 "검증 누락"으로 명시됐던 항목.
+//    탭 순서와 같은 UI(↑/↓)지만 대상이 글(resource_articles.sort_order)이고, 같은 탭 안에서만 동작한다.
+{
+  const { ctx, page, rec } = await session(browser, { w: 1440, h: 900 })
+  await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' })
+  await adminLogin(page)
+  await page.goto(BASE + '/resources', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('heading', { name: '자료실', level: 1 }).waitFor({ timeout: 20000 })
+
+  const TAB_R = 'QA-LIB-reorder-' + Date.now()
+  const ART_A = 'QA Reorder Article A ' + Date.now()
+  const ART_B = 'QA Reorder Article B ' + Date.now()
+
+  await page.getByRole('button', { name: '탭 관리' }).click()
+  const mgrR = page.getByRole('dialog', { name: '탭 관리' })
+  await mgrR.waitFor({ timeout: 10000 })
+  await mgrR.getByLabel('새 탭 이름').fill(TAB_R)
+  await mgrR.getByRole('button', { name: '+ 탭 생성' }).click()
+  await tabRow(mgrR, TAB_R).waitFor({ timeout: 10000 })
+  await mgrR.getByLabel('닫기').click()
+  await mgrR.waitFor({ state: 'hidden', timeout: 10000 })
+
+  await page.getByRole('tab', { name: TAB_R }).click()
+  await page.waitForTimeout(400)
+
+  const writeArticle = async (title) => {
+    await page.getByRole('button', { name: '+ 글 작성' }).click()
+    const ed = page.getByRole('dialog', { name: '글 작성' })
+    await ed.waitFor({ timeout: 10000 })
+    await ed.locator('#art-tab').selectOption({ label: TAB_R })
+    await ed.locator('#art-title').fill(title)
+    await ed.getByRole('button', { name: '작성 완료' }).click()
+    await ed.waitFor({ state: 'hidden', timeout: 15000 })
+    await page.getByRole('region', { name: title }).waitFor({ timeout: 10000 })
+  }
+  await writeArticle(ART_A)
+  await writeArticle(ART_B)
+
+  const orderOfTitles = async () => (await page.locator('section[aria-labelledby^="article-"] h2').allInnerTexts())
+  let order0 = await orderOfTitles()
+  ok('STEP-M 새 탭에 글 2개를 순서대로 작성 → A,B 순서', order0.indexOf(ART_A) === 0 && order0.indexOf(ART_B) === 1, order0)
+
+  // ↑/↓ 버튼은 canManage(관리자)일 때만, 그리고 "전체" 탭이 아니라 실제 탭이 선택돼 있을 때만 보임.
+  const cardB = page.getByRole('region', { name: ART_B })
+  await cardB.getByRole('button', { name: '위로 이동' }).click()
+  const deadline = Date.now() + 15000
+  let order1 = await orderOfTitles()
+  while (order1.indexOf(ART_B) !== 0 && Date.now() < deadline) { await page.waitForTimeout(400); order1 = await orderOfTitles() }
+  ok('STEP-M B에서 "위로 이동" 클릭 → 화면 순서가 B,A로 바뀜', order1.indexOf(ART_B) === 0 && order1.indexOf(ART_A) === 1, order1)
+  await shot(page, 'lib-05-article-reordered')
+
+  // 하드 새로고침 후에도 순서가 유지되는지(= DB sort_order에 실제로 반영됐다는 증거)
+  const cdp = await ctx.newCDPSession(page)
+  await cdp.send('Page.reload', { ignoreCache: true })
+  await page.waitForLoadState('domcontentloaded')
+  await page.getByRole('heading', { name: '자료실', level: 1 }).waitFor({ timeout: 20000 })
+  await page.getByRole('tab', { name: TAB_R }).click()
+  await page.waitForTimeout(500)
+  const order2 = await orderOfTitles()
+  ok('STEP-M 하드 새로고침 후에도 B,A 순서가 그대로 유지됨(=서버에 저장된 순서, 화면 state 아님)', order2.indexOf(ART_B) === 0 && order2.indexOf(ART_A) === 1, order2)
+
+  // DB sort_order를 읽기전용 REST 조회로 직접 확인(化면과 독립적인 증거).
+  const env = {}
+  for (const line of readFileSync(new URL('../../.env.staging.local', import.meta.url), 'utf-8').split('\n')) { const m = line.match(/^([A-Z0-9_]+)=(.*)$/); if (m) env[m[1]] = m[2].trim() }
+  const restUrl = `${env.VITE_SUPABASE_URL}/rest/v1/resource_articles?select=title,sort_order&title=in.("${ART_A}","${ART_B}")&order=sort_order.asc`
+  const restRes = await page.request.get(restUrl, { headers: { apikey: env.VITE_SUPABASE_ANON_KEY, authorization: `Bearer ${env.VITE_SUPABASE_ANON_KEY}` } })
+  const rows = await restRes.json()
+  ok('STEP-M DB 직접 조회(읽기전용): resource_articles.sort_order 기준으로도 B가 A보다 앞섬', restRes.ok() && rows.length === 2 && rows[0].title === ART_B && rows[1].title === ART_A, rows)
+
+  // 원래 순서(A,B)로 되돌리고 QA 탭/글 정리
+  const cardBAgain = page.getByRole('region', { name: ART_B })
+  await cardBAgain.getByRole('button', { name: '아래로 이동' }).click()
+  let order3 = await orderOfTitles()
+  const deadline2 = Date.now() + 15000
+  while (order3.indexOf(ART_A) !== 0 && Date.now() < deadline2) { await page.waitForTimeout(400); order3 = await orderOfTitles() }
+  ok('STEP-M 정리: "아래로 이동"으로 원래 순서(A,B)로 복원', order3.indexOf(ART_A) === 0 && order3.indexOf(ART_B) === 1, order3)
+
+  for (const title of [ART_A, ART_B]) {
+    await page.getByRole('region', { name: title }).getByRole('button', { name: '삭제', exact: true }).click()
+    await page.waitForTimeout(500)
+  }
+  await page.getByRole('button', { name: '탭 관리' }).click()
+  const mgrR2 = page.getByRole('dialog', { name: '탭 관리' })
+  await mgrR2.waitFor({ timeout: 10000 })
+  await tabRow(mgrR2, TAB_R).getByRole('button', { name: '삭제' }).click()
+  await tabRow(mgrR2, TAB_R).waitFor({ state: 'detached', timeout: 10000 })
+  ok('STEP-M QA 글 2개 + QA 탭 정리 완료', (await tabRow(mgrR2, TAB_R).count()) === 0)
+  await mgrR2.getByLabel('닫기').click()
+
+  ok('STEP-M production 접속 없음', rec.prod.length === 0)
+  ok('STEP-M 콘솔 오류 없음', rec.errors.length === 0, rec.errors.slice(0, 3))
   await ctx.close()
 }
 

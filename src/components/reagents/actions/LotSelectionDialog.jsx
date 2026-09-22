@@ -220,13 +220,13 @@ export default function LotSelectionDialog({ reagentIds, mode, locations, isAdmi
       </div>
 
       {showActionModal && mode === 'move' && (
-        <BulkMoveModal checkedCount={checkedLotIds.size} locations={locations}
+        <BulkMoveModal checkedCount={checkedLotIds.size} locations={locations} busy={busy}
           bulkMoveLocation={moveLocation} setBulkMoveLocation={setMoveLocation}
           submitLabel={isAdmin ? '위치 변경' : '위치 변경 신청'}
           onClose={() => !busy && setShowActionModal(false)} onSubmit={submitMove} />
       )}
       {showActionModal && mode === 'dispose' && (
-        <BulkDisposalModal checkedCount={checkedLotIds.size} isRequest={!isAdmin}
+        <BulkDisposalModal checkedCount={checkedLotIds.size} isRequest={!isAdmin} busy={busy}
           reason={disposalReason} setReason={setDisposalReason}
           onClose={() => !busy && setShowActionModal(false)} onSubmit={submitDisposal} />
       )}

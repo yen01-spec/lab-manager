@@ -269,6 +269,14 @@ export async function createResourceArticle(fields) {
   if (!row.title) throw new Error('제목을 입력해주세요.')
   if (!row.tab_id) throw new Error('탭을 선택해주세요.')
   if ((row.link_label && !row.link_url) || (!row.link_label && row.link_url)) throw new Error('관련 링크는 이름과 주소를 함께 입력해주세요.')
+  // 에디터가 새 글에 sortOrder를 넘기지 않으면(항상 0) 그 탭에 글이 이미 있을 때 전부 sort_order=0으로
+  // 겹쳐 화면 순서가 삽입 순서가 아니라 DB가 동률을 반환하는 임의 순서가 된다(실브라우저 QA로 발견,
+  // reorderResourceArticles 테스트 중 A,B를 순서대로 작성했는데 B,A로 나옴) — 같은 탭 안 최대값+1로
+  // 끝에 붙인다(createResourceTab과 같은 패턴), 명시적으로 sortOrder를 넘긴 경우는 그대로 존중.
+  if (!Number.isFinite(+fields.sortOrder)) {
+    const { data: last } = await supabaseAdmin.from('resource_articles').select('sort_order').eq('tab_id', row.tab_id).order('sort_order', { ascending: false }).limit(1).maybeSingle()
+    row.sort_order = (last?.sort_order ?? -1) + 1
+  }
   const { data, error } = await supabaseAdmin.from('resource_articles').insert(row).select('*').single()
   if (error) throw new Error('글 작성 실패: ' + error.message)
   return data

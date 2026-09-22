@@ -5,7 +5,7 @@ import { C, inputStyle } from '../../design'
 // 부모(ReagentList)에 그대로 두고, 이 컴포넌트는 폼 UI만 담당한다.
 export default function BulkMoveModal({
   checkedCount, locations, bulkMoveLocation, setBulkMoveLocation,
-  onClose, onSubmit, submitLabel = '이동하기',
+  onClose, onSubmit, submitLabel = '이동하기', busy = false,
 }) {
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -40,10 +40,10 @@ export default function BulkMoveModal({
             flex: 1, padding: '10px', borderRadius: '6px',
             border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px',
           }}>취소</button>
-          <button onClick={onSubmit} style={{
+          <button onClick={onSubmit} disabled={busy} style={{
             flex: 1, padding: '10px', borderRadius: '6px', border: 'none',
-            background: '#667EEA', color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px',
-          }}>{submitLabel}</button>
+            background: '#667EEA', color: '#fff', cursor: busy ? 'default' : 'pointer', fontWeight: '700', fontSize: '13px', opacity: busy ? 0.6 : 1,
+          }}>{busy ? '처리 중...' : submitLabel}</button>
         </div>
       </div>
     </div>

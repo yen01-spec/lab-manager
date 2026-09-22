@@ -3,7 +3,7 @@ import { C, inputStyle } from '../../design'
 // 다량 폐기처리 모달 — 시약 일괄정리에서 체크한 시약들의 활성 Lot을 한 번에 폐기 처리.
 // 관리자 전용 화면에서만 쓰여서(즉시 반영, 승인 대기 없음) BulkMoveModal과 같은 패턴.
 export default function BulkDisposalModal({
-  checkedCount, reason, setReason, onClose, onSubmit, isRequest = false,
+  checkedCount, reason, setReason, onClose, onSubmit, isRequest = false, busy = false,
 }) {
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -34,10 +34,10 @@ export default function BulkDisposalModal({
             flex: 1, padding: '10px', borderRadius: '6px',
             border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontSize: '13px',
           }}>취소</button>
-          <button onClick={onSubmit} style={{
+          <button onClick={onSubmit} disabled={busy} style={{
             flex: 1, padding: '10px', borderRadius: '6px', border: 'none',
-            background: C.danger, color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '13px',
-          }}>{isRequest ? '폐기 신청하기' : '폐기 처리'}</button>
+            background: C.danger, color: '#fff', cursor: busy ? 'default' : 'pointer', fontWeight: '700', fontSize: '13px', opacity: busy ? 0.6 : 1,
+          }}>{busy ? '처리 중...' : (isRequest ? '폐기 신청하기' : '폐기 처리')}</button>
         </div>
       </div>
     </div>

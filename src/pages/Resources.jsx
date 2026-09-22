@@ -7,6 +7,12 @@ import ResourceTabManager from '../components/resources/ResourceTabManager'
 import ResourceArticleEditor from '../components/resources/ResourceArticleEditor'
 import { getResourceTabs, getAllResourceArticles, getAllArticleFiles, deleteResourceArticle, reorderResourceArticles } from '../lib/resources'
 
+// 첨부파일이 없는 글에서 매 렌더마다 `.get() || []`가 새 배열을 만들면 ResourceArticleFiles의
+// initialRows identity가 흔들리고, 그 바람에 무관한 재렌더(탭 관리 열기 등)마다 그 글들이
+// resource_files를 다시 개별 조회하는 N+1이 실제로 터졌다(STEP28 네트워크 감사로 발견) — 모듈
+// 레벨의 안정된 빈 배열 참조를 재사용해서 막는다.
+const EMPTY_FILES = []
+
 // 자료실 — DB 기반 CMS. 관리자: 탭 생성 → 그 탭 안에 글 작성 → 글 밑에 파일 첨부.
 // 일반 사용자: 탭 선택 → 글 읽기 → 필요한 첨부파일 열기. 공지사항 개념은 여기 없다(공지 기능
 // 자체가 퇴역했다 — Home/Layout에서도 제거됨). resourceGuides.js 하드코딩은 더 이상 쓰지 않는다.
@@ -127,7 +133,7 @@ export default function Resources() {
             visibleArticles.map((article, i) => (
               <ResourceArticleCard
                 key={article.id} article={article} isAdmin={canManage} canManage={canManage}
-                filesRows={filesByArticle.get(article.id) || []}
+                filesRows={filesByArticle.get(article.id) || EMPTY_FILES}
                 onEdit={a => setEditorState({ article: a })} onDelete={handleDelete}
                 onMoveUp={withinTab ? (a => reorderWithin(a, -1)) : undefined}
                 onMoveDown={withinTab ? (a => reorderWithin(a, 1)) : undefined}
