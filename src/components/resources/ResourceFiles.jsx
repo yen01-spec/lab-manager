@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { C, Modal } from '../../design'
 import {
   getResources, createResource, updateResourceMeta, replaceResourceFile,
@@ -21,7 +21,10 @@ const TYPE_ORDER = [
 
 const isSessionError = (msg) => /jwt|expired|만료|401|not authorized|권한이 없습니다/i.test(msg || '')
 
-export default function ResourceFiles({ categoryKey, sectionKey, isAdmin = false }) {
+// initialRows: 이미 한 번에 조회해둔 이 (categoryKey,sectionKey)의 자료 목록이 있으면 그걸 그대로 쓰고
+// 개별 네트워크 조회를 건너뛴다(자료 화면이 항목 수만큼 따로 조회하지 않기 위함) — 관리자가 추가/수정/
+// 삭제한 뒤에는 항상 이 컴포넌트가 직접 다시 조회한다(그 시점엔 최신값이 필요하므로).
+export default function ResourceFiles({ categoryKey, sectionKey, isAdmin = false, initialRows }) {
   const [state, setState] = useState({ status: 'loading', rows: [] })
   const adminSession = useAdminSession()
   const admin = { ready: !isAdmin || adminSession.ready, authed: adminSession.authed, email: adminSession.email }
@@ -29,18 +32,23 @@ export default function ResourceFiles({ categoryKey, sectionKey, isAdmin = false
   const [form, setForm] = useState(null)   // { mode:'add'|'edit'|'version', base? }
   const [busy, setBusy] = useState(false)
   const [flash, setFlash] = useState(null) // { kind:'ok'|'warn'|'err', text }
+  const usedInitialRef = useRef(false)
 
   const load = useCallback(() => {
     if (!categoryKey || !sectionKey) return
+    if (!usedInitialRef.current && initialRows) {
+      usedInitialRef.current = true
+      setState({ status: 'ok', rows: initialRows })
+      return
+    }
     let alive = true
     setState({ status: 'loading', rows: [] })
     getResources(categoryKey, sectionKey)
       .then(rows => { if (alive) setState({ status: 'ok', rows }) })
       .catch(() => { if (alive) setState({ status: 'error', rows: [] }) })
     return () => { alive = false }
-  }, [categoryKey, sectionKey])
+  }, [categoryKey, sectionKey, initialRows])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => load(), [load])
 
   const canManage = isAdmin && admin.authed

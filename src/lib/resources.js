@@ -166,6 +166,16 @@ export async function getResources(categoryKey, sectionKey) {
   return data || []
 }
 
+// 자료 화면이 모든 항목을 한 목록으로 펼쳐 보여줄 때(각 항목마다 첨부파일이 바로 보임) 쓰는 일괄 조회 —
+// 항목 수만큼 따로 조회하지 않고 한 번에 가져와 항목별로 나눠 쓴다.
+export async function getAllResources() {
+  const { data } = await supabase.from('resource_files')
+    .select('*')
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: false })
+  return data || []
+}
+
 // 현재 사용 자료만 (is_current=true).
 export async function getCurrentResources(categoryKey, sectionKey) {
   return (await getResources(categoryKey, sectionKey)).filter(r => r.is_current)

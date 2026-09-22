@@ -4,14 +4,24 @@
 
 const SYS = '강원대학교 연구실안전관리시스템'
 
+// 공지사항은 별도 게시판(/notices, Home 화면에 이미 독립 메뉴로 있음) — 자료 탭 카테고리에 넣지 않는다.
 export const RESOURCE_CATEGORIES = [
-  { key: 'notice', label: '공지사항' }, // 게시판(별도 처리)
   { key: 'waste', label: '폐기물' },
   { key: 'special', label: '특별관리물질' },
   { key: 'prior', label: '사전유해인자' },
   { key: 'signage', label: '안전표지·보호구' },
   { key: 'ops', label: '연구실 운영' },
 ]
+
+// 자료 화면 상단 필터 칩 — 5개 카테고리를 3개로 느슨하게 묶어서만 보여준다(실제 분류/자료 연결은
+// 여전히 category_key 그대로라 resource_files는 orphan되지 않는다. 묶음은 화면 표시 전용).
+export const RESOURCE_GROUPS = [
+  { key: 'all', label: '전체' },
+  { key: 'safety', label: '안전·폐기' },
+  { key: 'forms', label: '서식·양식' },
+  { key: 'ops', label: '연구실 운영' },
+]
+const CATEGORY_GROUP = { waste: 'safety', special: 'safety', signage: 'safety', prior: 'forms', ops: 'ops' }
 
 export const RESOURCE_GUIDES = {
   waste: {
@@ -112,12 +122,11 @@ export const RESOURCE_GUIDES = {
     sections: [
       {
         key: 'targets', label: '대상물질', title: '특별관리물질 대상',
-        summary: '현재 연구실이 보유한 시약을 특별관리물질 공식 목록과 CAS 기준으로 대조해 대상 물질을 보여줍니다.',
+        summary: '현재 연구실이 보유한 시약을 특별관리물질 공식 목록과 CAS 기준으로 대조해 대상 물질을 확인할 수 있습니다. 실시간 목록은 시약 목록의 특별관리물질 필터에서 확인합니다.',
         audience: '연구실책임자 · 시약 관리 담당', timing: '신규 입고 시 · 정기 점검 시',
         roles: ['manager', 'director'],
         steps: ['현재 대상 물질 확인', '공식 시스템에서 등록', '취급 시 관련 기록 작성', '게시표지 확인'],
         notice: '대상 수는 DB의 CAS 매칭으로 실시간 계산합니다. 혼합물·농도 조건 등 CAS만으로 확정하기 어려운 항목은 "❓ 확인 필요"로 표시됩니다.',
-        embed: 'specialTargets',
         actions: [
           { key: 'reagent-list', label: '시약목록에서 대상 보기', type: 'reagent-search', preset: 'special' },
           { key: 'school', label: '학교 시스템 열기' },
@@ -319,13 +328,15 @@ export const RESOURCE_GUIDES = {
     sections: [
       {
         key: 'chem-register', label: '화학물질 등록', title: '학교 화학물질 등록',
-        summary: '최근 입고 시약을 학교 화학물질 DB와 CAS로 대조해 등록 대상을 고르고, 학교 등록용 Excel을 만듭니다. 공식 등록은 학교 시스템에서 합니다.',
+        summary: '시약목록에서 등록 대상을 검색·선택한 뒤 선택목록 보기 → Excel 내보내기 → "학교 화학물질 등록 양식"으로 등록용 Excel을 만듭니다. 공식 등록은 학교 시스템에서 합니다.',
         audience: '연구실책임자 · 연구실안전관리담당자', timing: '신규 입고 후 · 정기 등록 시',
         roles: ['manager', 'director'],
-        steps: ['최근 입고 시약 조회 (7일/30일/90일/1년)', '학교 화학물질 DB CAS 매칭 (✓매칭 / ⚠확인 필요)', '등록 대상 선택', '학교 등록용 Excel 생성', '학교 시스템에서 등록'],
+        steps: ['시약목록에서 등록 대상 시약 검색·선택', '선택목록 보기 → Excel 내보내기 → 학교 화학물질 등록 양식', '학교 화학물질 DB와 CAS 매칭 안 된 항목은 Excel에서 직접 확인', '학교 시스템에서 등록'],
         notice: '⚠ 미매칭 행은 CAS·명칭을 재확인한 뒤 포함 여부를 선택하세요.',
-        embed: 'schoolRegistration',
-        actions: [{ key: 'school', label: '학교 시스템 열기' }],
+        actions: [
+          { key: 'reagent-pick', label: '시약목록에서 선택하기', type: 'reagent-search' },
+          { key: 'school', label: '학교 시스템 열기' },
+        ],
       },
       {
         key: 'daily-check', label: '일상점검', title: '연구실 일상점검',
@@ -347,7 +358,6 @@ export const RESOURCE_GUIDES = {
         steps: ['본인 안전 확보', '주변에 사고 알림', '가능한 범위에서 초기 대응', '필요 시 119 신고', '연구실책임자 보고', '학교 사고보고 절차 진행'],
         notice: '',
         actions: [
-          { key: 'contact', label: '비상연락처', type: 'contact' },
           { key: 'school', label: '학교 시스템 열기' },
           { key: 'files', label: '사고대응 요령·공식 매뉴얼', type: 'files' },
         ],
@@ -396,4 +406,24 @@ export const RESOURCE_GUIDES = {
       },
     ],
   },
+}
+
+// 자료 화면은 category → section 2단계로 파고들지 않고 한 세로 목록으로 보여준다(상단 필터 칩만 있음) —
+// 이 배열이 그 목록. category_key/section_key는 그대로 두어(resourceGuides 원본 키) resource_files가
+// 계속 올바른 행을 찾는다.
+export const ALL_RESOURCE_SECTIONS = Object.entries(RESOURCE_GUIDES).flatMap(([categoryKey, cat]) =>
+  cat.sections.map(section => ({ ...section, categoryKey, categoryLabel: cat.label, group: CATEGORY_GROUP[categoryKey] || 'ops' })))
+
+// 카드 하단에 보일 링크(있을 때만)를 section.actions에서 뽑아낸다 — 여러 버튼을 늘어놓지 않고
+// 시약목록 링크 1개 · 공식 사이트 링크 1개 · 앱 내 다른 도구 링크 1개까지만 허용한다.
+export function deriveResourceLinks(section) {
+  const actions = section.actions || []
+  const reagentAction = actions.find(a => a.type === 'reagent-search')
+  const officialAction = actions.find(a => a.key === 'school' || a.key === 'kosha')
+  const routeAction = actions.find(a => a.type === 'route')
+  return {
+    reagentLink: reagentAction ? { q: reagentAction.q || null, preset: reagentAction.preset || null } : null,
+    officialLink: officialAction ? { key: officialAction.key } : null,
+    toolLink: routeAction ? { label: routeAction.label, to: routeAction.to } : null,
+  }
 }
